@@ -1,0 +1,16 @@
+#pragma once
+
+#include "PhantomDrive_global.h"
+#include "gamemode/DrivingData.h"
+#include "gamemode/IDrivingDataCollector.h"
+#include "gamemode/GameMode.h"
+#include "gamemode/ModeTransition.h"
+#include "gamemode/GameModeManager.h"
+#include "gamemode/ArcadeMode.h"
+#include "gamemode/LearningMode.h"
+#include "track/TrackTile.h"
+#include "track/Checkpoint.h"
+#include "track/TrackData.h"
+#include "track/TrackIO.h"
+#include "track/TrackDatabase.h"
+#include "track/TrackManager.h"
