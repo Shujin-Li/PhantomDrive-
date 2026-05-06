@@ -114,3 +114,55 @@ QList<PracticeReport> SaveLoadManager::loadHistory()
 {
     return loadFromFile();
 }
+
+bool SaveLoadManager::deleteReport(int index)
+{
+    // 1. 加载所有现有的历史记录
+    QList<PracticeReport> reports = loadFromFile();
+
+    // 2. 检查索引是否有效
+    if (index < 0 || index >= reports.size()) {
+        qWarning() << "删除失败：索引无效" << index;
+        return false;
+    }
+
+    // 3. 删除指定索引的记录
+    reports.removeAt(index);
+
+    // 4. 保存回文件
+    bool ok = saveToFile(reports);
+
+    // 5. 如果保存成功，通知 UI 刷新
+    if (ok) {
+        emit historyChanged();
+        qDebug() << "删除成功，还剩" << reports.size() << "条记录";
+    }
+
+    return ok;
+}
+
+bool SaveLoadManager::updateReport(int index, const PracticeReport& newReport)
+{
+    // 1. 加载所有现有的历史记录
+    QList<PracticeReport> reports = loadFromFile();
+
+    // 2. 检查索引是否有效
+    if (index < 0 || index >= reports.size()) {
+        qWarning() << "更新失败：索引无效" << index;
+        return false;
+    }
+
+    // 3. 替换指定索引的记录
+    reports[index] = newReport;
+
+    // 4. 保存回文件
+    bool ok = saveToFile(reports);
+
+    // 5. 如果保存成功，通知 UI 刷新
+    if (ok) {
+        emit historyChanged();
+        qDebug() << "更新成功，索引" << index;
+    }
+
+    return ok;
+}

@@ -14,6 +14,9 @@ public:
     bool saveReport(const PracticeReport& report);
     QList<PracticeReport> loadHistory();
 
+    bool deleteReport(int index);
+    bool updateReport(int index, const PracticeReport& newReport);
+
 signals:
     void historyChanged();   // 历史数据变化时发射
 
