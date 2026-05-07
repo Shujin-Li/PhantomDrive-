@@ -29,6 +29,13 @@ set(HEADER_FILES
     include/PhantomDrive/gamemode/Powerups.h
     include/PhantomDrive/gamemode/PowerupManager.h
     include/PhantomDrive/gamemode/PowerupBox.h
+    include/PhantomDrive/gamemode/AIOpponent.h
+    include/PhantomDrive/gamemode/AIOpponentManager.h
+    include/PhantomDrive/gamemode/TrafficObject.h
+    include/PhantomDrive/gamemode/TrafficLightObject.h
+    include/PhantomDrive/gamemode/SpeedLimitSignObject.h
+    include/PhantomDrive/gamemode/PedestrianCrossingObject.h
+    include/PhantomDrive/gamemode/TrafficObjectManager.h
     include/PhantomDrive/track/TrackTile.h
     include/PhantomDrive/track/Checkpoint.h
     include/PhantomDrive/track/TrackData.h
@@ -105,6 +112,13 @@ set(SOURCE_FILES
     src/gamemode/Powerups.cpp
     src/gamemode/PowerupManager.cpp
     src/gamemode/PowerupBox.cpp
+    src/gamemode/AIOpponent.cpp
+    src/gamemode/AIOpponentManager.cpp
+    src/gamemode/TrafficObject.cpp
+    src/gamemode/TrafficLightObject.cpp
+    src/gamemode/SpeedLimitSignObject.cpp
+    src/gamemode/PedestrianCrossingObject.cpp
+    src/gamemode/TrafficObjectManager.cpp
     src/track/TrackTile.cpp
     src/track/Checkpoint.cpp
     src/track/TrackData.cpp
