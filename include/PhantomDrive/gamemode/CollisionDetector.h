@@ -11,7 +11,7 @@
 
 namespace PhantomDrive {
 
-class PHANTOMDRIVE_EXPORT CollisionDetector : public QObject
+class CollisionDetector : public QObject
 {
     Q_OBJECT
 

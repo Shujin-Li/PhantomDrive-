@@ -9,7 +9,7 @@
 
 namespace PhantomDrive {
 
-class PHANTOMDRIVE_EXPORT VehicleSensor : public QObject
+class VehicleSensor : public QObject
 {
     Q_OBJECT // Qt 宏，启用信号槽、元对象等特性
 

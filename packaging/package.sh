@@ -10,7 +10,19 @@ echo ""
 # 配置变量
 BUILD_TYPE=${1:-Release}
 BUILD_DIR="build_package"
-QT_PATH=${QT6_DIR:-"/home/crocodile/Qt/6.8.3/gcc_64"}
+QT_PATH=${QT6_DIR}
+
+if [ -z "$QT_PATH" ]; then
+    echo "错误：请设置 QT6_DIR 环境变量指向 Qt 安装目录"
+    echo ""
+    echo "Windows MSYS2/MinGW 示例："
+    echo "  export QT6_DIR=C:/Qt/6.8.3/mingw64"
+    echo ""
+    echo "Linux 示例："
+    echo "  export QT6_DIR=/home/user/Qt/6.8.3/gcc_64"
+    echo ""
+    exit 1
+fi
 
 echo "构建类型：$BUILD_TYPE"
 echo "Qt 路径：$QT_PATH"

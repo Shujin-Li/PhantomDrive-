@@ -14,14 +14,23 @@ set(PHANTOMDRIVE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 
 # 只包含需要的源文件
 set(SOURCE_FILES
+    main.cpp
+
     ${PHANTOMDRIVE_DIR}/src/gamemode/VehicleSensor.cpp
     ${PHANTOMDRIVE_DIR}/src/gamemode/CollisionDetector.cpp
 )
 
+# 显式包含需要 MOC 处理的头文件
+set(HEADERS_TO_MOC
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/VehicleSensor.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/CollisionDetector.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/DrivingData.h
+)
+
 # 创建可执行文件
 add_executable(comprehensive_test
-    main.cpp
     ${SOURCE_FILES}
+    ${HEADERS_TO_MOC}
 )
 
 target_include_directories(comprehensive_test PRIVATE
