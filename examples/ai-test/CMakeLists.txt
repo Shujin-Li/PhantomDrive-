@@ -9,6 +9,9 @@ add_executable(ai-example
     main.cpp
     ../../src/ai/AIOpponent.cpp
     ../../src/ai/AIOpponentFSM.cpp
+    ../../src/ai/AggressiveAI.cpp
+    ../../src/ai/ConservativeAI.cpp
+    ../../src/ai/StrategicAI.cpp
 )
 
 target_include_directories(ai-example PRIVATE
