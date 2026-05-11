@@ -7,6 +7,8 @@ namespace PhantomDrive {
 
 struct Waypoint
 {
+    float x;
+    float y;
     QPointF position;
     float targetSpeed = 0.0f;
 };

@@ -3,6 +3,7 @@
 #define AIOPPONENTFSM_H
 
 #include <PhantomDrive/ai/AIOpponent.h>
+#include <PhantomDrive/ai/AIProfile.h>
 
 namespace PhantomDrive {
 
@@ -19,8 +20,14 @@ public:
 
 private:
     AIDecision m_currentDecision;
+
+protected:
+    int currentWaypointIndex = 0;
+
+    float fakePositionX = 0.0f;
+
+    AIProfile m_profile;
+
 };
-
 }
-
 #endif // AIOPPONENTFSM_H
