@@ -145,8 +145,9 @@ bool GameModeManager::isTransitioning() const
 
 void GameModeManager::cancelTransition()
 {
-    if (m_isTransitioning) {
-        m_transition->cancel();
+    if (m_isTransitioning && m_transition) {
+        m_transition->stop();
+        m_isTransitioning = false;
     }
 }
 
@@ -167,7 +168,11 @@ void GameModeManager::resumeCurrentMode()
 
 QList<ModeType> GameModeManager::getTransitionHistory() const
 {
-    return m_history.values();
+    QList<ModeType> history;
+    for (int i = 0; i < m_history.size(); ++i) {
+        history.append(m_history.at(i));
+    }
+    return history;
 }
 
 bool GameModeManager::canGoBack() const

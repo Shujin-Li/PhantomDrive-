@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QVector2D>
 #include <algorithm>
 
 namespace PhantomDrive {
@@ -178,11 +179,11 @@ void ArcadeMode::onVehicleCollision(const QString& objectId)
 
 void ArcadeMode::spawnRandomPowerUp()
 {
-    int randomIndex = QRandomGenerator::global()->bounded(m_availablePowerUps.size());
+    int randomIndex = QRandomGenerator::global()->bounded(static_cast<int>(m_availablePowerUps.size()));
     const PowerUpInfo& powerUp = m_availablePowerUps[randomIndex];
 
-    qreal x = QRandomGenerator::global()->bounded(-500.0, 500.0);
-    qreal y = QRandomGenerator::global()->bounded(-500.0, 500.0);
+    qreal x = static_cast<qreal>(QRandomGenerator::global()->bounded(-500, 500));
+    qreal y = static_cast<qreal>(QRandomGenerator::global()->bounded(-500, 500));
 
     emit powerUpSpawned(powerUp.id, QVector2D(x, y));
 }

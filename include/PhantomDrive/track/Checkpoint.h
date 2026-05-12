@@ -6,6 +6,7 @@
 #include <QString>
 #include <QVector2D>
 #include <QRectF>
+#include <QVariantMap>
 
 namespace PhantomDrive {
 

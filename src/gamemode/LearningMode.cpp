@@ -118,7 +118,7 @@ void LearningMode::enterSpeedLimitZone(const QString& id)
         zone.isActive = true;
         m_currentSpeedLimit = zone.speedLimit;
         m_currentSpeedLimitZoneId = id;
-        emit speedLimitChanged(zone.speedLimit);
+        emit speedLimitExceeded(zone.speedLimit, 0.0);
     }
 }
 
@@ -131,7 +131,7 @@ void LearningMode::exitSpeedLimitZone(const QString& id)
         if (m_currentSpeedLimitZoneId == id) {
             m_currentSpeedLimit = 0.0;
             m_currentSpeedLimitZoneId.clear();
-            emit speedLimitChanged(0.0);
+            emit speedLimitExceeded(0.0, 0.0);
         }
     }
 }

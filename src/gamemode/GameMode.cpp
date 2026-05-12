@@ -114,7 +114,7 @@ void GameMode::setState(ModeState newState)
 
 void GameMode::requestTransition(ModeType targetMode)
 {
-    emit transitionRequired(targetMode);
+    emit transitionRequired(getType(), targetMode);
 }
 
 }

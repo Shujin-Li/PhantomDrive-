@@ -78,6 +78,7 @@ signals:
     void errorOccurred(const QString& errorMessage);
 
 protected:
+    friend class GameModeManager;
     void setState(ModeState newState);
     void requestTransition(ModeType targetMode);
 

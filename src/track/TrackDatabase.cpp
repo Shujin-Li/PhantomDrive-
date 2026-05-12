@@ -125,7 +125,11 @@ TrackData* TrackDatabase::getTrack(const QString& trackId) const
         return m_loadedTracks[trackId];
     }
 
-    const TrackInfo* info = &m_trackInfoMap[trackId];
+    auto it = m_trackInfoMap.find(trackId);
+    if (it == m_trackInfoMap.end()) {
+        return nullptr;
+    }
+    const TrackInfo* info = &it.value();
     if (info && !info->filePath.isEmpty()) {
         TrackIO io;
         TrackData* track = io.loadTrack(info->filePath);
@@ -330,9 +334,15 @@ bool TrackDatabase::importTrack(const QString& sourcePath, const QString& destDi
 
 bool TrackDatabase::exportTrack(const QString& trackId, const QString& destPath) const
 {
-    const TrackInfo* info = &m_trackInfoMap[trackId];
-    if (!info || info->filePath.isEmpty()) {
+    auto it = m_trackInfoMap.find(trackId);
+    if (it == m_trackInfoMap.end()) {
         const_cast<TrackDatabase*>(this)->m_lastError = "Track not found";
+        emit const_cast<TrackDatabase*>(this)->errorOccurred(m_lastError);
+        return false;
+    }
+    const TrackInfo* info = &it.value();
+    if (!info || info->filePath.isEmpty()) {
+        const_cast<TrackDatabase*>(this)->m_lastError = "Invalid track info";
         emit const_cast<TrackDatabase*>(this)->errorOccurred(m_lastError);
         return false;
     }

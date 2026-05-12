@@ -227,7 +227,7 @@ QJsonObject TrackData::toJsonObject() const
     for (int r = 0; r < m_rowCount; ++r) {
         for (int c = 0; c < m_colCount; ++c) {
             if (m_tiles[r][c]) {
-                tilesArray.append(m_tiles[r][c]->toVariantMap());
+                tilesArray.append(QJsonValue::fromVariant(m_tiles[r][c]->toVariantMap()));
             }
         }
     }
@@ -235,7 +235,7 @@ QJsonObject TrackData::toJsonObject() const
 
     QJsonArray checkpointsArray;
     for (const Checkpoint* cp : m_checkpointsOrdered) {
-        checkpointsArray.append(cp->toVariantMap());
+        checkpointsArray.append(QJsonValue::fromVariant(cp->toVariantMap()));
     }
     map["checkpoints"] = checkpointsArray;
 

@@ -1,6 +1,7 @@
 #include "TrackTile.h"
 
 #include <QDebug>
+#include <QVariantMap>
 
 namespace PhantomDrive {
 
@@ -73,16 +74,6 @@ void TrackTile::setPosition(int row, int col)
         m_row = row;
         m_col = col;
         emit positionChanged(row, col);
-        emit tileChanged();
-    }
-}
-
-void TrackTile::setType(TileType type)
-{
-    if (m_type != type) {
-        m_type = type;
-        applyTileDefaults(type);
-        emit typeChanged(type);
         emit tileChanged();
     }
 }

@@ -90,28 +90,28 @@ TrackData* TrackIO::loadTrack(const QString& filePath) const
     return track;
 }
 
-bool TrackIO::saveTrackToJson(TrackData* track, QJsonObject& jsonObject) const
+bool TrackIO::saveTrackToJson(TrackData* track, QJsonObject& json) const
 {
     if (!track) {
-        setError("Track is null");
+        const_cast<TrackIO*>(this)->setError("Track is null");
         return false;
     }
 
-    jsonObject["version"] = "1.0";
-    jsonObject["type"] = "PhantomDriveTrack";
-    jsonObject["name"] = track->getName();
-    jsonObject["id"] = track->getId();
-    jsonObject["author"] = track->getAuthor();
-    jsonObject["description"] = track->getDescription();
-    jsonObject["rowCount"] = track->getRowCount();
-    jsonObject["colCount"] = track->getColCount();
-    jsonObject["startPositionX"] = track->getStartPosition().x();
-    jsonObject["startPositionY"] = track->getStartPosition().y();
-    jsonObject["startRotation"] = track->getStartRotation();
-    jsonObject["estimatedLapTime"] = track->getEstimatedLapTime();
-    jsonObject["trackLength"] = track->getTrackLength();
-    jsonObject["difficulty"] = track->getDifficulty();
-    jsonObject["maxLaps"] = track->getMaxLaps();
+    json["version"] = "1.0";
+    json["type"] = "PhantomDriveTrack";
+    json["name"] = track->getName();
+    json["id"] = track->getId();
+    json["author"] = track->getAuthor();
+    json["description"] = track->getDescription();
+    json["rowCount"] = track->getRowCount();
+    json["colCount"] = track->getColCount();
+    json["startPositionX"] = track->getStartPosition().x();
+    json["startPositionY"] = track->getStartPosition().y();
+    json["startRotation"] = track->getStartRotation();
+    json["estimatedLapTime"] = track->getEstimatedLapTime();
+    json["trackLength"] = track->getTrackLength();
+    json["difficulty"] = track->getDifficulty();
+    json["maxLaps"] = track->getMaxLaps();
 
     QJsonArray startPositions;
     for (const QVector2D& pos : track->getStartPositions()) {
@@ -120,24 +120,34 @@ bool TrackIO::saveTrackToJson(TrackData* track, QJsonObject& jsonObject) const
         posObj["y"] = pos.y();
         startPositions.append(posObj);
     }
-    jsonObject["startPositions"] = startPositions;
+    json["startPositions"] = startPositions;
 
     QJsonArray tilesArray;
     for (int r = 0; r < track->getRowCount(); ++r) {
         for (int c = 0; c < track->getColCount(); ++c) {
             TrackTile* tile = track->getTileAt(r, c);
             if (tile) {
-                tilesArray.append(tile->toVariantMap());
+                QVariantMap tileMap = tile->toVariantMap();
+                QJsonObject tileObj;
+                for (auto it = tileMap.begin(); it != tileMap.end(); ++it) {
+                    tileObj[it.key()] = QJsonValue::fromVariant(it.value());
+                }
+                tilesArray.append(tileObj);
             }
         }
     }
-    jsonObject["tiles"] = tilesArray;
+    json["tiles"] = tilesArray;
 
     QJsonArray checkpointsArray;
     for (const Checkpoint* cp : track->getCheckpointsInOrder()) {
-        checkpointsArray.append(cp->toVariantMap());
+        QVariantMap cpMap = cp->toVariantMap();
+        QJsonObject cpObj;
+        for (auto it = cpMap.begin(); it != cpMap.end(); ++it) {
+            cpObj[it.key()] = QJsonValue::fromVariant(it.value());
+        }
+        checkpointsArray.append(cpObj);
     }
-    jsonObject["checkpoints"] = checkpointsArray;
+    json["checkpoints"] = checkpointsArray;
 
     return true;
 }
@@ -145,12 +155,12 @@ bool TrackIO::saveTrackToJson(TrackData* track, QJsonObject& jsonObject) const
 bool TrackIO::loadTrackFromJson(TrackData* track, const QJsonObject& jsonObject) const
 {
     if (!track) {
-        setError("Track is null");
+        const_cast<TrackIO*>(this)->setError("Track is null");
         return false;
     }
 
     if (jsonObject["type"].toString() != "PhantomDriveTrack") {
-        setError("Invalid track file format");
+        const_cast<TrackIO*>(this)->setError("Invalid track file format");
         return false;
     }
 
