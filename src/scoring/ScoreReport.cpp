@@ -38,7 +38,7 @@ QJsonObject ScoreReport::toJson() const
 
     QJsonObject metricsObj;
     metricsObj["dataPointCount"] = metrics.dataPointCount;
-    metricsObj["durationMs"] = QString::number(metrics.durationMs);
+    metricsObj["durationMs"] = static_cast<double>(metrics.durationMs);
     metricsObj["averageSpeed"] = metrics.averageSpeed;
     metricsObj["maxSpeed"] = metrics.maxSpeed;
     metricsObj["collisionCount"] = metrics.collisionCount;

@@ -14,3 +14,8 @@
 #include "track/TrackIO.h"
 #include "track/TrackDatabase.h"
 #include "track/TrackManager.h"
+#include "scoring/ScoreReport.h"
+#include "scoring/DrivingScoreCalculator.h"
+#include "scoring/ScoreManager.h"
+#include "scoring/AIAPIClient.h"
+#include "scoring/TrafficRuleEnforcer.h"

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ABScoringTest VERSION 1.0.0 LANGUAGES CXX)
+project(ABCollectorIntegrationTest VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,12 +23,20 @@ set(SOURCE_FILES
     ${PHANTOMDRIVE_DIR}/src/gamemode/SpeedLimitSignObject.cpp
     ${PHANTOMDRIVE_DIR}/src/gamemode/PedestrianCrossingObject.cpp
     ${PHANTOMDRIVE_DIR}/src/gamemode/TrafficObjectManager.cpp
+    ${PHANTOMDRIVE_DIR}/src/gamemode/DrivingDataCollector.cpp
+    ${PHANTOMDRIVE_DIR}/src/gamemode/VehicleSensor.cpp
+    ${PHANTOMDRIVE_DIR}/src/gamemode/CollisionDetector.cpp
+    ${PHANTOMDRIVE_DIR}/src/gamemode/DrivingDataStorage.cpp
 )
 
 set(HEADERS_TO_MOC
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/scoring/AIAPIClient.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/scoring/ScoreManager.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/IDrivingDataCollector.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/DrivingDataCollector.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/DrivingDataStorage.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/VehicleSensor.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/CollisionDetector.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/TrafficObject.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/TrafficLightObject.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/SpeedLimitSignObject.h
@@ -36,24 +44,24 @@ set(HEADERS_TO_MOC
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/TrafficObjectManager.h
 )
 
-add_executable(a_b_scoring_test
+add_executable(a_b_collector_integration_test
     ${SOURCE_FILES}
     ${HEADERS_TO_MOC}
 )
 
-target_compile_definitions(a_b_scoring_test PRIVATE
+target_compile_definitions(a_b_collector_integration_test PRIVATE
     PHANTOMDRIVE_EXPORTS
     PhantomDrive_EXPORTS
 )
 
-target_include_directories(a_b_scoring_test PRIVATE
+target_include_directories(a_b_collector_integration_test PRIVATE
     ${PHANTOMDRIVE_DIR}/include
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/scoring
 )
 
-target_link_libraries(a_b_scoring_test PRIVATE
+target_link_libraries(a_b_collector_integration_test PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Network

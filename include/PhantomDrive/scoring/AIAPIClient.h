@@ -15,6 +15,10 @@ public:
 
     QString generateCoachReport(const ScoreReport& report) const;
     QString generateShortSummary(const ScoreReport& report) const;
+
+private:
+    QString generateMockCoachReport(const ScoreReport& report,
+                                    const QString& fallbackReason = QString()) const;
 };
 
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ABScoringTest VERSION 1.0.0 LANGUAGES CXX)
+project(ABMainIntegrationTest VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,7 +28,6 @@ set(SOURCE_FILES
 set(HEADERS_TO_MOC
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/scoring/AIAPIClient.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/scoring/ScoreManager.h
-    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/IDrivingDataCollector.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/TrafficObject.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/TrafficLightObject.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/SpeedLimitSignObject.h
@@ -36,24 +35,24 @@ set(HEADERS_TO_MOC
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/TrafficObjectManager.h
 )
 
-add_executable(a_b_scoring_test
+add_executable(a_b_main_integration_test
     ${SOURCE_FILES}
     ${HEADERS_TO_MOC}
 )
 
-target_compile_definitions(a_b_scoring_test PRIVATE
+target_compile_definitions(a_b_main_integration_test PRIVATE
     PHANTOMDRIVE_EXPORTS
     PhantomDrive_EXPORTS
 )
 
-target_include_directories(a_b_scoring_test PRIVATE
+target_include_directories(a_b_main_integration_test PRIVATE
     ${PHANTOMDRIVE_DIR}/include
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/scoring
 )
 
-target_link_libraries(a_b_scoring_test PRIVATE
+target_link_libraries(a_b_main_integration_test PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Network

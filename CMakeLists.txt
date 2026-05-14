@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL Network)
 find_package(OpenGL REQUIRED)
 
 set(HEADER_FILES
@@ -36,6 +36,11 @@ set(HEADER_FILES
     include/PhantomDrive/gamemode/SpeedLimitSignObject.h
     include/PhantomDrive/gamemode/PedestrianCrossingObject.h
     include/PhantomDrive/gamemode/TrafficObjectManager.h
+    include/PhantomDrive/scoring/ScoreReport.h
+    include/PhantomDrive/scoring/DrivingScoreCalculator.h
+    include/PhantomDrive/scoring/TrafficRuleEnforcer.h
+    include/PhantomDrive/scoring/AIAPIClient.h
+    include/PhantomDrive/scoring/ScoreManager.h
     include/PhantomDrive/track/TrackTile.h
     include/PhantomDrive/track/Checkpoint.h
     include/PhantomDrive/track/TrackData.h
@@ -119,6 +124,11 @@ set(SOURCE_FILES
     src/gamemode/SpeedLimitSignObject.cpp
     src/gamemode/PedestrianCrossingObject.cpp
     src/gamemode/TrafficObjectManager.cpp
+    src/scoring/ScoreReport.cpp
+    src/scoring/DrivingScoreCalculator.cpp
+    src/scoring/TrafficRuleEnforcer.cpp
+    src/scoring/AIAPIClient.cpp
+    src/scoring/ScoreManager.cpp
     src/track/TrackTile.cpp
     src/track/Checkpoint.cpp
     src/track/TrackData.cpp
@@ -178,6 +188,7 @@ target_include_directories(PhantomDrive PUBLIC
     # 子目录 include 路径
     ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/gamemode
     ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/track
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/scoring
     # MiniCore 物理引擎 include 路径（照抄 DustRacing2D 的配置）
     ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/physics
 )
@@ -187,6 +198,7 @@ target_link_libraries(PhantomDrive PUBLIC
     Qt6::Gui
     Qt6::Widgets
     Qt6::OpenGL
+    Qt6::Network
     ${OPENGL_gl_LIBRARY}
 )
 
