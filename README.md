@@ -86,3 +86,11 @@ This framework is designed to be integrated with:
 ## License
 
 This project is part of a university course project at SCUT.
+
+## A-B Scoring and AI Coach Module
+
+On branch `v1.0-a-b`, the A-B module has completed the core loop for deterministic driving scoring and AI coach report generation (including signal flow, JSON/Markdown output, collector integration, and DeepSeek -> Zhipu/GLM -> Mock fallback strategy). This is not a claim that full UI or full game loop is complete.
+
+See:
+- `docs/a-b-integration-guide.md`
+- `docs/a-b-demo-script.md`
