@@ -1,0 +1,665 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\build\PhantomDrive_autogen\mocs_compilation_Debug.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\GameMode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\ModeTransition.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\GameModeManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\ArcadeMode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\LearningMode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\VehicleSensor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\CollisionDetector.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\DrivingDataStorage.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\DrivingDataCollector.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\Powerup.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\Powerups.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\PowerupManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\PowerupBox.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\AIOpponent.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\AIOpponentManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\SimpleAIOpponent.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\TrafficObject.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\TrafficLightObject.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\SpeedLimitSignObject.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\PedestrianCrossingObject.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\gamemode\TrafficObjectManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\scoring\ScoreReport.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\scoring\DrivingScoreCalculator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\scoring\TrafficRuleEnforcer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\scoring\AIAPIClient.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\scoring\ScoreManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\track\TrackTile.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\track\Checkpoint.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\track\TrackData.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\track\TrackIO.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\track\TrackDatabase.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\track\TrackManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\MCPhysicsWorld.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mccircleshape.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mccollisiondetector.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mccollisionevent.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mccontact.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcdragforcegenerator.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcevent.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcforcegenerator.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcforceregistry.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcfrictiongenerator.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcgravitygenerator.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcimpulsegenerator.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mclogger.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcmathutil.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcobject.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcobjectcomponent.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcobjectdata.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcobjectgrid.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcoutofboundariesevent.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcphysicscomponent.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcrandom.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcrectshape.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcseparationevent.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcshape.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcspringforcegenerator2dfast.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcspringforcegenerator.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mctimerevent.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mctrigonom.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mctyperegistry.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcvectoranimation.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcworld.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcworldrenderer.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcparticle.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurface.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurfaceview.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurfaceobjectrenderer.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurfaceobjectrendererlegacy.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurfaceparticle.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurfaceparticlerenderer.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurfaceparticlerendererlegacy.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcshapeview.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcmesh.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcmeshview.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcobjectrendererbase.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcparticlerendererbase.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcrenderlayer.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mccamera.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcglambientlight.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcgldiffuselight.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcglmaterial.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcglobjectbase.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcglscene.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcglshaderprogram.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcassetmanager.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcmeshconfigloader.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcmeshloader.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcmeshmanager.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcmeshobjectdata.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurfaceobjectdata.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurfaceconfigloader.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mcsurfacemanager.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mctexturefont.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mctexturefontconfigloader.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mctexturefontdata.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mctexturefontmanager.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mctextureglyph.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\physics\mctexturetext.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\UI\mainwindow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\UI\learninghud.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\UI\DrivingReportWidget.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\UI\GameViewWidget.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\UI\TestVisualizationWindow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\src\core\GameEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\build\PhantomDrive_autogen\mocs_compilation_Release.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\build\PhantomDrive_autogen\mocs_compilation_MinSizeRel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\c++大作业\PhantomDrive517\build\PhantomDrive_autogen\mocs_compilation_RelWithDebInfo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\PhantomDrive_global.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\PhantomDrive.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\DrivingData.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\IDrivingDataCollector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\GameMode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\ModeTransition.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\GameModeManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\ArcadeMode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\LearningMode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\VehicleSensor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\CollisionDetector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\DrivingDataStorage.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\DrivingDataCollector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\Powerup.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\Powerups.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\PowerupManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\PowerupBox.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\AIOpponent.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\AIOpponentManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\SimpleAIOpponent.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\TrafficObject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\TrafficLightObject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\SpeedLimitSignObject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\PedestrianCrossingObject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\gamemode\TrafficObjectManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\scoring\ScoreReport.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\scoring\DrivingScoreCalculator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\scoring\TrafficRuleEnforcer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\scoring\AIAPIClient.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\scoring\ScoreManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\track\TrackTile.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\track\Checkpoint.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\track\TrackData.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\track\TrackIO.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\track\TrackDatabase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\track\TrackManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Physics.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\MCPhysicsWorld.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcbbox.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcbbox3d.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mccast.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mccircleshape.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mccollisiondetector.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mccollisionevent.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mccontact.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcdragforcegenerator.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcedge.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcevent.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcforcegenerator.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcforceregistry.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcfrictiongenerator.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcgravitygenerator.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcimpulsegenerator.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mclogger.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcmacros.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcmathutil.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcobbox.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcobject.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcobjectcomponent.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcobjectdata.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcobjectfactory.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcobjectgrid.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcoutofboundariesevent.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcphysicscomponent.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcrandom.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcrectshape.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcrecycler.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcsegment.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcseparationevent.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcshape.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcspringforcegenerator.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcspringforcegenerator2dfast.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mctimerevent.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mctrigonom.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mctyperegistry.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcvector2d.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcvector3d.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcvectoranimation.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcworld.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcworldrenderer.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcparticle.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\mcshapeview.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcassetmanager.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcmeshconfigloader.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcmeshloader.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcmeshmanager.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcmeshmetadata.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcmeshobjectdata.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcsurfaceconfigloader.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcsurfacemanager.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcsurfacemetadata.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Asset\mcsurfaceobjectdata.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Text\mctexturefont.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Text\mctexturefontconfigloader.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Text\mctexturefontdata.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Text\mctexturefontmanager.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Text\mctextureglyph.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\physics\Text\mctexturetext.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\UI\learninghud.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\UI\DrivingReportWidget.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\UI\GameViewWidget.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\UI\GameRenderState.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\UI\TestVisualizationWindow.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\UI\mainwindow.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\c++大作业\PhantomDrive517\include\PhantomDrive\core\GameEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\c++大作业\PhantomDrive517\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="D:\c++大作业\PhantomDrive517\src\physics\glew.c">
+      <Filter>Source Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{B65C8D12-D450-3D64-93E7-4D63EAF06575}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{04AD3FFB-E776-3F18-A708-C51EB7D2DF47}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
