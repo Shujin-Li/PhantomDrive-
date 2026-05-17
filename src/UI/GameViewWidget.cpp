@@ -169,6 +169,18 @@ void GameViewWidget::addSpeedLimitSign(const QString& signId, const QVector2D& p
     update();
 }
 
+void GameViewWidget::updateSpeedLimitSign(const QString& signId, int limit)
+{
+    for (auto& sign : m_renderState.speedLimitSigns) {
+        if (sign.extraData["id"].toString() == signId) {
+            sign.label = QString::number(limit);
+            sign.extraData["limit"] = limit;
+            update();
+            return;
+        }
+    }
+}
+
 void GameViewWidget::addPedestrianCrossing(const QString& crossingId, const QVector2D& position, const QSizeF& size)
 {
     GameRenderObject crossing;

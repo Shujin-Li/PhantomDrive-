@@ -7,6 +7,7 @@
 #include "PhantomDrive_global.h"
 #include "learninghud.h"
 #include "UI/GameViewWidget.h"
+#include "gamemode/DrivingDataCollector.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -21,6 +22,7 @@ public:
     ~MainWindow();
 
     void updateHUD(int speed, const QString &status);
+    void setDrivingDataCollector(PhantomDrive::DrivingDataCollector* collector);
 
     PhantomDrive::GameViewWidget* getGameView() { return m_gameView; }
 
@@ -28,11 +30,21 @@ private:
     Ui::MainWindow *ui;
     LearningHUD *m_learningHUD;
     PhantomDrive::GameViewWidget *m_gameView;
+    PhantomDrive::DrivingDataCollector *m_drivingDataCollector;
+    QTimer *m_simTimer;
+    QString m_currentMode;
+    int m_currentSpeedLimit;
+    QString m_currentTrafficLightState;
 
     void setupGameView();
+    void setupDataBindings();
+    void updateGameViewFromData(const PhantomDrive::DrivingData& data);
+    void updateTrafficAndHud(int tick);
     void simulateGameLoop();
 
 private slots:
+    void onDrivingDataCollected(const PhantomDrive::DrivingData& data);
+    void onViolationDetected(const PhantomDrive::ViolationEvent& violation);
     void on_btn_History_clicked();
 };
 

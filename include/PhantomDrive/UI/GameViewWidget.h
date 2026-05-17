@@ -29,6 +29,7 @@ public:
     void addTrafficLight(const QString& lightId, const QVector2D& position, const QString& state = "green");
     void updateTrafficLight(const QString& lightId, const QString& state);
     void addSpeedLimitSign(const QString& signId, const QVector2D& position, int limit);
+    void updateSpeedLimitSign(const QString& signId, int limit);
     void addPedestrianCrossing(const QString& crossingId, const QVector2D& position, const QSizeF& size);
     void setRenderState(const RenderState& state);
     const RenderState& getRenderState() const { return m_renderState; }
