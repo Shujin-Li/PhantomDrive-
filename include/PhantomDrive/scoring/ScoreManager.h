@@ -26,6 +26,11 @@ public:
     ScoreReport evaluateFromCollector(const IDrivingDataCollector* collector);
     QString generateCoachReport(const ScoreReport& report) const;
 
+    void addViolation(const ViolationEvent& event);
+
+public slots:
+    void onViolationDetected(const ViolationEvent& event);
+
 signals:
     void scoreReady(const PhantomDrive::ScoreReport& report);
     void coachReportReady(const QString& markdown);
@@ -37,7 +42,7 @@ private:
     DrivingScoreCalculator m_calculator;
     TrafficRuleEnforcer m_ruleEnforcer;
     AIAPIClient m_aiClient;
+    QList<ViolationEvent> m_pendingViolations;
 };
 
 }
-

@@ -1,8 +1,5 @@
 #include "PhantomDrive/scoring/TrafficRuleEnforcer.h"
 
-#include "PhantomDrive/gamemode/TrafficLightObject.h"
-#include "PhantomDrive/gamemode/TrafficObjectManager.h"
-
 #include <limits>
 
 namespace PhantomDrive {
@@ -22,86 +19,35 @@ bool TrafficRuleEnforcer::shouldEmit(const QString& key, qint64 timestamp, QHash
     return true;
 }
 
-QList<ViolationEvent> TrafficRuleEnforcer::checkFrame(const DrivingData& data,
-                                                      const TrafficObjectManager* manager) const
+QList<ViolationEvent> TrafficRuleEnforcer::filterDuplicates(const QList<ViolationEvent>& events)
 {
+    QList<ViolationEvent> filtered;
     QHash<QString, qint64> dedupe;
-    return checkFrameInternal(data, manager, dedupe);
-}
 
-QList<ViolationEvent> TrafficRuleEnforcer::checkSequence(const QList<DrivingData>& dataList,
-                                                         const TrafficObjectManager* manager) const
-{
-    QList<ViolationEvent> events;
-    QHash<QString, qint64> dedupe;
-    for (const DrivingData& data : dataList) {
-        events.append(checkFrameInternal(data, manager, dedupe));
-    }
-    return events;
-}
+    for (const ViolationEvent& event : events) {
+        QString key;
+        switch (event.type) {
+            case ViolationType::SpeedOverLimit:
+                key = QStringLiteral("speed:%1").arg(QString::number(event.speedLimit, 'f', 2));
+                break;
+            case ViolationType::RedLight:
+                key = QStringLiteral("redlight:%1").arg(event.position.x());
+                break;
+            case ViolationType::PedestrianCollision:
+                key = QStringLiteral("pedestrian:%1").arg(event.position.x());
+                break;
+            default:
+                key = QStringLiteral("other:%1:%2").arg(static_cast<int>(event.type)).arg(event.position.x());
+                break;
+        }
 
-QList<ViolationEvent> TrafficRuleEnforcer::checkFrameInternal(const DrivingData& data,
-                                                              const TrafficObjectManager* manager,
-                                                              QHash<QString, qint64>& dedupe) const
-{
-    QList<ViolationEvent> events;
-    if (manager == nullptr) {
-        return events;
-    }
-
-    const qint64 ts = data.timestamp > 0 ? data.timestamp : 0;
-    const qreal speedLimit = manager->getCurrentSpeedLimit(data.position);
-    if (manager->checkSpeedViolation(data.position, data.speed)) {
-        const QString key = QStringLiteral("speed:%1")
-                .arg(QString::number(speedLimit, 'f', 2));
+        const qint64 ts = event.timestamp > 0 ? event.timestamp : 0;
         if (shouldEmit(key, ts, dedupe)) {
-            ViolationEvent event;
-            event.timestamp = ts;
-            event.type = ViolationType::SpeedOverLimit;
-            event.description = QStringLiteral("Speed %1 exceeded limit %2")
-                    .arg(data.speed)
-                    .arg(speedLimit);
-            event.position = data.position;
-            event.speedAtViolation = data.speed;
-            event.speedLimit = speedLimit;
-            event.penaltyPoints = 6;
-            events.append(event);
+            filtered.append(event);
         }
     }
 
-    if (manager->checkPedestrianViolation(data.position)) {
-        const QString key = QStringLiteral("pedestrian");
-        if (shouldEmit(key, ts, dedupe)) {
-            ViolationEvent event;
-            event.timestamp = ts;
-            event.type = ViolationType::PedestrianCollision;
-            event.description = QStringLiteral("Pedestrian crossing violation");
-            event.position = data.position;
-            event.speedAtViolation = data.speed;
-            event.speedLimit = speedLimit;
-            event.penaltyPoints = 20;
-            events.append(event);
-        }
-    }
-
-    for (TrafficLightObject* light : manager->getTrafficLights()) {
-        if (light != nullptr && light->checkRedLightViolation(data.position)) {
-            const QString key = QStringLiteral("redlight:%1").arg(light->getId());
-            if (shouldEmit(key, ts, dedupe)) {
-                ViolationEvent event;
-                event.timestamp = ts;
-                event.type = ViolationType::RedLight;
-                event.description = QStringLiteral("Red light violation at %1").arg(light->getId());
-                event.position = data.position;
-                event.speedAtViolation = data.speed;
-                event.speedLimit = speedLimit;
-                event.penaltyPoints = 12;
-                events.append(event);
-            }
-        }
-    }
-
-    return events;
+    return filtered;
 }
 
 }

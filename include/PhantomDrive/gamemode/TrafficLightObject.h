@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TrafficObject.h"
+#include "PhantomDrive/gamemode/DrivingData.h"
 
 #include <QString>
 #include <QVector2D>

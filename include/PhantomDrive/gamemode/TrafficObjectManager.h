@@ -4,6 +4,7 @@
 #include "TrafficLightObject.h"
 #include "SpeedLimitSignObject.h"
 #include "PedestrianCrossingObject.h"
+#include "PhantomDrive/scoring/ViolationConfig.h"
 
 #include <QObject>
 #include <QString>
@@ -74,6 +75,7 @@ signals:
     void pedestrianViolation(const QString& crossingId);
     void allObjectsUpdated();
     void managerCleared();
+    void violationDetected(const ViolationEvent& event);
 
 public slots:
     void clear();

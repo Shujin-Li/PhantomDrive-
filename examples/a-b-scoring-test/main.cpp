@@ -84,7 +84,13 @@ int main(int argc, char* argv[])
     sign->setDetectionRadius(100.0);
     sign->setSpeedLimit(12.0);
     trafficManager.registerTrafficObject(sign);
+
+    QObject::connect(&trafficManager, &TrafficObjectManager::violationDetected,
+                     &manager, &ScoreManager::onViolationDetected);
     manager.setTrafficObjectManager(&trafficManager);
+
+    trafficManager.onVehicleSpeedChanged(15.0);
+    trafficManager.onVehiclePositionChanged(QVector2D(30.0, 0.0));
 
     bool scoreReadyTriggered = false;
     QObject::connect(&manager, &ScoreManager::scoreReady, [&](const ScoreReport& report) {

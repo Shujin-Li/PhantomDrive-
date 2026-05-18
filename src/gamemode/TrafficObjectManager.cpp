@@ -1,6 +1,7 @@
 #include "TrafficObjectManager.h"
 
 #include <QDebug>
+#include <QDateTime>
 
 namespace PhantomDrive {
 
@@ -165,8 +166,22 @@ QList<TrafficObject*> TrafficObjectManager::getObjectsByType(TrafficObjectType t
 
 void TrafficObjectManager::update(qint64 elapsedMs)
 {
+    const qint64 ts = QDateTime::currentMSecsSinceEpoch();
+    const qreal speedLimit = getCurrentSpeedLimit(m_lastVehiclePosition);
+
     for (TrafficLightObject* light : m_trafficLights.values()) {
         light->update(elapsedMs);
+        if (light->checkRedLightViolation(m_lastVehiclePosition)) {
+            ViolationEvent event;
+            event.timestamp = ts;
+            event.type = ViolationType::RedLight;
+            event.description = QStringLiteral("Red light violation at %1").arg(light->getId());
+            event.position = m_lastVehiclePosition;
+            event.speedAtViolation = m_lastVehicleSpeed;
+            event.speedLimit = speedLimit;
+            event.penaltyPoints = ViolationConfig::redLightPenalty;
+            emit violationDetected(event);
+        }
     }
 
     for (PedestrianCrossingObject* crossing : m_pedestrianCrossings.values()) {
@@ -300,12 +315,38 @@ bool TrafficObjectManager::checkPedestrianViolation(const QVector2D& position) c
 
 void TrafficObjectManager::onVehiclePositionChanged(const QVector2D& position)
 {
+    const qint64 ts = QDateTime::currentMSecsSinceEpoch();
+    const qreal currentSpeed = m_lastVehicleSpeed;
+    const qreal speedLimit = getCurrentSpeedLimit(position);
+
     for (SpeedLimitSignObject* sign : m_speedLimitSigns.values()) {
         sign->onVehiclePositionChanged(position);
+        if (sign->isVehicleInZone(position) && sign->checkSpeedViolation(currentSpeed)) {
+            ViolationEvent event;
+            event.timestamp = ts;
+            event.type = ViolationType::SpeedOverLimit;
+            event.description = QStringLiteral("Speed %1 exceeded limit %2").arg(currentSpeed).arg(sign->getSpeedLimit());
+            event.position = position;
+            event.speedAtViolation = currentSpeed;
+            event.speedLimit = sign->getSpeedLimit();
+            event.penaltyPoints = ViolationConfig::speedViolationPenalty;
+            emit violationDetected(event);
+        }
     }
 
     for (PedestrianCrossingObject* crossing : m_pedestrianCrossings.values()) {
         crossing->onVehicleInZone(position);
+        if (crossing->checkPedestrianViolation(position)) {
+            ViolationEvent event;
+            event.timestamp = ts;
+            event.type = ViolationType::PedestrianCollision;
+            event.description = QStringLiteral("Pedestrian crossing violation");
+            event.position = position;
+            event.speedAtViolation = currentSpeed;
+            event.speedLimit = speedLimit;
+            event.penaltyPoints = ViolationConfig::pedestrianPenalty;
+            emit violationDetected(event);
+        }
     }
 
     checkSpeedLimitZones(position);

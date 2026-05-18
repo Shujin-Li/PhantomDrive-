@@ -1,16 +1,17 @@
 #pragma once
 
 #include "PhantomDrive/scoring/ScoreReport.h"
+#include "PhantomDrive/scoring/ViolationConfig.h"
 
 namespace PhantomDrive {
 
 struct ScoreCalculatorConfig {
     qreal initialScore = 100.0;
-    qreal collisionPenalty = 15.0;
-    qreal speedViolationPenalty = 6.0;
-    qreal redLightPenalty = 12.0;
-    qreal pedestrianPenalty = 20.0;
-    qreal wrongWayPenalty = 10.0;
+    qreal collisionPenalty = ViolationConfig::collisionPenalty;
+    qreal speedViolationPenalty = ViolationConfig::speedViolationPenalty;
+    qreal redLightPenalty = ViolationConfig::redLightPenalty;
+    qreal pedestrianPenalty = ViolationConfig::pedestrianPenalty;
+    qreal wrongWayPenalty = ViolationConfig::wrongWayPenalty;
 
     qreal harshAccelerationThreshold = 8.0;
     qreal harshBrakingThreshold = -8.0;
@@ -34,4 +35,3 @@ private:
 };
 
 }
-

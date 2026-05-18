@@ -39,6 +39,7 @@ set(HEADER_FILES
     include/PhantomDrive/gamemode/PedestrianCrossingObject.h
     include/PhantomDrive/gamemode/TrafficObjectManager.h
     include/PhantomDrive/scoring/ScoreReport.h
+    include/PhantomDrive/scoring/ViolationConfig.h
     include/PhantomDrive/scoring/DrivingScoreCalculator.h
     include/PhantomDrive/scoring/TrafficRuleEnforcer.h
     include/PhantomDrive/scoring/AIAPIClient.h

@@ -16,6 +16,7 @@ ScoreManager::ScoreManager(QObject* parent)
     , m_aiClient(this)
 {
     qRegisterMetaType<PhantomDrive::ScoreReport>("PhantomDrive::ScoreReport");
+    qRegisterMetaType<PhantomDrive::ViolationEvent>("PhantomDrive::ViolationEvent");
 }
 
 void ScoreManager::setVehicleId(const QString& vehicleId)
@@ -25,14 +26,22 @@ void ScoreManager::setVehicleId(const QString& vehicleId)
 
 void ScoreManager::setTrafficObjectManager(TrafficObjectManager* manager)
 {
+    if (m_trafficManager != nullptr) {
+        disconnect(m_trafficManager, &TrafficObjectManager::violationDetected,
+                    this, &ScoreManager::onViolationDetected);
+    }
     m_trafficManager = manager;
+    if (m_trafficManager != nullptr) {
+        connect(m_trafficManager, &TrafficObjectManager::violationDetected,
+                this, &ScoreManager::onViolationDetected);
+    }
 }
 
 ScoreReport ScoreManager::evaluate(const QList<DrivingData>& data,
                                    const QList<ViolationEvent>& violations)
 {
-    if (data.isEmpty()) {
-        emit scoringFailed(QStringLiteral("No driving data provided for scoring."));
+    if (data.isEmpty() && m_pendingViolations.isEmpty()) {
+        emit scoringFailed(QStringLiteral("No driving data or violations provided for scoring."));
         ScoreReport emptyReport;
         emptyReport.sessionId = QStringLiteral("session_%1").arg(QDateTime::currentMSecsSinceEpoch());
         emptyReport.vehicleId = m_vehicleId;
@@ -44,12 +53,11 @@ ScoreReport ScoreManager::evaluate(const QList<DrivingData>& data,
         return emptyReport;
     }
 
-    QList<ViolationEvent> merged = violations;
-    if (m_trafficManager != nullptr) {
-        merged.append(m_ruleEnforcer.checkSequence(data, m_trafficManager));
-    }
+    QList<ViolationEvent> allViolations = violations;
+    allViolations.append(m_pendingViolations);
+    allViolations = m_ruleEnforcer.filterDuplicates(allViolations);
 
-    ScoreReport report = m_calculator.evaluate(data, merged, m_vehicleId);
+    ScoreReport report = m_calculator.evaluate(data, allViolations, m_vehicleId);
     emit scoreReady(report);
     return report;
 }
@@ -68,6 +76,16 @@ QString ScoreManager::generateCoachReport(const ScoreReport& report) const
     const QString markdown = m_aiClient.generateCoachReport(report);
     emit const_cast<ScoreManager*>(this)->coachReportReady(markdown);
     return markdown;
+}
+
+void ScoreManager::addViolation(const ViolationEvent& event)
+{
+    m_pendingViolations.append(event);
+}
+
+void ScoreManager::onViolationDetected(const ViolationEvent& event)
+{
+    addViolation(event);
 }
 
 }
