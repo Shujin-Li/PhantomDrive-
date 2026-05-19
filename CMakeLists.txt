@@ -254,6 +254,7 @@ set(SOURCE_FILES
 add_library(PhantomDrive SHARED
     ${HEADER_FILES}
     ${SOURCE_FILES}
+    include/PhantomDrive/UI/mainwindow.h
 )
 
 target_include_directories(PhantomDrive PUBLIC

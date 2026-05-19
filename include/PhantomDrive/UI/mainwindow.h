@@ -8,6 +8,7 @@
 #include "learninghud.h"
 #include "UI/GameViewWidget.h"
 #include "gamemode/DrivingDataCollector.h"
+#include "gamemode/SimpleAIOpponent.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -27,6 +28,7 @@ public:
     PhantomDrive::GameViewWidget* getGameView() { return m_gameView; }
 
 private:
+    QList<PhantomDrive::SimpleAIOpponent*> m_aiOpponents;
     Ui::MainWindow *ui;
     LearningHUD *m_learningHUD;
     PhantomDrive::GameViewWidget *m_gameView;
@@ -35,6 +37,7 @@ private:
     QString m_currentMode;
     int m_currentSpeedLimit;
     QString m_currentTrafficLightState;
+    void generateDemoWaypoints();
 
     void setupGameView();
     void setupDataBindings();

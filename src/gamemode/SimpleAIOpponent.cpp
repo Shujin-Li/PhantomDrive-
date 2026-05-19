@@ -1,9 +1,35 @@
 #include "SimpleAIOpponent.h"
-
+#include <QDebug>
 #include <QtMath>
 #include <QJsonArray>
 
 namespace PhantomDrive {
+QString stateToString(AIState state)
+{
+    switch (state)
+    {
+    case AIState::Idle:
+        return "Idle";
+
+    case AIState::Racing:
+        return "Racing";
+
+    case AIState::Overtaking:
+        return "Overtaking";
+
+    case AIState::Defending:
+        return "Defending";
+
+    case AIState::Recovering:
+        return "Recovering";
+
+    case AIState::Finished:
+        return "Finished";
+
+    default:
+        return "Unknown";
+    }
+}
 
 SimpleAIOpponent::SimpleAIOpponent(const QString& id, QObject* parent)
     : AIOpponent(id, parent)
@@ -96,6 +122,7 @@ AIDecision SimpleAIOpponent::makeDecision()
     decision.brake = calculateBraking();
     decision.steering = calculateSteering().x();
     decision.suggestedState = m_state;
+
     return decision;
 }
 
@@ -105,12 +132,71 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
 
     if (!m_waypoints.isEmpty() && m_active && !m_finished) {
         AIDecision decision = makeDecision();
+        Waypoint currentWP = getCurrentWaypoint();
+
+        qreal distToWP = (currentWP.position - m_position).length();
+
+        if (currentWP.isCorner
+            && distToWP < 150.0
+            && m_speed > currentWP.preferredSpeed)
+        {
+            setState(AIState::Recovering);
+        }
+        else if (m_speed < 3.0)
+        {
+            setState(AIState::Idle);
+        }
+        else if (m_speed > 180.0)
+        {
+            setState(AIState::Overtaking);
+        }
+        else
+        {
+            setState(AIState::Racing);
+        }
 
         m_steeringAngle = decision.steering * 30.0;
+        qreal steeringFactor = 1.0;
+
+        if (m_config.style == AIStyle::Aggressive)
+        {
+            steeringFactor = 1.3;
+        }
+
+        if (m_config.style == AIStyle::Conservative)
+        {
+            steeringFactor = 1.1;
+        }
+
+        m_rotation +=
+            m_steeringAngle
+            * steeringFactor
+            * 2.5
+            * (elapsedMs / 1000.0);
+
         qreal throttle = decision.throttle;
         qreal brake = decision.brake;
 
-        qreal acceleration = m_config.acceleration * throttle - 50.0 * brake;
+        if (m_speed < 5.0)
+        {
+            throttle = qMax(throttle, 0.8);
+        }
+
+        qreal brakeForce = 50.0;
+
+        if (m_config.style == AIStyle::Aggressive)
+        {
+            brakeForce = 35.0;
+        }
+
+        if (m_config.style == AIStyle::Conservative)
+        {
+            brakeForce = 70.0;
+        }
+
+        qreal acceleration =
+            m_config.acceleration * throttle
+            - brakeForce * brake;
         m_speed += acceleration * (elapsedMs / 1000.0);
         m_speed = qMax(0.0, qMin(m_config.maxSpeed, m_speed));
 
@@ -119,18 +205,35 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
 
         m_position += m_velocity * (elapsedMs / 1000.0);
 
-        Waypoint currentWP = getCurrentWaypoint();
-        qreal distToWP = (currentWP.position - m_position).length();
-        if (distToWP < 50.0) {
-            m_currentWaypointIndex++;
-            emit waypointReached(m_currentWaypointIndex);
 
-            if (m_currentWaypointIndex >= m_waypoints.size()) {
+        if (distToWP < 120.0)
+        {
+            m_currentWaypointIndex++;
+
+            if (m_currentWaypointIndex >= m_waypoints.size())
+            {
                 m_currentWaypointIndex = 0;
+
                 m_currentLap++;
-                emit lapCompleted(m_currentLap, m_lapTime);
+
+                emit lapCompleted(
+                    m_currentLap,
+                    m_lapTime
+                    );
+
                 m_lapTime = 0;
             }
+
+            emit waypointReached(
+                m_currentWaypointIndex
+                );
+        }
+        else if (distToWP > 800.0)
+        {
+            m_currentWaypointIndex =
+                findNearestWaypointIndex();
+
+            m_speed *= 0.7;
         }
     }
 
@@ -141,55 +244,225 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
 QVector2D SimpleAIOpponent::calculateSteering()
 {
     if (m_waypoints.isEmpty()) return QVector2D(0, 0);
+    AIStyle style = m_config.style;
 
     Waypoint targetWP = getCurrentWaypoint();
+    Waypoint currentWP = getCurrentWaypoint();
+
     QVector2D toTarget = targetWP.position - m_position;
+    qreal distance = toTarget.length();
     qreal targetAngle = std::atan2(toTarget.y(), toTarget.x());
+
     qreal currentAngleRad = m_rotation * M_PI / 180.0;
 
     qreal angleDiff = targetAngle - currentAngleRad;
     while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
     while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
 
-    return QVector2D(angleDiff / M_PI, 0);
+    qreal steeringStrength =
+        (angleDiff / M_PI)
+        * qMin(distance / 300.0, 1.0);
+    if (style == AIStyle::Aggressive)
+    {
+        steeringStrength *= 1.15;
+    }
+
+    if (style == AIStyle::Conservative)
+    {
+        steeringStrength *= 0.9;
+    }
+
+    if (style == AIStyle::Normal)
+    {
+        steeringStrength *= 1.0;
+    }
+
+    if (style == AIStyle::Defensive)
+    {
+        steeringStrength *= 0.85;
+    }
+
+    if (currentWP.isCorner)
+    {
+        if (style == AIStyle::Aggressive)
+        {
+            steeringStrength *= 1.05;
+        }
+
+        if (style == AIStyle::Conservative)
+        {
+            steeringStrength *= 1.1;
+        }
+    }
+
+    steeringStrength =
+        qBound(-0.8, steeringStrength, 0.8);
+
+    return QVector2D(steeringStrength, 0);
+
 }
 
-qreal SimpleAIOpponent::calculateThrottle()
+qreal SimpleAIOpponent::calculateThrottle() const
 {
+    AIStyle style = m_config.style;
     if (m_waypoints.isEmpty()) return 0.5;
+    qreal throttle = 1.0;
 
     Waypoint currentWP = getCurrentWaypoint();
+    Waypoint nextWP = getNextWaypoint();
+
     qreal distToWP = (currentWP.position - m_position).length();
 
-    if (currentWP.isCorner) {
-        qreal cornerFactor = 1.0 - (currentWP.cornerSeverity / 3.0);
-        return cornerFactor * 0.7;
+    Waypoint slowWP = currentWP;
+
+    if (nextWP.isCorner)
+    {
+        slowWP = nextWP;
+    }
+
+    if (slowWP.isCorner)
+    {
+        qreal cornerFactor =
+            1.0 - (slowWP.cornerSeverity / 4.0);
+
+        qreal slowDistance =
+            (slowWP.position - m_position).length();
+
+        if (slowDistance < 250.0)
+        {
+            throttle = cornerFactor * 0.55;
+        }
+        else
+        {
+            throttle = cornerFactor * 0.8;
+        }
     }
 
     if (distToWP < 100.0) {
-        return 0.5;
+        throttle = 0.5;
+    }
+    if (style == AIStyle::Aggressive)
+    {
+        throttle *= 1.1;
+
+        if (!currentWP.isCorner)
+        {
+            throttle += 0.1;
+        }
     }
 
-    return 1.0;
+    if (style == AIStyle::Conservative)
+    {
+        throttle *= 0.65;
+
+        if (distToWP < 260.0)
+        {
+            throttle *= 0.6;
+        }
+    }
+
+    if (style == AIStyle::Normal)
+    {
+        throttle *= 0.9;
+    }
+
+    if (style == AIStyle::Defensive)
+    {
+        throttle *= 0.75;
+
+        if (distToWP < 220.0)
+        {
+            throttle *= 0.7;
+        }
+    }
+
+
+    qreal targetSpeed = 120.0;
+
+    if (currentWP.isCorner)
+    {
+        targetSpeed = currentWP.preferredSpeed;
+    }
+
+    if (m_speed > targetSpeed)
+    {
+        throttle *= 0.4;
+    }
+
+    throttle = qBound(0.0, throttle, 1.0);
+
+    return throttle;
 }
 
-qreal SimpleAIOpponent::calculateBraking()
+qreal SimpleAIOpponent::calculateBraking() const
 {
     if (m_waypoints.isEmpty()) return 0;
+    AIStyle style = m_config.style;
+    qreal brake = 0.0;
 
     Waypoint currentWP = getCurrentWaypoint();
+    qreal distToWP = (currentWP.position - m_position).length();
     if (currentWP.isCorner) {
         qreal distToWP = (currentWP.position - m_position).length();
         if (distToWP < 150.0) {
-            return currentWP.cornerSeverity / 3.0 * 0.8;
+            brake = currentWP.cornerSeverity / 3.0 * 0.8;
         }
     }
 
     if (m_speed > currentWP.preferredSpeed && currentWP.preferredSpeed > 0) {
-        return (m_speed - currentWP.preferredSpeed) / m_config.maxSpeed;
+        brake = (m_speed - currentWP.preferredSpeed) / m_config.maxSpeed;
     }
 
-    return 0;
+    if (style == AIStyle::Aggressive)
+    {
+        brake *= 0.3;
+
+        if (!currentWP.isCorner)
+        {
+            brake *= 0.5;
+        }
+    }
+
+    if (currentWP.isCorner)
+    {
+        if (style == AIStyle::Aggressive)
+        {
+            brake *= 0.5;
+        }
+
+        if (style == AIStyle::Conservative)
+        {
+            brake *= 1.5;
+        }
+    }
+
+    if (style == AIStyle::Conservative)
+    {
+        brake *= 1.2;
+
+        if (distToWP < 200.0)
+        {
+            brake *= 1.1;
+        }
+    }
+
+    if (style == AIStyle::Normal)
+    {
+        brake *= 1.0;
+    }
+
+    if (style == AIStyle::Defensive)
+    {
+        brake *= 1.5;
+
+        if (currentWP.isCorner)
+        {
+            brake *= 1.3;
+        }
+    }
+
+    brake = qBound(0.0, brake, 1.0);
+    return brake;
 }
 
 bool SimpleAIOpponent::usePowerup(int slot)
@@ -270,7 +543,25 @@ QVariantMap SimpleAIOpponent::getStateData() const
     data["speed"] = m_speed;
     data["state"] = static_cast<int>(m_state);
     data["lap"] = m_currentLap;
+    data["waypoint"] = m_currentWaypointIndex;
+    data["steering"] = m_steeringAngle;
+    data["velocity"] = m_velocity.length();
+    data["style"] = static_cast<int>(m_config.style);
+    data["throttle"] = calculateThrottle();
+    data["brake"] = calculateBraking();
     return data;
+}
+
+QString SimpleAIOpponent::exportStateString() const
+{
+    QVariantMap data = getStateData();
+
+    QJsonObject jsonObj =
+        QJsonObject::fromVariantMap(data);
+
+    QJsonDocument doc(jsonObj);
+
+    return doc.toJson(QJsonDocument::Compact);
 }
 
 void SimpleAIOpponent::loadStateData(const QVariantMap& data)

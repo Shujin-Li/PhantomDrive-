@@ -204,8 +204,8 @@ public:
     virtual void update(qint64 elapsedMs) = 0;
 
     virtual QVector2D calculateSteering() = 0;
-    virtual qreal calculateThrottle() = 0;
-    virtual qreal calculateBraking() = 0;
+    virtual qreal calculateThrottle() const = 0;
+    virtual qreal calculateBraking() const = 0;
 
     // ==================== 道具系统 ====================
     virtual bool hasPowerup() const = 0;

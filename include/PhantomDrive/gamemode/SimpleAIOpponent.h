@@ -73,8 +73,8 @@ public:
     void update(qint64 elapsedMs) override;
 
     QVector2D calculateSteering() override;
-    qreal calculateThrottle() override;
-    qreal calculateBraking() override;
+    qreal calculateThrottle() const override;
+    qreal calculateBraking() const override;
 
     bool hasPowerup() const override { return !m_powerups.isEmpty(); }
     int getPowerupCount() const override { return m_powerups.size(); }
@@ -90,7 +90,11 @@ public:
     QJsonObject toJson() const override;
     void fromJson(const QJsonObject& json) override;
     QVariantMap getStateData() const override;
+
+    QString exportStateString() const;
+
     void loadStateData(const QVariantMap& data) override;
+
 
 protected:
     void onStateEnter(AIState newState) override;

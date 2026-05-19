@@ -33,6 +33,43 @@ MainWindow::MainWindow(QWidget *parent)
     setupGameView();
     setupDataBindings();
 
+    SimpleAIOpponent* ai1 =
+        new SimpleAIOpponent("ai_1", this);
+
+    SimpleAIOpponent* ai2 =
+        new SimpleAIOpponent("ai_2", this);
+
+    SimpleAIOpponent* ai3 =
+        new SimpleAIOpponent("ai_3", this);
+
+
+    AIConfig aggressiveConfig;
+    aggressiveConfig.style = AIStyle::Aggressive;
+    aggressiveConfig.maxSpeed = 220.0;
+
+    AIConfig conservativeConfig;
+    conservativeConfig.style = AIStyle::Conservative;
+    conservativeConfig.maxSpeed = 140.0;
+
+    AIConfig normalConfig;
+    normalConfig.style = AIStyle::Normal;
+    normalConfig.maxSpeed = 180.0;
+
+    ai1->setConfig(aggressiveConfig);
+    ai2->setConfig(conservativeConfig);
+    ai3->setConfig(normalConfig);
+
+
+    ai1->setPosition(QVector2D(200, 200));
+    ai2->setPosition(QVector2D(170, 220));
+    ai3->setPosition(QVector2D(230, 180));
+
+    m_aiOpponents.append(ai1);
+    m_aiOpponents.append(ai2);
+    m_aiOpponents.append(ai3);
+
+    generateDemoWaypoints();
+
     m_learningHUD = new LearningHUD(this);
     m_learningHUD->hide();
 
@@ -190,6 +227,39 @@ void MainWindow::setupGameView()
     m_gameView->addPedestrianCrossing("crossing_1", QVector2D(350, 250), QSizeF(80, 40));
 }
 
+void MainWindow::generateDemoWaypoints()
+{
+    QList<PhantomDrive::Waypoint> waypoints;
+
+    PhantomDrive::Waypoint wp1;
+    wp1.position = QVector2D(200, 200);
+
+    PhantomDrive::Waypoint wp2;
+    wp2.position = QVector2D(400, 250);
+    wp2.isCorner = true;
+    wp2.cornerSeverity = 2;
+    wp2.preferredSpeed = 120;
+
+    PhantomDrive::Waypoint wp3;
+    wp3.position = QVector2D(450, 450);
+
+    PhantomDrive::Waypoint wp4;
+    wp4.position = QVector2D(250, 500);
+    wp4.isCorner = true;
+    wp4.cornerSeverity = 3;
+    wp4.preferredSpeed = 80;
+
+    waypoints.append(wp1);
+    waypoints.append(wp2);
+    waypoints.append(wp3);
+    waypoints.append(wp4);
+
+    for (int i = 0; i < m_aiOpponents.size(); ++i)
+    {
+        m_aiOpponents[i]->setWaypoints(waypoints);
+    }
+}
+
 void MainWindow::simulateGameLoop()
 {
     m_simTimer = new QTimer(this);
@@ -223,6 +293,29 @@ void MainWindow::simulateGameLoop()
         }
 
         updateTrafficAndHud(tick);
+        for (int i = 0; i < m_aiOpponents.size(); ++i)
+        {
+            SimpleAIOpponent* ai = m_aiOpponents[i];
+
+            ai->update(50);
+
+            m_gameView->updateAICar(
+                QString("ai_%1").arg(i + 1),
+                ai->getPosition(),
+                ai->getRotation(),
+                ai->getSpeed()
+                );
+
+            qDebug()
+                << QString("AI_%1").arg(i + 1)
+                << "Style:" << static_cast<int>(ai->getStyle())
+                << "Speed:" << ai->getSpeed()
+                << "State:" << static_cast<int>(ai->getState())
+                << "WP:" << ai->getCurrentWaypointIndex();
+
+
+        }
+
 
         if (m_drivingDataCollector && m_drivingDataCollector->vehicleSensor()) {
             VehicleSensor* sensor = m_drivingDataCollector->vehicleSensor();
@@ -282,12 +375,13 @@ void MainWindow::updateGameViewFromData(const DrivingData& data)
         return;
     }
 
-    m_gameView->updatePlayerCar(data.position, data.rotation, data.speed);
-    m_gameView->updateAICar("ai_1",
-                            data.position + QVector2D(120, 56),
-                            data.rotation + 8.0,
-                            qMax(35.0, data.speed * 0.88));
-    m_gameView->setCameraPosition(data.position);
+    m_gameView->updatePlayerCar(
+        data.position,
+        data.rotation,
+        data.speed
+        );
+
+
 }
 
 void MainWindow::updateHUD(int speed, const QString &status)
@@ -306,6 +400,7 @@ void MainWindow::updateHUD(int speed, const QString &status)
     if (ui->label_) {
         ui->label_->setText(QString("Light: %1").arg(m_currentTrafficLightState));
     }
+
 
     statusBar()->showMessage(QString("%1 | %2 mode").arg(status, m_currentMode));
 }

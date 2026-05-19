@@ -10,6 +10,7 @@
 #include "PhantomDrive/gamemode/SpeedLimitSignObject.h"
 #include "PhantomDrive/gamemode/PedestrianCrossingObject.h"
 #include "PhantomDrive/gamemode/TrafficObjectManager.h"
+#include "PhantomDrive/gamemode/LearningMode.h"
 
 using namespace PhantomDrive;
 
@@ -272,6 +273,14 @@ void testLearningModeIntegration()
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
+    LearningMode mode;
+
+    mode.onEnter();
+
+    for (int i = 0; i < 5; ++i)
+    {
+        mode.update(16);
+    }
 
     qDebug() << "========================================";
     qDebug() << "  PhantomDrive Learning Mode Test Suite";

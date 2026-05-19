@@ -9,6 +9,7 @@
 #include <QMap>
 #include <QVector2D>
 #include <QJsonObject>
+#include <QVariantMap>
 
 namespace PhantomDrive {
 
@@ -65,6 +66,8 @@ public:
     virtual QJsonObject toJson() const;
     virtual void fromJson(const QJsonObject& json);
 
+    QList<QVariantMap> exportAllAIStates() const;
+
 signals:
     void opponentAdded(const QString& opponentId);
     void opponentRemoved(const QString& opponentId);
@@ -72,6 +75,7 @@ signals:
     void opponentFinished(const QString& opponentId, int finalPosition);
     void allOpponentsFinished();
     void rankingsUpdated(const QList<QString>& orderedOpponentIds);
+    void aiStatesUpdated(const QVariantList& states);
 
 private:
     QMap<QString, AIOpponent*> m_opponents;

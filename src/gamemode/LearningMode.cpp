@@ -10,6 +10,7 @@ namespace PhantomDrive {
 
 LearningMode::LearningMode(QObject* parent)
     : GameMode(parent)
+    ,m_aiManager(new AIOpponentManager(this))
     , m_currentSpeedLimit(0.0)
     , m_lastSpeedCheckTime(0)
     , m_redLightViolations(0)
@@ -35,6 +36,30 @@ void LearningMode::onEnter()
     m_lastViolationTime = 0;
     m_totalScore = m_initialScore;
     qDebug() << "LearningMode: Entered";
+    m_aiManager->createOpponent("ai_1", AIStyle::Aggressive);
+    m_aiManager->createOpponent("ai_2", AIStyle::Conservative);
+    m_aiManager->createOpponent("ai_3", AIStyle::Normal);
+    QList<Waypoint> waypoints;
+
+    waypoints.append(
+        Waypoint(QVector2D(0, 0), 100.0)
+        );
+
+    waypoints.append(
+        Waypoint(QVector2D(300, 0), 120.0)
+        );
+
+    waypoints.append(
+        Waypoint(QVector2D(300, 300), 80.0, true, 2)
+        );
+
+    waypoints.append(
+        Waypoint(QVector2D(0, 300), 100.0)
+        );
+
+    qDebug() << "Waypoint count:" << waypoints.size();
+
+    m_aiManager->setWaypointsForAll(waypoints);
 }
 
 void LearningMode::onExit()
@@ -45,13 +70,38 @@ void LearningMode::onExit()
 }
 
 void LearningMode::update(qint64 elapsedMs)
+
 {
     if (!isActive()) {
         return;
     }
 
+    m_aiManager->update(elapsedMs);
+
     checkTrafficLightViolations(elapsedMs);
+
+    QList<QVariantMap> states =
+        m_aiManager->exportAllAIStates();
+
+    emit aiStatesUpdated(states);
+
+    /*
+    qDebug() << "AI Count:" << m_aiManager->getOpponentCount();
+
+    for (const QVariantMap& data : states)
+    {
+        qDebug()
+        << data["id"].toString()
+        << "Pos:" << data["position"].value<QVector2D>()
+        << "Rot:" << data["rotation"].toReal()
+        << "Speed:" << data["speed"].toReal()
+        << "State:" << data["state"].toInt()
+        << "WP:" << data["waypoint"].toInt();
+    }
+    */
+
     updateSpeedLimit(elapsedMs);
+
     processPedestrianZones();
 
     emit modeUpdated(elapsedMs);

@@ -137,11 +137,21 @@ void AIOpponentManager::setTrackBounds(const QRectF& bounds)
 
 void AIOpponentManager::update(qint64 elapsedMs)
 {
-    for (AIOpponent* opponent : m_opponents) {
-        if (opponent->isActive() && !opponent->hasFinished()) {
+    QVariantList allAIStates;
+
+    for (AIOpponent* opponent : m_opponents)
+    {
+        if (opponent->isActive() && !opponent->hasFinished())
+        {
             opponent->update(elapsedMs);
+
+            allAIStates.append(
+                opponent->getStateData()
+                );
         }
     }
+
+    emit aiStatesUpdated(allAIStates);
 }
 
 void AIOpponentManager::onPlayerCollision(const QString& opponentId, const QVector2D& point)
@@ -197,6 +207,18 @@ void AIOpponentManager::fromJson(const QJsonObject& json)
             opponent->fromJson(opponentJson);
         }
     }
+}
+
+QList<QVariantMap> AIOpponentManager::exportAllAIStates() const
+{
+    QList<QVariantMap> result;
+
+    for (AIOpponent* ai : m_opponents)
+    {
+        result.append(ai->getStateData());
+    }
+
+    return result;
 }
 
 } // namespace PhantomDrive

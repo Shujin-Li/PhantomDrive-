@@ -21,6 +21,12 @@ set(SOURCE_FILES
     ${PHANTOMDRIVE_DIR}/src/gamemode/SpeedLimitSignObject.cpp
     ${PHANTOMDRIVE_DIR}/src/gamemode/PedestrianCrossingObject.cpp
     ${PHANTOMDRIVE_DIR}/src/gamemode/TrafficObjectManager.cpp
+    ${PHANTOMDRIVE_DIR}/src/gamemode/LearningMode.cpp
+    ${PHANTOMDRIVE_DIR}/src/gamemode/AIOpponentManager.cpp
+    ${PHANTOMDRIVE_DIR}/src/gamemode/GameMode.cpp
+    ${PHANTOMDRIVE_DIR}/src/gamemode/AIOpponent.cpp
+    ${PHANTOMDRIVE_DIR}/src/gamemode/SimpleAIOpponent.cpp
+
 )
 
 # 显式包含需要 MOC 处理的头文件
@@ -30,6 +36,11 @@ set(HEADERS_TO_MOC
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/SpeedLimitSignObject.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/PedestrianCrossingObject.h
     ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/TrafficObjectManager.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/GameMode.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/LearningMode.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/AIOpponent.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/AIOpponentManager.h
+    ${PHANTOMDRIVE_DIR}/include/PhantomDrive/gamemode/SimpleAIOpponent.h
 )
 
 # 创建可执行文件

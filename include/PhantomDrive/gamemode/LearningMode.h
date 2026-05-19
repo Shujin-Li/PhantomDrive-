@@ -3,6 +3,7 @@
 #include "GameMode.h"
 #include "DrivingData.h"
 #include "PhantomDrive_global.h"
+#include "AIOpponentManager.h"
 
 #include <QRectF>
 #include <QMap>
@@ -114,6 +115,7 @@ signals:
     void redLightViolation(const QString& trafficLightId);
     void learningSessionCompleted(qreal finalScore, int violationCount);
     void aiCoachFeedbackGenerated(const QString& feedback, int scoreImpact);
+    void aiStatesUpdated(const QList<QVariantMap>& states);
 
 protected:
     void checkTrafficLightViolations(qint64 elapsedMs);
@@ -121,6 +123,7 @@ protected:
     void processPedestrianZones();
 
 private:
+    AIOpponentManager* m_aiManager;
     QMap<QString, TrafficLightState> m_trafficLights;
     QMap<QString, SpeedLimitZone> m_speedLimitZones;
     QMap<QString, PedestrianCrossing> m_pedestrianCrossings;
