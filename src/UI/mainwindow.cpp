@@ -137,7 +137,7 @@ void MainWindow::setupDataBindings()
         connect(m_scoreManager, &ScoreManager::scoringFailed,
                 this, [this](const QString& reason) {
                     statusBar()->showMessage(QStringLiteral("Scoring failed: %1").arg(reason), 5000);
-                }, Qt::UniqueConnection);
+                });
     }
 }
 
