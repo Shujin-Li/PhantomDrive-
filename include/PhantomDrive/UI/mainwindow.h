@@ -9,7 +9,10 @@
 #include "UI/GameViewWidget.h"
 #include "UI/DrivingReportWidget.h"
 #include "gamemode/DrivingDataCollector.h"
+#include "scoring/ScoreManager.h"
 #include "core/datamodels.h"
+
+class QPushButton;
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -33,14 +36,21 @@ private:
     LearningHUD *m_learningHUD;
     PhantomDrive::GameViewWidget *m_gameView;
     PhantomDrive::DrivingDataCollector *m_drivingDataCollector;
+    PhantomDrive::ScoreManager *m_scoreManager;
     PhantomDrive::DrivingReportWidget *m_reportWidget;
+    QPushButton *m_btnFinishDrive;
     QTimer *m_simTimer;
     QString m_currentMode;
     int m_currentSpeedLimit;
     QString m_currentTrafficLightState;
+    bool m_driveActive;
 
     void setupGameView();
     void setupDataBindings();
+    void setupDemoControls();
+    void startDrivingSession(const QString& mode);
+    void finishDrivingSession();
+    void showReportWindow(const PhantomDrive::ScoreReport* report = nullptr);
     void updateGameViewFromData(const PhantomDrive::DrivingData& data);
     void updateTrafficAndHud(int tick);
     void simulateGameLoop();
@@ -48,6 +58,8 @@ private:
 private slots:
     void onDrivingDataCollected(const PhantomDrive::DrivingData& data);
     void onViolationDetected(const PhantomDrive::ViolationEvent& violation);
+    void onScoreReady(const PhantomDrive::ScoreReport& report);
+    void onCoachReportReady(const QString& markdown);
     void on_btn_History_clicked();
 };
 

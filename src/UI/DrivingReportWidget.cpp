@@ -1,6 +1,5 @@
 #include "UI/DrivingReportWidget.h"
 #include "UI/ThemeManager.h"
-#include "scoring/AIAPIClient.h"
 #include "core/saveloadmanager.h"
 
 #include <QVBoxLayout>
@@ -41,7 +40,6 @@ DrivingReportWidget::DrivingReportWidget(QWidget *parent)
 
     m_timer = new QTimer(this);
     connect(m_timer, &QTimer::timeout, this, &DrivingReportWidget::updateMockData);
-    m_timer->start(1000);
 }
 
 DrivingReportWidget::~DrivingReportWidget()
@@ -57,7 +55,7 @@ void DrivingReportWidget::setupUI()
     mainLayout->setSpacing(15);
     mainLayout->setContentsMargins(15, 15, 15, 15);
 
-    // ========== 顶部统计面板 ==========
+    // ========== 椤堕儴缁熻闈㈡澘 ==========
     QFrame *statsPanel = new QFrame(this);
     statsPanel->setObjectName("cardPanel");
     statsPanel->setStyleSheet(R"(
@@ -71,73 +69,73 @@ void DrivingReportWidget::setupUI()
     auto *statsLayout = new QHBoxLayout(statsPanel);
     statsLayout->setSpacing(20);
 
-    // 当前速度
+    // 褰撳墠閫熷害
     QVBoxLayout *currentSpeedLayout = new QVBoxLayout();
     m_currentSpeedLabel = new QLabel("0", statsPanel);
     m_currentSpeedLabel->setStyleSheet(R"(
         QLabel { color: #2ECC71; font-size: 36px; font-weight: bold; font-family: 'Segoe UI', monospace; }
     )");
-    QLabel *currentSpeedUnit = new QLabel("km/h 当前速度", statsPanel);
+    QLabel *currentSpeedUnit = new QLabel(QStringLiteral("km/h Current Speed"), statsPanel);
     currentSpeedUnit->setStyleSheet("QLabel { color: rgba(255,255,255,150); font-size: 12px; }");
     currentSpeedLayout->addWidget(m_currentSpeedLabel);
     currentSpeedLayout->addWidget(currentSpeedUnit);
     statsLayout->addLayout(currentSpeedLayout);
 
-    // 平均速度
+    // 骞冲潎閫熷害
     QVBoxLayout *avgSpeedLayout = new QVBoxLayout();
     m_avgSpeedLabel = new QLabel("0.0", statsPanel);
     m_avgSpeedLabel->setStyleSheet(R"(
         QLabel { color: #3498DB; font-size: 24px; font-weight: bold; }
     )");
-    QLabel *avgSpeedUnit = new QLabel("km/h 平均速度", statsPanel);
+    QLabel *avgSpeedUnit = new QLabel(QStringLiteral("km/h Average Speed"), statsPanel);
     avgSpeedUnit->setStyleSheet("QLabel { color: rgba(255,255,255,150); font-size: 12px; }");
     avgSpeedLayout->addWidget(m_avgSpeedLabel);
     avgSpeedLayout->addWidget(avgSpeedUnit);
     statsLayout->addLayout(avgSpeedLayout);
 
-    // 最高速度
+    // 鏈€楂橀€熷害
     QVBoxLayout *maxSpeedLayout = new QVBoxLayout();
     m_maxSpeedLabel = new QLabel("0.0", statsPanel);
     m_maxSpeedLabel->setStyleSheet(R"(
         QLabel { color: #E74C3C; font-size: 24px; font-weight: bold; }
     )");
-    QLabel *maxSpeedUnit = new QLabel("km/h 最高速度", statsPanel);
+    QLabel *maxSpeedUnit = new QLabel(QStringLiteral("km/h Max Speed"), statsPanel);
     maxSpeedUnit->setStyleSheet("QLabel { color: rgba(255,255,255,150); font-size: 12px; }");
     maxSpeedLayout->addWidget(m_maxSpeedLabel);
     maxSpeedLayout->addWidget(maxSpeedUnit);
     statsLayout->addLayout(maxSpeedLayout);
 
-    // 总分
+    // 鎬诲垎
     QVBoxLayout *scoreLayout = new QVBoxLayout();
     m_totalScoreLabel = new QLabel("--", statsPanel);
     m_totalScoreLabel->setStyleSheet(R"(
         QLabel { color: #F1C40F; font-size: 24px; font-weight: bold; }
     )");
-    QLabel *scoreTitle = new QLabel("总分", statsPanel);
+    QLabel *scoreTitle = new QLabel(QStringLiteral("Total Score"), statsPanel);
     scoreTitle->setStyleSheet("QLabel { color: rgba(255,255,255,150); font-size: 12px; }");
     scoreLayout->addWidget(m_totalScoreLabel);
     scoreLayout->addWidget(scoreTitle);
     statsLayout->addLayout(scoreLayout);
 
-    // 等级
+    // 绛夌骇
     QVBoxLayout *gradeLayout = new QVBoxLayout();
     m_gradeLabel = new QLabel("--", statsPanel);
     m_gradeLabel->setStyleSheet(R"(
         QLabel { color: #9B59B6; font-size: 32px; font-weight: bold; }
     )");
-    QLabel *gradeTitle = new QLabel("等级", statsPanel);
+    QLabel *gradeTitle = new QLabel(QStringLiteral("Grade"), statsPanel);
     gradeTitle->setStyleSheet("QLabel { color: rgba(255,255,255,150); font-size: 12px; }");
     gradeLayout->addWidget(m_gradeLabel);
     gradeLayout->addWidget(gradeTitle);
     statsLayout->addLayout(gradeLayout);
 
-    // 违规数
+    // 杩濊鏁?
     QVBoxLayout *violationLayout = new QVBoxLayout();
     m_violationCountLabel = new QLabel("0", statsPanel);
     m_violationCountLabel->setStyleSheet(R"(
         QLabel { color: #E74C3C; font-size: 24px; font-weight: bold; }
     )");
-    QLabel *violationTitle = new QLabel("违规次数", statsPanel);
+    QLabel *violationTitle = new QLabel(QStringLiteral("Violations"), statsPanel);
     violationTitle->setStyleSheet("QLabel { color: rgba(255,255,255,150); font-size: 12px; }");
     violationLayout->addWidget(m_violationCountLabel);
     violationLayout->addWidget(violationTitle);
@@ -145,18 +143,18 @@ void DrivingReportWidget::setupUI()
 
     mainLayout->addWidget(statsPanel);
 
-    // ========== 实时速度图表 ==========
+    // ========== 瀹炴椂閫熷害鍥捐〃 ==========
     QFrame *chartPanel = new QFrame(this);
     chartPanel->setObjectName("cardPanel");
 
     auto *chartLayout = new QVBoxLayout(chartPanel);
 
-    QLabel *chartTitle = new QLabel("实时车速监控", chartPanel);
+    QLabel *chartTitle = new QLabel(QStringLiteral("Live Speed Monitor"), chartPanel);
     chartTitle->setStyleSheet("QLabel { color: white; font-size: 16px; font-weight: bold; padding: 5px; }");
     chartLayout->addWidget(chartTitle);
 
     m_speedSeries = new QSplineSeries();
-    m_speedSeries->setName("实时车速");
+    m_speedSeries->setName(QStringLiteral("Speed"));
     m_speedSeries->setColor(QColor(46, 204, 113));
     m_speedSeries->setPen(QPen(QColor(46, 204, 113), 3));
 
@@ -164,7 +162,7 @@ void DrivingReportWidget::setupUI()
     m_speedChart->addSeries(m_speedSeries);
     m_speedChart->setBackgroundBrush(QBrush(QColor(22, 33, 62)));
     m_speedChart->setTitleBrush(QBrush(Qt::white));
-    m_speedChart->setTitle("驾驶数据实时监控");
+    m_speedChart->setTitle(QStringLiteral("Driving Data"));
 
     QValueAxis *axisY = new QValueAxis;
     axisY->setRange(0, 120);
@@ -187,22 +185,22 @@ void DrivingReportWidget::setupUI()
     chartLayout->addWidget(m_speedChartView);
     mainLayout->addWidget(chartPanel);
 
-    // ========== 分项得分图表 ==========
+    // ========== 鍒嗛」寰楀垎鍥捐〃 ==========
     QFrame *breakdownPanel = new QFrame(this);
     breakdownPanel->setObjectName("cardPanel");
 
     auto *breakdownLayout = new QVBoxLayout(breakdownPanel);
 
-    QLabel *breakdownTitle = new QLabel("分项得分", breakdownPanel);
+    QLabel *breakdownTitle = new QLabel(QStringLiteral("Score Breakdown"), breakdownPanel);
     breakdownTitle->setStyleSheet("QLabel { color: white; font-size: 16px; font-weight: bold; padding: 5px; }");
     breakdownLayout->addWidget(breakdownTitle);
 
     m_breakdownBarSeries = new QBarSeries();
 
-    QBarSet *safetySet = new QBarSet("安全性");
-    QBarSet *ruleSet = new QBarSet("规则遵守");
-    QBarSet *smoothSet = new QBarSet("平顺性");
-    QBarSet *efficiencySet = new QBarSet("效率");
+    QBarSet *safetySet = new QBarSet(QStringLiteral("Safety"));
+    QBarSet *ruleSet = new QBarSet(QStringLiteral("Rules"));
+    QBarSet *smoothSet = new QBarSet(QStringLiteral("Smoothness"));
+    QBarSet *efficiencySet = new QBarSet(QStringLiteral("Efficiency"));
 
     *safetySet << 100;
     *ruleSet << 100;
@@ -225,7 +223,7 @@ void DrivingReportWidget::setupUI()
 
     QBarCategoryAxis *breakdownAxisX = new QBarCategoryAxis;
     QStringList categories;
-    categories << QStringLiteral("当前报告");
+    categories << QStringLiteral("Current Report");
     breakdownAxisX->append(categories);
     breakdownAxisX->setLabelsColor(QColor(189, 195, 199));
     m_breakdownChart->addAxis(breakdownAxisX, Qt::AlignBottom);
@@ -245,7 +243,7 @@ void DrivingReportWidget::setupUI()
     breakdownLayout->addWidget(m_breakdownChartView);
     mainLayout->addWidget(breakdownPanel);
 
-    // ========== 教练建议面板 ==========
+    // ========== 鏁欑粌寤鸿闈㈡澘 ==========
     m_coachAdviceWidget = new QFrame(this);
     m_coachAdviceWidget->setObjectName("cardPanel");
     m_coachAdviceWidget->setStyleSheet(R"(
@@ -258,11 +256,11 @@ void DrivingReportWidget::setupUI()
 
     auto *adviceLayout = new QVBoxLayout(m_coachAdviceWidget);
 
-    QLabel *adviceTitle = new QLabel("AI 教练建议", m_coachAdviceWidget);
+    QLabel *adviceTitle = new QLabel(QStringLiteral("AI Coach Advice"), m_coachAdviceWidget);
     adviceTitle->setStyleSheet("QLabel { color: #F1C40F; font-size: 16px; font-weight: bold; padding: 5px; }");
     adviceLayout->addWidget(adviceTitle);
 
-    m_aiReportLabel = new QLabel("等待生成教练报告...", m_coachAdviceWidget);
+    m_aiReportLabel = new QLabel(QStringLiteral("Waiting for AI coach report..."), m_coachAdviceWidget);
     m_aiReportLabel->setStyleSheet(R"(
         QLabel {
             color: #ecf0f1;
@@ -279,30 +277,30 @@ void DrivingReportWidget::setupUI()
 
     mainLayout->addWidget(m_coachAdviceWidget);
 
-    // ========== 历史总分折线图 ==========
+    // ========== 鍘嗗彶鎬诲垎鎶樼嚎鍥?==========
     QFrame *historyPanel = new QFrame(this);
     historyPanel->setObjectName("cardPanel");
 
     auto *historyLayout = new QVBoxLayout(historyPanel);
 
-    QLabel *historyTitle = new QLabel("历史总分趋势", historyPanel);
+    QLabel *historyTitle = new QLabel(QStringLiteral("History Score Trend"), historyPanel);
     historyTitle->setStyleSheet("QLabel { color: white; font-size: 16px; font-weight: bold; padding: 5px; }");
     historyLayout->addWidget(historyTitle);
 
     m_historyScoreSeries = new QLineSeries();
-    m_historyScoreSeries->setName("总分");
+    m_historyScoreSeries->setName(QStringLiteral("Total Score"));
     m_historyScoreSeries->setColor(QColor(241, 196, 15));
     m_historyScoreSeries->setPen(QPen(QColor(241, 196, 15), 3));
 
     m_historyChart = new QChart();
     m_historyChart->addSeries(m_historyScoreSeries);
     m_historyChart->setBackgroundBrush(QBrush(QColor(22, 33, 62)));
-    m_historyChart->setTitle("历史驾驶评分");
+    m_historyChart->setTitle(QStringLiteral("Driving Score History"));
     m_historyChart->setTitleBrush(QBrush(Qt::white));
 
     QValueAxis *historyAxisY = new QValueAxis;
     historyAxisY->setRange(0, 100);
-    historyAxisY->setTitleText("分数");
+    historyAxisY->setTitleText(QStringLiteral("Score"));
     historyAxisY->setLabelsColor(QColor(189, 195, 199));
     historyAxisY->setGridLineColor(QColor(60, 80, 100));
     m_historyChart->addAxis(historyAxisY, Qt::AlignLeft);
@@ -321,19 +319,19 @@ void DrivingReportWidget::setupUI()
     historyLayout->addWidget(m_historyChartView);
     mainLayout->addWidget(historyPanel);
 
-    // ========== 违规事件列表 ==========
+    // ========== 杩濊浜嬩欢鍒楄〃 ==========
     QFrame *violationPanel = new QFrame(this);
     violationPanel->setObjectName("cardPanel");
 
     auto *violationLayout2 = new QVBoxLayout(violationPanel);
 
-    QLabel *violationTableTitle = new QLabel("违规事件记录", violationPanel);
+    QLabel *violationTableTitle = new QLabel(QStringLiteral("Violation Events"), violationPanel);
     violationTableTitle->setStyleSheet("QLabel { color: white; font-size: 16px; font-weight: bold; padding: 5px; }");
     violationLayout2->addWidget(violationTableTitle);
 
     m_violationTable = new QTableWidget(0, 4, violationPanel);
     QStringList headers;
-    headers << "时间" << "类型" << "描述" << "扣分";
+    headers << QStringLiteral("Time") << QStringLiteral("Type") << QStringLiteral("Description") << QStringLiteral("Penalty");
     m_violationTable->setHorizontalHeaderLabels(headers);
     m_violationTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     m_violationTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -393,18 +391,42 @@ void DrivingReportWidget::addSpeedData(qreal speed, qint64 timestamp)
 void DrivingReportWidget::setCurrentReport(const ScoreReport& report)
 {
     m_currentReport = report;
-    m_useMockData = false;
-    m_timer->stop();
+    setMockDataEnabled(false);
 
     m_totalScoreLabel->setText(QString::number(report.totalScore, 'f', 1));
     m_gradeLabel->setText(report.grade);
     m_violationCountLabel->setText(QString::number(report.violations.size()));
+    m_avgSpeedLabel->setText(QString::number(report.metrics.averageSpeed, 'f', 1));
+    m_maxSpeedLabel->setText(QString::number(report.metrics.maxSpeed, 'f', 1));
 
     updateBreakdownChart();
     updateViolationTable();
     updateCoachAdvice();
 
     emit reportUpdated(report);
+}
+
+void DrivingReportWidget::setCoachReportMarkdown(const QString& markdown)
+{
+    if (m_aiReportLabel) {
+        m_aiReportLabel->setText(markdown.trimmed().isEmpty()
+            ? QStringLiteral("AI coach report is empty.")
+            : markdown);
+    }
+}
+
+void DrivingReportWidget::setMockDataEnabled(bool enabled)
+{
+    m_useMockData = enabled;
+    if (!m_timer) {
+        return;
+    }
+
+    if (enabled && !m_timer->isActive()) {
+        m_timer->start(1000);
+    } else if (!enabled && m_timer->isActive()) {
+        m_timer->stop();
+    }
 }
 
 void DrivingReportWidget::addViolationEvent(const ViolationEvent& violation)
@@ -480,9 +502,21 @@ void DrivingReportWidget::updateViolationTable()
 void DrivingReportWidget::updateCoachAdvice()
 {
     if (m_aiReportLabel) {
-        AIAPIClient aiClient;
-        QString aiReport = aiClient.generateCoachReport(m_currentReport);
-        m_aiReportLabel->setText(aiReport);
+        QStringList lines;
+        if (!m_currentReport.summary.trimmed().isEmpty()) {
+            lines << m_currentReport.summary.trimmed();
+        }
+
+        for (const CoachAdvice& advice : m_currentReport.coachAdvices) {
+            lines << QStringLiteral("[%1/%2] %3")
+                         .arg(advice.category, advice.severity, advice.message);
+        }
+
+        if (lines.isEmpty()) {
+            lines << QStringLiteral("Waiting for AI coach report...");
+        }
+
+        m_aiReportLabel->setText(lines.join(QStringLiteral("\n")));
     }
 }
 
@@ -503,7 +537,7 @@ void DrivingReportWidget::loadHistoryReports(const QList<ScoreReport>& reports)
         m_historyScoreSeries->append(index++, report.totalScore);
     }
     
-    // 更新图表范围
+    // 鏇存柊鍥捐〃鑼冨洿
     if (index > 0) {
         m_historyChart->axisX()->setRange(0, qMax(index, 10));
         m_historyChart->axisY()->setRange(0, 100);

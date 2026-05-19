@@ -314,6 +314,36 @@ install(DIRECTORY include/PhantomDrive/
     FILES_MATCHING PATTERN "*.h"
 )
 
+add_executable(PhantomDriveApp
+    src/main.cpp
+)
+
+target_include_directories(PhantomDriveApp PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+target_link_libraries(PhantomDriveApp PRIVATE
+    PhantomDrive
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Charts
+)
+
+set_target_properties(PhantomDriveApp PROPERTIES
+    AUTOMOC ON
+    AUTOUIC ON
+    AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+    OUTPUT_NAME "PhantomDriveApp"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+
+install(TARGETS PhantomDriveApp
+    RUNTIME DESTINATION bin
+)
+
 add_executable(test_main_window
     tests/test_main_window.cpp
 )

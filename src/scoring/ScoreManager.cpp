@@ -56,6 +56,7 @@ ScoreReport ScoreManager::evaluate(const QList<DrivingData>& data,
     QList<ViolationEvent> allViolations = violations;
     allViolations.append(m_pendingViolations);
     allViolations = m_ruleEnforcer.filterDuplicates(allViolations);
+    m_pendingViolations.clear();
 
     ScoreReport report = m_calculator.evaluate(data, allViolations, m_vehicleId);
     emit scoreReady(report);

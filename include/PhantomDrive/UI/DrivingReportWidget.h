@@ -30,9 +30,10 @@ public:
 
     void addSpeedData(qreal speed, qint64 timestamp = -1);
     void setCurrentReport(const ScoreReport& report);
+    void setCoachReportMarkdown(const QString& markdown);
     void addViolationEvent(const ViolationEvent& violation);
     void clearData();
-    void setMockDataEnabled(bool enabled) { m_useMockData = enabled; }
+    void setMockDataEnabled(bool enabled);
     
     // 历史数据加载
     void loadHistoryFromSaveLoadManager();

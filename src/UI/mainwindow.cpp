@@ -8,9 +8,12 @@
 #include "track/TrackManager.h"
 #include "track/TrackTile.h"
 #include "scoring/ScoreReport.h"
+#include "core/saveloadmanager.h"
 
 #include <QDateTime>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QLayoutItem>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QStatusBar>
@@ -25,15 +28,19 @@ MainWindow::MainWindow(QWidget *parent)
     , m_learningHUD(nullptr)
     , m_gameView(nullptr)
     , m_drivingDataCollector(new DrivingDataCollector(this))
+    , m_scoreManager(new ScoreManager(this))
     , m_reportWidget(new DrivingReportWidget(this))
+    , m_btnFinishDrive(nullptr)
     , m_simTimer(nullptr)
     , m_currentMode("Arcade")
     , m_currentSpeedLimit(60)
     , m_currentTrafficLightState("green")
+    , m_driveActive(false)
 {
     ui->setupUi(this);
 
     setupGameView();
+    setupDemoControls();
     setupDataBindings();
 
     m_learningHUD = new LearningHUD(this);
@@ -41,32 +48,17 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_reportWidget->setMockDataEnabled(false);
     m_reportWidget->hide();
+    m_scoreManager->setVehicleId("player");
 
     if (ui->btn_Arcade) {
         connect(ui->btn_Arcade, &QPushButton::clicked, this, [this]() {
-            m_currentMode = "Arcade";
-            ui->stackedWidget->setCurrentIndex(1);
-            if (m_gameView) {
-                m_gameView->show();
-            }
-            if (m_learningHUD) {
-                m_learningHUD->hide();
-            }
-            statusBar()->showMessage("Arcade mode running");
+            startDrivingSession("Arcade");
         });
     }
 
     if (ui->btn_Learn) {
         connect(ui->btn_Learn, &QPushButton::clicked, this, [this]() {
-            m_currentMode = "Learning";
-            ui->stackedWidget->setCurrentIndex(1);
-            if (m_gameView) {
-                m_gameView->show();
-            }
-            if (m_learningHUD) {
-                m_learningHUD->show();
-            }
-            statusBar()->showMessage("Learning mode running");
+            startDrivingSession("Learning");
         });
     }
 
@@ -80,6 +72,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     if (ui->btn_Back) {
         connect(ui->btn_Back, &QPushButton::clicked, this, [this]() {
+            if (m_driveActive) {
+                finishDrivingSession();
+            }
             ui->stackedWidget->setCurrentIndex(0);
             if (m_gameView) {
                 m_gameView->hide();
@@ -93,8 +88,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_drivingDataCollector->setVehicleId("player");
     m_drivingDataCollector->setSamplingInterval(50);
-    m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "demo_limit_zone");
-    m_drivingDataCollector->startCollection();
+    m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
 
     simulateGameLoop();
 }
@@ -132,6 +126,43 @@ void MainWindow::setupDataBindings()
             this, &MainWindow::onDrivingDataCollected, Qt::UniqueConnection);
     connect(m_drivingDataCollector, &IDrivingDataCollector::violationDetected,
             this, &MainWindow::onViolationDetected, Qt::UniqueConnection);
+    connect(m_drivingDataCollector, &IDrivingDataCollector::violationDetected,
+            m_scoreManager, &ScoreManager::onViolationDetected, Qt::UniqueConnection);
+
+    if (m_scoreManager) {
+        connect(m_scoreManager, &ScoreManager::scoreReady,
+                this, &MainWindow::onScoreReady, Qt::UniqueConnection);
+        connect(m_scoreManager, &ScoreManager::coachReportReady,
+                this, &MainWindow::onCoachReportReady, Qt::UniqueConnection);
+        connect(m_scoreManager, &ScoreManager::scoringFailed,
+                this, [this](const QString& reason) {
+                    statusBar()->showMessage(QStringLiteral("Scoring failed: %1").arg(reason), 5000);
+                }, Qt::UniqueConnection);
+    }
+}
+
+void MainWindow::setupDemoControls()
+{
+    if (ui->btn_History) {
+        ui->btn_History->setText(QStringLiteral("Driving Report / History"));
+    }
+
+    m_btnFinishDrive = new QPushButton(QStringLiteral("Finish Drive"), this);
+    m_btnFinishDrive->setObjectName(QStringLiteral("btn_FinishDrive"));
+    m_btnFinishDrive->setEnabled(false);
+
+    QWidget* gamePage = ui->stackedWidget ? ui->stackedWidget->widget(1) : nullptr;
+    QVBoxLayout* pageLayout = gamePage ? qobject_cast<QVBoxLayout*>(gamePage->layout()) : nullptr;
+    if (pageLayout && pageLayout->count() > 0) {
+        QLayoutItem* firstItem = pageLayout->itemAt(0);
+        QHBoxLayout* hudLayout = firstItem ? qobject_cast<QHBoxLayout*>(firstItem->layout()) : nullptr;
+        if (hudLayout) {
+            hudLayout->addWidget(m_btnFinishDrive);
+        }
+    }
+
+    connect(m_btnFinishDrive, &QPushButton::clicked,
+            this, &MainWindow::finishDrivingSession);
 }
 
 void MainWindow::setupGameView()
@@ -160,8 +191,8 @@ void MainWindow::setupGameView()
     }
 
     TrackData* testTrack = new TrackData();
-    testTrack->setId("ua_demo_track");
-    testTrack->setName("UA Demo Track");
+    testTrack->setId("main_city_training_route");
+    testTrack->setName("Main City Training Route");
     testTrack->setSize(30, 20);
 
     for (int row = 0; row < 30; ++row) {
@@ -201,6 +232,10 @@ void MainWindow::simulateGameLoop()
     m_simTimer = new QTimer(this);
 
     connect(m_simTimer, &QTimer::timeout, this, [this]() {
+        if (!m_driveActive) {
+            return;
+        }
+
         static qreal carX = 320.0;
         static qreal carY = 320.0;
         static qreal carRotation = -90.0;
@@ -235,17 +270,89 @@ void MainWindow::simulateGameLoop()
             sensor->updatePosition(QVector2D(carX, carY));
             sensor->updateVelocity(velocity);
             sensor->updateRotation(carRotation);
-            sensor->updateSpeedLimit(m_currentSpeedLimit, "demo_limit_zone");
+            sensor->updateSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
             sensor->updateAcceleratorState(speed >= m_drivingDataCollector->getCurrentData().speed);
             sensor->updateBrakeState(speed < m_drivingDataCollector->getCurrentData().speed);
         }
 
-        if (m_reportWidget) {
+        if (m_reportWidget && m_reportWidget->isVisible()) {
             m_reportWidget->addSpeedData(speed, tick);
         }
     });
 
     m_simTimer->start(50);
+}
+
+void MainWindow::startDrivingSession(const QString& mode)
+{
+    m_currentMode = mode;
+    m_driveActive = true;
+
+    if (m_drivingDataCollector) {
+        m_drivingDataCollector->stopCollection();
+        m_drivingDataCollector->clearData();
+        m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
+        m_drivingDataCollector->startCollection();
+    }
+
+    ui->stackedWidget->setCurrentIndex(1);
+    if (m_gameView) {
+        m_gameView->show();
+    }
+    if (m_learningHUD) {
+        if (m_currentMode == "Learning") {
+            m_learningHUD->show();
+        } else {
+            m_learningHUD->hide();
+        }
+        m_learningHUD->updateGameMode(m_currentMode);
+    }
+    if (m_btnFinishDrive) {
+        m_btnFinishDrive->setEnabled(true);
+    }
+
+    statusBar()->showMessage(QStringLiteral("%1 mode running").arg(m_currentMode));
+}
+
+void MainWindow::finishDrivingSession()
+{
+    if (!m_driveActive || !m_scoreManager || !m_drivingDataCollector) {
+        return;
+    }
+
+    m_driveActive = false;
+    m_drivingDataCollector->stopCollection();
+    if (m_btnFinishDrive) {
+        m_btnFinishDrive->setEnabled(false);
+    }
+
+    statusBar()->showMessage(QStringLiteral("Scoring current driving session..."));
+    m_scoreManager->evaluateFromCollector(m_drivingDataCollector);
+}
+
+void MainWindow::showReportWindow(const ScoreReport* report)
+{
+    if (!m_reportWidget || !m_reportWidget->isVisible()) {
+        if (m_reportWidget && m_reportWidget->parent() == nullptr) {
+            m_reportWidget->deleteLater();
+        }
+        m_reportWidget = new DrivingReportWidget(nullptr);
+        m_reportWidget->setAttribute(Qt::WA_DeleteOnClose);
+        m_reportWidget->setMockDataEnabled(false);
+        m_reportWidget->setMinimumSize(980, 760);
+        m_reportWidget->resize(980, 760);
+        connect(m_reportWidget, &QObject::destroyed, this, [this]() {
+            m_reportWidget = nullptr;
+        });
+    }
+
+    m_reportWidget->loadHistoryFromSaveLoadManager();
+    if (report) {
+        m_reportWidget->setCurrentReport(*report);
+    }
+    m_reportWidget->show();
+    m_reportWidget->raise();
+    m_reportWidget->activateWindow();
 }
 
 void MainWindow::updateTrafficAndHud(int tick)
@@ -267,15 +374,13 @@ void MainWindow::updateTrafficAndHud(int tick)
 
     const int remainingSeconds = 9 - ((tick / 20) % 10);
     if (m_learningHUD) {
-        // 从模拟速度获取当前值（真实场景中来自 DrivingDataCollector）
-        qreal simulatedSpeed = 45.0 + 35.0 * qSin(tick / 18.0);
-        if (tick % 220 > 160) {
-            simulatedSpeed += 35.0;
-        }
-        
-        m_learningHUD->updateCurrentSpeed(simulatedSpeed);
+        const qreal currentSpeed = m_drivingDataCollector
+            ? m_drivingDataCollector->getCurrentData().speed
+            : 0.0;
+
+        m_learningHUD->updateCurrentSpeed(currentSpeed);
         m_learningHUD->updateSpeedLimit(m_currentSpeedLimit);
-        m_learningHUD->updateSpeedStatus(simulatedSpeed > m_currentSpeedLimit);
+        m_learningHUD->updateSpeedStatus(currentSpeed > m_currentSpeedLimit);
         m_learningHUD->updateTrafficLight(m_currentTrafficLightState, remainingSeconds);
         m_learningHUD->updateGameMode(m_currentMode);
     }
@@ -293,6 +398,25 @@ void MainWindow::onViolationDetected(const ViolationEvent& violation)
         m_learningHUD->showPenaltyMessage(violation.description, violation.penaltyPoints);
     }
     statusBar()->showMessage(violation.description, 3000);
+}
+
+void MainWindow::onScoreReady(const ScoreReport& report)
+{
+    SaveLoadManager::instance().saveReport(report);
+    showReportWindow(&report);
+    if (m_scoreManager) {
+        m_scoreManager->generateCoachReport(report);
+    }
+    statusBar()->showMessage(QStringLiteral("Driving report ready: %1 (%2)")
+                                 .arg(report.totalScore, 0, 'f', 1)
+                                 .arg(report.grade), 5000);
+}
+
+void MainWindow::onCoachReportReady(const QString& markdown)
+{
+    if (m_reportWidget) {
+        m_reportWidget->setCoachReportMarkdown(markdown);
+    }
 }
 
 void MainWindow::updateGameViewFromData(const DrivingData& data)
@@ -331,20 +455,7 @@ void MainWindow::updateHUD(int speed, const QString &status)
 
 void MainWindow::on_btn_History_clicked()
 {
-    if (m_reportWidget) {
-        // 如果窗口已关闭，需要重新创建
-        if (!m_reportWidget->isVisible()) {
-            m_reportWidget->deleteLater();
-            m_reportWidget = new DrivingReportWidget(nullptr);  // 顶级窗口
-            m_reportWidget->setAttribute(Qt::WA_DeleteOnClose);
-            m_reportWidget->setMinimumSize(900, 700);
-            m_reportWidget->resize(900, 700);
-        }
-
-        // 加载历史数据
-        m_reportWidget->loadHistoryFromSaveLoadManager();
-        m_reportWidget->show();
-        m_reportWidget->raise();
-        m_reportWidget->activateWindow();
-    }
+    showReportWindow();
 }
+
+
