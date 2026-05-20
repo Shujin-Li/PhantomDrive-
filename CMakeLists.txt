@@ -359,3 +359,47 @@ set_target_properties(test_visualization PROPERTIES
     OUTPUT_NAME "test_visualization"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+
+add_executable(test_score_manager_dedup
+    tests/test_score_manager_dedup.cpp
+)
+
+target_sources(test_score_manager_dedup PRIVATE
+    include/PhantomDrive/scoring/AIAPIClient.h
+    include/PhantomDrive/scoring/ScoreManager.h
+    include/PhantomDrive/gamemode/TrafficObject.h
+    include/PhantomDrive/gamemode/TrafficLightObject.h
+    include/PhantomDrive/gamemode/SpeedLimitSignObject.h
+    include/PhantomDrive/gamemode/PedestrianCrossingObject.h
+    include/PhantomDrive/gamemode/TrafficObjectManager.h
+    src/scoring/ScoreReport.cpp
+    src/scoring/DrivingScoreCalculator.cpp
+    src/scoring/TrafficRuleEnforcer.cpp
+    src/scoring/AIAPIClient.cpp
+    src/scoring/ScoreManager.cpp
+    src/gamemode/TrafficObject.cpp
+    src/gamemode/TrafficLightObject.cpp
+    src/gamemode/SpeedLimitSignObject.cpp
+    src/gamemode/PedestrianCrossingObject.cpp
+    src/gamemode/TrafficObjectManager.cpp
+)
+
+target_include_directories(test_score_manager_dedup PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+target_link_libraries(test_score_manager_dedup PRIVATE
+    PhantomDrive
+    Qt6::Core
+    Qt6::Network
+)
+
+add_dependencies(test_score_manager_dedup PhantomDrive)
+
+set_target_properties(test_score_manager_dedup PROPERTIES
+    AUTOMOC ON
+    OUTPUT_NAME "test_score_manager_dedup"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)

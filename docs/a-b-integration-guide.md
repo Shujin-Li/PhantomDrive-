@@ -70,6 +70,14 @@ A-B 当前验收依据为三个独立 examples：
 - `speedLimit`
 - `penaltyPoints`
 
+### 3.2.1 扣分真源（A-B 与 E-B 统一）
+
+- 交通违规扣分的真源是 `ViolationEvent.penaltyPoints`（由 E-B 产生事件时给出）。
+- A-B 在 `DrivingScoreCalculator` 中按事件逐条计算：
+  - `penaltyPoints > 0`：优先使用事件内扣分；
+  - `penaltyPoints <= 0`：回退到 `ViolationConfig` 默认值。
+- 这保证了 E-B 与 A-B 在交通违规扣分上的配置一致，不依赖 A-B 侧重复硬编码。
+
 ### 3.3 交通对象补充规则
 
 若 E-B 提供 `TrafficObjectManager` 与交通对象状态，A-B 可通过 `TrafficRuleEnforcer` 追加规则违规（如限速区、红灯、行人区）。

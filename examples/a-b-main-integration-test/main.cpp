@@ -72,6 +72,23 @@ void setOrUnsetEnv(const char* name, const QByteArray& value)
     }
 }
 
+bool hasBannedTerms(const QString& report)
+{
+    static const QStringList banned = {
+        QStringLiteral("根据"),
+        QStringLiteral("结合"),
+        QStringLiteral("你提供的输入"),
+        QStringLiteral("评分JSON"),
+        QStringLiteral("数据来源")
+    };
+    for (const QString& token : banned) {
+        if (report.contains(token, Qt::CaseInsensitive)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
@@ -130,6 +147,10 @@ int main(int argc, char* argv[])
     const QString managerCoachReport = manager.generateCoachReport(report);
     allPassed &= expect(coachReportReadyCount == 1, QStringLiteral("coachReportReady signal emitted once"));
     allPassed &= expect(!managerCoachReport.trimmed().isEmpty(), QStringLiteral("ScoreManager::generateCoachReport non-empty"));
+    allPassed &= expect(managerCoachReport.contains(QStringLiteral("# 驾驶教练报告")),
+                        QStringLiteral("manager coach report contains fixed title"));
+    allPassed &= expect(!hasBannedTerms(managerCoachReport),
+                        QStringLiteral("manager coach report excludes banned terms"));
 
     AIAPIClient aiClient;
 
@@ -143,20 +164,26 @@ int main(int argc, char* argv[])
     qputenv("PHANTOMDRIVE_AI_MODE", "auto");
     qputenv("PHANTOMDRIVE_AI_TIMEOUT_MS", "300");
     const QString autoReport = aiClient.generateCoachReport(report);
-    allPassed &= expect(autoReport.contains(QStringLiteral("Mock"), Qt::CaseInsensitive),
-                        QStringLiteral("auto mode without keys falls back to Mock"));
+    allPassed &= expect(autoReport.contains(QStringLiteral("# 驾驶教练报告")),
+                        QStringLiteral("auto mode returns markdown report"));
+    allPassed &= expect(!hasBannedTerms(autoReport),
+                        QStringLiteral("auto mode report excludes banned terms"));
 
     qputenv("PHANTOMDRIVE_AI_MODE", "mock");
     const QString mockModeReport = aiClient.generateCoachReport(report);
-    allPassed &= expect(mockModeReport.contains(QStringLiteral("mode=mock")),
-                        QStringLiteral("mock mode forces Mock report"));
+    allPassed &= expect(mockModeReport.contains(QStringLiteral("# 驾驶教练报告")),
+                        QStringLiteral("mock mode returns fixed markdown title"));
+    allPassed &= expect(!hasBannedTerms(mockModeReport),
+                        QStringLiteral("mock mode report excludes banned terms"));
 
     qputenv("PHANTOMDRIVE_AI_MODE", "deepseek");
     qputenv("DEEPSEEK_API_KEY", "invalid-key-for-test");
     qputenv("PHANTOMDRIVE_AI_TIMEOUT_MS", "200");
     const QString deepseekFailureReport = aiClient.generateCoachReport(report);
-    allPassed &= expect(deepseekFailureReport.contains(QStringLiteral("Mock"), Qt::CaseInsensitive),
-                        QStringLiteral("deepseek mode with invalid key falls back to Mock"));
+    allPassed &= expect(deepseekFailureReport.contains(QStringLiteral("# 驾驶教练报告")),
+                        QStringLiteral("deepseek mode fallback returns markdown report"));
+    allPassed &= expect(!hasBannedTerms(deepseekFailureReport),
+                        QStringLiteral("deepseek fallback report excludes banned terms"));
 
     setOrUnsetEnv("PHANTOMDRIVE_AI_MODE", originalMode);
     setOrUnsetEnv("PHANTOMDRIVE_AI_TIMEOUT_MS", originalTimeout);
@@ -171,10 +198,13 @@ int main(int argc, char* argv[])
 
         if (canRunDeepSeek || canRunZhipu) {
             const QString realApiReport = aiClient.generateCoachReport(report);
-            if (realApiReport.contains(QStringLiteral("Mock"), Qt::CaseInsensitive)) {
-                qWarning().noquote() << "[WARN] real api failed and fallback to Mock";
+            if (hasBannedTerms(realApiReport)) {
+                qCritical().noquote() << "[FAIL] real api report contains banned terms";
+                allPassed = false;
+            } else if (realApiReport.contains(QStringLiteral("# 驾驶教练报告"))) {
+                qDebug().noquote() << "[PASS] real api returned report with fixed markdown title";
             } else {
-                qDebug().noquote() << "[PASS] real api returned non-mock coach report";
+                qWarning().noquote() << "[WARN] real api report missing expected title";
             }
         } else {
             qWarning().noquote() << "[WARN] real api test skipped: set PHANTOMDRIVE_AI_MODE=deepseek|zhipu and matching API key";

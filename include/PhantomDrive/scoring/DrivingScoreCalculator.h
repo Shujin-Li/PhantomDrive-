@@ -7,11 +7,6 @@ namespace PhantomDrive {
 
 struct ScoreCalculatorConfig {
     qreal initialScore = 100.0;
-    qreal collisionPenalty = ViolationConfig::collisionPenalty;
-    qreal speedViolationPenalty = ViolationConfig::speedViolationPenalty;
-    qreal redLightPenalty = ViolationConfig::redLightPenalty;
-    qreal pedestrianPenalty = ViolationConfig::pedestrianPenalty;
-    qreal wrongWayPenalty = ViolationConfig::wrongWayPenalty;
 
     qreal harshAccelerationThreshold = 8.0;
     qreal harshBrakingThreshold = -8.0;

@@ -40,7 +40,10 @@ void ScoreManager::setTrafficObjectManager(TrafficObjectManager* manager)
 ScoreReport ScoreManager::evaluate(const QList<DrivingData>& data,
                                    const QList<ViolationEvent>& violations)
 {
-    if (data.isEmpty() && m_pendingViolations.isEmpty()) {
+    QList<ViolationEvent> consumedPendingViolations;
+    consumedPendingViolations.swap(m_pendingViolations);
+
+    if (data.isEmpty() && violations.isEmpty() && consumedPendingViolations.isEmpty()) {
         emit scoringFailed(QStringLiteral("No driving data or violations provided for scoring."));
         ScoreReport emptyReport;
         emptyReport.sessionId = QStringLiteral("session_%1").arg(QDateTime::currentMSecsSinceEpoch());
@@ -53,8 +56,14 @@ ScoreReport ScoreManager::evaluate(const QList<DrivingData>& data,
         return emptyReport;
     }
 
-    QList<ViolationEvent> allViolations = violations;
-    allViolations.append(m_pendingViolations);
+    QList<ViolationEvent> allViolations;
+    if (m_trafficManager != nullptr) {
+        // In E-B driven mode, violations come from TrafficObjectManager::violationDetected.
+        allViolations = consumedPendingViolations;
+    } else {
+        allViolations = violations;
+        allViolations.append(consumedPendingViolations);
+    }
     allViolations = m_ruleEnforcer.filterDuplicates(allViolations);
 
     ScoreReport report = m_calculator.evaluate(data, allViolations, m_vehicleId);

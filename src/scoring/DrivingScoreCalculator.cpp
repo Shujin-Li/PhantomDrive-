@@ -10,6 +10,24 @@ qreal clamp01(qreal v)
 {
     return qBound(0.0, v, 1.0);
 }
+
+qreal defaultPenaltyForType(ViolationType type)
+{
+    switch (type) {
+    case ViolationType::Collision:
+        return ViolationConfig::collisionPenalty;
+    case ViolationType::SpeedOverLimit:
+        return ViolationConfig::speedViolationPenalty;
+    case ViolationType::RedLight:
+        return ViolationConfig::redLightPenalty;
+    case ViolationType::PedestrianCollision:
+        return ViolationConfig::pedestrianPenalty;
+    case ViolationType::WrongWay:
+        return ViolationConfig::wrongWayPenalty;
+    default:
+        return 0.0;
+    }
+}
 }
 
 DrivingScoreCalculator::DrivingScoreCalculator()
@@ -64,47 +82,61 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
         report.metrics.overspeedRatio = static_cast<qreal>(report.metrics.overspeedFrameCount) / dataList.size();
     }
 
+    qreal collisionPenaltyFromEvents = 0.0;
+    qreal speedPenaltyFromEvents = 0.0;
+    qreal redLightPenaltyFromEvents = 0.0;
+    qreal pedestrianPenaltyFromEvents = 0.0;
+    qreal wrongWayPenalty = 0.0;
+
     for (const ViolationEvent& v : violations) {
+        const qreal appliedPenalty =
+                v.penaltyPoints > 0 ? static_cast<qreal>(v.penaltyPoints) : defaultPenaltyForType(v.type);
         switch (v.type) {
         case ViolationType::Collision:
             report.metrics.collisionCount++;
+            collisionPenaltyFromEvents += appliedPenalty;
             break;
         case ViolationType::SpeedOverLimit:
             report.metrics.speedViolationCount++;
+            speedPenaltyFromEvents += appliedPenalty;
             break;
         case ViolationType::RedLight:
             report.metrics.redLightViolationCount++;
+            redLightPenaltyFromEvents += appliedPenalty;
             break;
         case ViolationType::PedestrianCollision:
             report.metrics.pedestrianViolationCount++;
+            pedestrianPenaltyFromEvents += appliedPenalty;
             break;
         case ViolationType::WrongWay:
             report.metrics.wrongWayViolationCount++;
+            wrongWayPenalty += appliedPenalty;
             break;
         default:
             break;
         }
     }
 
-    report.breakdown.collisionPenalty = report.metrics.collisionCount * m_config.collisionPenalty;
+    const bool hasSpeedViolationEvent = report.metrics.speedViolationCount > 0;
+    const qreal overspeedPenalty = hasSpeedViolationEvent
+            ? report.metrics.overspeedRatio * 2.0
+            : report.metrics.overspeedRatio * 12.0;
+
+    report.breakdown.collisionPenalty = collisionPenaltyFromEvents;
     report.breakdown.speedPenalty =
-            report.metrics.speedViolationCount * m_config.speedViolationPenalty
-            + report.metrics.overspeedRatio * 10.0;
-    report.breakdown.redLightPenalty = report.metrics.redLightViolationCount * m_config.redLightPenalty;
-    report.breakdown.pedestrianPenalty = report.metrics.pedestrianViolationCount * m_config.pedestrianPenalty;
+            speedPenaltyFromEvents + overspeedPenalty;
+    report.breakdown.redLightPenalty = redLightPenaltyFromEvents;
+    report.breakdown.pedestrianPenalty = pedestrianPenaltyFromEvents;
     report.breakdown.smoothnessPenalty =
             report.metrics.harshAccelerationCount * 1.8
             + report.metrics.harshBrakingCount * 2.2
             + report.metrics.sharpSteeringCount * 1.5;
 
-    qreal wrongWayPenalty = report.metrics.wrongWayViolationCount * m_config.wrongWayPenalty;
-
     qreal safetyPenalty =
             report.breakdown.collisionPenalty + report.breakdown.pedestrianPenalty
             + report.metrics.harshBrakingCount * 2.0 + report.metrics.harshAccelerationCount * 1.5;
     qreal rulePenalty =
-            report.breakdown.speedPenalty + report.breakdown.redLightPenalty + wrongWayPenalty
-            + report.metrics.overspeedRatio * 8.0;
+            report.breakdown.speedPenalty + report.breakdown.redLightPenalty + wrongWayPenalty;
     qreal smoothnessPenalty = report.breakdown.smoothnessPenalty;
     qreal efficiencyPenalty = 0.0;
     if (report.metrics.dataPointCount < 20) {
@@ -140,7 +172,7 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
         report.coachAdvices.append({"安全", "高", "碰撞风险较高，建议保持安全车距并提前减速。", "碰撞/行人违规次数偏高"});
     }
     if (report.metrics.speedViolationCount >= 2 || report.metrics.overspeedRatio > 0.15) {
-        report.coachAdvices.append({"规则", "中", "进入限速区后主动观察限速标志并及时收油。", "超速与限速区违规偏多"});
+        report.coachAdvices.append({"规则", "中", "限速标志出现后 2 秒内把车速压到限速以下；超限时先收油 1 秒再轻刹，避免急刹。", "超速事件或连续超速帧偏多，规则维度持续失分"});
     }
     if (report.metrics.harshBrakingCount >= 3) {
         report.coachAdvices.append({"平顺", "中", "急刹车较多，建议提前预判交通灯和行人动态。", "急刹次数较高"});
@@ -153,9 +185,8 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
     }
 
     report.qLearningFeedback.normalizedScore = report.totalScore / 100.0;
-    report.qLearningFeedback.collisionPenalty = clamp01((report.metrics.collisionCount * m_config.collisionPenalty) / 100.0);
-    report.qLearningFeedback.speedPenalty = clamp01((report.metrics.speedViolationCount * m_config.speedViolationPenalty
-                                                    + report.metrics.overspeedRatio * 10.0) / 100.0);
+    report.qLearningFeedback.collisionPenalty = clamp01(report.breakdown.collisionPenalty / 100.0);
+    report.qLearningFeedback.speedPenalty = clamp01(report.breakdown.speedPenalty / 100.0);
     report.qLearningFeedback.smoothnessPenalty = clamp01(report.breakdown.smoothnessPenalty / 100.0);
     report.qLearningFeedback.safetyRisk = clamp01(
             report.metrics.collisionCount * 0.25
@@ -165,7 +196,7 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
             1.0 - (report.metrics.speedViolationCount * 0.08
                    + report.metrics.redLightViolationCount * 0.12
                    + report.metrics.wrongWayViolationCount * 0.1
-                   + report.metrics.overspeedRatio * 0.5));
+                   + report.metrics.overspeedRatio * 0.35));
     report.qLearningFeedback.terminalPenalty =
             (report.metrics.collisionCount > 0 ? 0.2 : 0.0)
             + (report.metrics.pedestrianViolationCount > 0 ? 0.35 : 0.0);
@@ -193,4 +224,3 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
 }
 
 }
-

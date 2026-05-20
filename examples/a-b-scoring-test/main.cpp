@@ -2,13 +2,14 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QJsonDocument>
-#include <QRectF>
 #include <QtMath>
 
 #include "PhantomDrive/gamemode/SpeedLimitSignObject.h"
 #include "PhantomDrive/gamemode/TrafficObjectManager.h"
 #include "PhantomDrive/scoring/AIAPIClient.h"
+#include "PhantomDrive/scoring/DrivingScoreCalculator.h"
 #include "PhantomDrive/scoring/ScoreManager.h"
+#include "PhantomDrive/scoring/ViolationConfig.h"
 
 using namespace PhantomDrive;
 
@@ -24,6 +25,23 @@ static QList<DrivingData> makeGoodData()
         d.currentSpeedLimit = 15.0;
         d.acceleration = qSin(i * 0.1) * 1.5;
         d.steeringAngle = qSin(i * 0.08) * 8.0;
+        list.append(d);
+    }
+    return list;
+}
+
+static QList<DrivingData> makeMediumData()
+{
+    QList<DrivingData> list;
+    const qint64 base = QDateTime::currentMSecsSinceEpoch();
+    for (int i = 0; i < 120; ++i) {
+        DrivingData d;
+        d.timestamp = base + i * 100;
+        d.position = QVector2D(static_cast<qreal>(i) * 0.7, 0.5);
+        d.currentSpeedLimit = 12.0;
+        d.speed = (i % 10 < 3) ? 13.8 : 11.0;
+        d.acceleration = (i % 20 == 0) ? 8.2 : ((i % 17 == 0) ? -8.4 : 1.6);
+        d.steeringAngle = (i % 18 == 0) ? 30.0 : 10.0;
         list.append(d);
     }
     return list;
@@ -61,18 +79,45 @@ static QList<ViolationEvent> makeBadViolations(const QList<DrivingData>& dataLis
         list.append(v);
     };
 
-    addViolation(20, ViolationType::SpeedOverLimit, QStringLiteral("超速"), 6);
-    addViolation(45, ViolationType::SpeedOverLimit, QStringLiteral("超速"), 6);
-    addViolation(70, ViolationType::Collision, QStringLiteral("碰撞障碍物"), 15);
-    addViolation(80, ViolationType::RedLight, QStringLiteral("闯红灯"), 12);
-    addViolation(95, ViolationType::PedestrianCollision, QStringLiteral("行人区域违规"), 20);
+    addViolation(20, ViolationType::SpeedOverLimit, QStringLiteral("speed"), 6);
+    addViolation(45, ViolationType::SpeedOverLimit, QStringLiteral("speed"), 6);
+    addViolation(70, ViolationType::Collision, QStringLiteral("collision"), 15);
+    addViolation(80, ViolationType::RedLight, QStringLiteral("redlight"), 12);
+    addViolation(95, ViolationType::PedestrianCollision, QStringLiteral("pedestrian"), 20);
     return list;
+}
+
+static QList<DrivingData> makePenaltyTestData()
+{
+    QList<DrivingData> list;
+    const qint64 base = QDateTime::currentMSecsSinceEpoch();
+    for (int i = 0; i < 10; ++i) {
+        DrivingData d;
+        d.timestamp = base + i * 100;
+        d.position = QVector2D(static_cast<qreal>(i), 0.0);
+        d.speed = 8.0;
+        d.currentSpeedLimit = 12.0;
+        list.append(d);
+    }
+    return list;
+}
+
+static ViolationEvent makeSpeedViolation(const QList<DrivingData>& dataList, int penaltyPoints)
+{
+    ViolationEvent v;
+    v.timestamp = dataList[2].timestamp;
+    v.type = ViolationType::SpeedOverLimit;
+    v.description = QStringLiteral("speed event");
+    v.position = dataList[2].position;
+    v.speedAtViolation = 14.0;
+    v.speedLimit = 12.0;
+    v.penaltyPoints = penaltyPoints;
+    return v;
 }
 
 int main(int argc, char* argv[])
 {
     QCoreApplication app(argc, argv);
-
     qRegisterMetaType<PhantomDrive::ScoreReport>("PhantomDrive::ScoreReport");
 
     ScoreManager manager;
@@ -84,73 +129,52 @@ int main(int argc, char* argv[])
     sign->setDetectionRadius(100.0);
     sign->setSpeedLimit(12.0);
     trafficManager.registerTrafficObject(sign);
-
-    QObject::connect(&trafficManager, &TrafficObjectManager::violationDetected,
-                     &manager, &ScoreManager::onViolationDetected);
     manager.setTrafficObjectManager(&trafficManager);
 
-    trafficManager.onVehicleSpeedChanged(15.0);
-    trafficManager.onVehiclePositionChanged(QVector2D(30.0, 0.0));
-
     bool scoreReadyTriggered = false;
-    QObject::connect(&manager, &ScoreManager::scoreReady, [&](const ScoreReport& report) {
+    QObject::connect(&manager, &ScoreManager::scoreReady, [&](const ScoreReport&) {
         scoreReadyTriggered = true;
-        qDebug() << "[scoreReady] totalScore =" << report.totalScore << "grade =" << report.grade;
-    });
-    QObject::connect(&manager, &ScoreManager::coachReportReady, [&](const QString& markdown) {
-        qDebug() << "[coachReportReady] markdown length =" << markdown.size();
-    });
-    QObject::connect(&manager, &ScoreManager::scoringFailed, [&](const QString& reason) {
-        qDebug() << "[scoringFailed]" << reason;
     });
 
-    const QList<DrivingData> goodData = makeGoodData();
-    const ScoreReport goodReport = manager.evaluate(goodData, {});
-    qDebug() << "\n=== Good Scenario ===";
-    qDebug() << "totalScore =" << goodReport.totalScore;
-    qDebug() << "grade =" << goodReport.grade;
-    qDebug() << "dimension scores ="
-             << goodReport.breakdown.safetyScore
-             << goodReport.breakdown.ruleComplianceScore
-             << goodReport.breakdown.smoothnessScore
-             << goodReport.breakdown.efficiencyScore;
-    qDebug() << "violations =" << goodReport.violations.size();
-    qDebug() << "qLearning reward =" << goodReport.qLearningFeedback.reward
-             << "normalized =" << goodReport.qLearningFeedback.normalizedScore
-             << "safetyRisk =" << goodReport.qLearningFeedback.safetyRisk;
-
+    const ScoreReport goodReport = manager.evaluate(makeGoodData(), {});
+    const ScoreReport mediumReport = manager.evaluate(makeMediumData(), {});
     const QList<DrivingData> badData = makeBadData();
-    const QList<ViolationEvent> badViolations = makeBadViolations(badData);
-    const ScoreReport badReport = manager.evaluate(badData, badViolations);
-    qDebug() << "\n=== Bad Scenario ===";
-    qDebug() << "totalScore =" << badReport.totalScore;
-    qDebug() << "grade =" << badReport.grade;
-    qDebug() << "dimension scores ="
-             << badReport.breakdown.safetyScore
-             << badReport.breakdown.ruleComplianceScore
-             << badReport.breakdown.smoothnessScore
-             << badReport.breakdown.efficiencyScore;
-    qDebug() << "violations =" << badReport.violations.size();
-    qDebug() << "qLearning reward =" << badReport.qLearningFeedback.reward
-             << "ruleCompliance =" << badReport.qLearningFeedback.ruleCompliance
-             << "terminalPenalty =" << badReport.qLearningFeedback.terminalPenalty;
+    const ScoreReport badReport = manager.evaluate(badData, makeBadViolations(badData));
 
     AIAPIClient aiClient;
     const QString coachMd = aiClient.generateCoachReport(badReport);
-    qDebug() << "\n=== AI Coach Report (Mock) ===\n" << coachMd;
+    const bool hasBannedTerms =
+            coachMd.contains(QStringLiteral("根据"))
+            || coachMd.contains(QStringLiteral("结合"))
+            || coachMd.contains(QStringLiteral("你提供的输入"))
+            || coachMd.contains(QStringLiteral("评分JSON"))
+            || coachMd.contains(QStringLiteral("数据来源"));
 
-    const QByteArray jsonBytes = QJsonDocument(badReport.toJson()).toJson(QJsonDocument::Indented);
-    const QString markdown = badReport.toMarkdown();
-    qDebug() << "\n=== Serialization Check ===";
-    qDebug() << "json not empty =" << !jsonBytes.isEmpty() << "size =" << jsonBytes.size();
-    qDebug() << "markdown not empty =" << !markdown.isEmpty() << "size =" << markdown.size();
+    DrivingScoreCalculator calculator;
+    const QList<DrivingData> penaltyTestData = makePenaltyTestData();
+    const ScoreReport customPenaltyReport = calculator.evaluate(
+            penaltyTestData, {makeSpeedViolation(penaltyTestData, 30)}, QStringLiteral("custom-penalty"));
+    const ScoreReport fallbackPenaltyReport = calculator.evaluate(
+            penaltyTestData, {makeSpeedViolation(penaltyTestData, 0)}, QStringLiteral("fallback-penalty"));
 
-    qDebug() << "\n=== Assertions ===";
-    qDebug() << "good grade expected A/B ->" << (goodReport.grade == "A" || goodReport.grade == "B");
-    qDebug() << "bad grade expected not A ->" << (badReport.grade != "A");
-    qDebug() << "scoreReady signal triggered ->" << scoreReadyTriggered;
+    bool ok = true;
+    ok &= (goodReport.grade == "A" || goodReport.grade == "B");
+    ok &= (goodReport.totalScore > mediumReport.totalScore + 4.0);
+    ok &= (mediumReport.totalScore > badReport.totalScore + 4.0);
+    ok &= (badReport.grade != "A");
+    ok &= scoreReadyTriggered;
+    ok &= coachMd.contains(QStringLiteral("# 驾驶教练报告"));
+    ok &= !hasBannedTerms;
+    ok &= (customPenaltyReport.breakdown.speedPenalty > fallbackPenaltyReport.breakdown.speedPenalty);
+    ok &= (qAbs(fallbackPenaltyReport.breakdown.speedPenalty
+                - static_cast<qreal>(ViolationConfig::speedViolationPenalty)) < 0.001);
 
-    manager.generateCoachReport(badReport);
+    if (!ok) {
+        qCritical() << "a-b-scoring-test failed.";
+        return 1;
+    }
 
+    qDebug() << "a-b-scoring-test passed.";
+    qDebug() << QString::fromUtf8(QJsonDocument(badReport.toJson()).toJson(QJsonDocument::Indented)).left(300);
     return 0;
 }

@@ -2,6 +2,7 @@
 #include <QDebug>
 #include <QtMath>
 #include <QJsonArray>
+#include <QJsonDocument>
 
 namespace PhantomDrive {
 QString stateToString(AIState state)
@@ -561,7 +562,7 @@ QString SimpleAIOpponent::exportStateString() const
 
     QJsonDocument doc(jsonObj);
 
-    return doc.toJson(QJsonDocument::Compact);
+    return QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
 }
 
 void SimpleAIOpponent::loadStateData(const QVariantMap& data)
