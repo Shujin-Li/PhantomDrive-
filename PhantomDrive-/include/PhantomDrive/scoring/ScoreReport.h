@@ -82,4 +82,4 @@ struct ScoreReport {
 }
 
 Q_DECLARE_METATYPE(PhantomDrive::ScoreReport)
-
+Q_DECLARE_METATYPE(PhantomDrive::QLearningFeedback)

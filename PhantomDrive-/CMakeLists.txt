@@ -419,3 +419,25 @@ set_target_properties(ab_report_widget_demo PROPERTIES
     OUTPUT_NAME "ab_report_widget_demo"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+
+add_executable(a_b_ddl_event_integration_demo
+    examples/a-b-ddl-event-integration-demo/main.cpp
+)
+
+target_include_directories(a_b_ddl_event_integration_demo PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
+)
+
+target_link_libraries(a_b_ddl_event_integration_demo PRIVATE
+    PhantomDrive
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+)
+
+set_target_properties(a_b_ddl_event_integration_demo PROPERTIES
+    AUTOMOC ON
+    OUTPUT_NAME "a_b_ddl_event_integration_demo"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)

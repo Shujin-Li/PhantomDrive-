@@ -12,6 +12,10 @@ TrafficRuleEnforcer::TrafficRuleEnforcer(int cooldownMs)
 bool TrafficRuleEnforcer::shouldEmit(const QString& key, qint64 timestamp, QHash<QString, qint64>& dedupe) const
 {
     const qint64 last = dedupe.value(key, std::numeric_limits<qint64>::min());
+    if (last == std::numeric_limits<qint64>::min()) {
+        dedupe.insert(key, timestamp);
+        return true;
+    }
     if (timestamp - last < m_cooldownMs) {
         return false;
     }
