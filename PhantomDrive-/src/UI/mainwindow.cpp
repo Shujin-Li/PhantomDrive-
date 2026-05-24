@@ -29,6 +29,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_gameView(nullptr)
     , m_drivingDataCollector(new DrivingDataCollector(this))
     , m_scoreManager(new ScoreManager(this))
+    , m_aiManager(new AIOpponentManager(this))
     , m_reportWidget(new DrivingReportWidget(this))
     , m_btnFinishDrive(nullptr)
     , m_simTimer(nullptr)
@@ -42,6 +43,12 @@ MainWindow::MainWindow(QWidget *parent)
     setupGameView();
     setupDemoControls();
     setupDataBindings();
+    connect(m_scoreManager,
+            &ScoreManager::qLearningFeedbackReady,
+            m_aiManager,
+            &AIOpponentManager::onQLearningFeedbackReady);
+
+    qDebug() << "=== QLearning Connected ===";
 
     m_learningHUD = new LearningHUD(this);
     m_learningHUD->hide();
@@ -90,6 +97,24 @@ MainWindow::MainWindow(QWidget *parent)
     m_drivingDataCollector->setSamplingInterval(50);
     m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
 
+    QList<Waypoint> aiWaypoints;
+
+    aiWaypoints.append(Waypoint(QVector2D(200, 200), 80));
+    aiWaypoints.append(Waypoint(QVector2D(800, 200), 100));
+    aiWaypoints.append(Waypoint(QVector2D(800, 800), 60, true, 2));
+    aiWaypoints.append(Waypoint(QVector2D(200, 800), 90));
+
+    AIOpponent* ai1 = m_aiManager->createOpponent("ai_1", AIStyle::Aggressive);
+    AIOpponent* ai2 = m_aiManager->createOpponent("ai_2", AIStyle::Conservative);
+
+    ai1->setWaypoints(aiWaypoints);
+    ai2->setWaypoints(aiWaypoints);
+
+    ai1->setPosition(QVector2D(200, 200));
+    ai2->setPosition(QVector2D(240, 240));
+
+    ai1->setState(AIState::Racing);
+    ai2->setState(AIState::Racing);
     simulateGameLoop();
 }
 
@@ -265,6 +290,23 @@ void MainWindow::simulateGameLoop()
 
         updateTrafficAndHud(tick);
 
+        if (m_aiManager)
+        {
+            m_aiManager->update(50);
+
+            QList<AIOpponent*> opponents = m_aiManager->getAllOpponents();
+
+            for (AIOpponent* ai : opponents)
+            {
+                m_gameView->updateAICar(
+                    ai->getId(),
+                    ai->getPosition(),
+                    ai->getRotation(),
+                    ai->getSpeed()
+                    );
+            }
+        }
+
         if (m_drivingDataCollector && m_drivingDataCollector->vehicleSensor()) {
             VehicleSensor* sensor = m_drivingDataCollector->vehicleSensor();
             sensor->updatePosition(QVector2D(carX, carY));
@@ -327,7 +369,7 @@ void MainWindow::finishDrivingSession()
     }
 
     statusBar()->showMessage(QStringLiteral("Scoring current driving session..."));
-    m_scoreManager->evaluateFromCollector(m_drivingDataCollector);
+    m_scoreManager->finishSession(m_drivingDataCollector);
 }
 
 void MainWindow::showReportWindow(const ScoreReport* report)
@@ -426,10 +468,6 @@ void MainWindow::updateGameViewFromData(const DrivingData& data)
     }
 
     m_gameView->updatePlayerCar(data.position, data.rotation, data.speed);
-    m_gameView->updateAICar("ai_1",
-                            data.position + QVector2D(120, 56),
-                            data.rotation + 8.0,
-                            qMax(35.0, data.speed * 0.88));
     m_gameView->setCameraPosition(data.position);
 }
 

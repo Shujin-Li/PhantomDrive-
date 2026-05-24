@@ -1,4 +1,5 @@
 #include "LearningMode.h"
+#include "ScoreManager.h"
 
 #include <QDebug>
 #include <QDateTime>
@@ -20,6 +21,8 @@ LearningMode::LearningMode(QObject* parent)
     , m_sessionStartTime(0)
     , m_lastViolationTime(0)
     , m_minViolationIntervalMs(1000)
+    , m_aiManager(new AIOpponentManager())
+    , m_scoreManager(new ScoreManager())
 {
 }
 
@@ -35,12 +38,45 @@ void LearningMode::onEnter()
     m_lastViolationTime = 0;
     m_totalScore = m_initialScore;
     qDebug() << "LearningMode: Entered";
+    m_testWaypoints.clear();
+
+    m_testWaypoints.append(Waypoint(QVector2D(200, 200)));
+    m_testWaypoints.append(Waypoint(QVector2D(800, 200)));
+    m_testWaypoints.append(Waypoint(QVector2D(800, 800)));
+    m_testWaypoints.append(Waypoint(QVector2D(200, 800)));
+
+    AIOpponent* ai1 = m_aiManager->createOpponent("ai_1", AIStyle::Aggressive);
+    AIOpponent* ai2 = m_aiManager->createOpponent("ai_2", AIStyle::Conservative);
+    AIOpponent* ai3 = m_aiManager->createOpponent("ai_3", AIStyle::Defensive);
+
+    ai1->setWaypoints(m_testWaypoints);
+    ai2->setWaypoints(m_testWaypoints);
+    ai3->setWaypoints(m_testWaypoints);
+
+    ai1->setPosition(QVector2D(200, 200));
+    ai2->setPosition(QVector2D(220, 220));
+    ai3->setPosition(QVector2D(240, 240));
+
+    connect(m_scoreManager,
+            &ScoreManager::qLearningFeedbackReady,
+            m_aiManager,
+            &AIOpponentManager::onQLearningFeedbackReady);
+
+    qDebug() << "=== QLearning Connected ===";
 }
 
 void LearningMode::onExit()
 {
     GameMode::onExit();
+
+    ScoreReport report = m_scoreManager->finishSession();
+
+    qDebug() << "=== Session Finished ===";
+    qDebug() << "Final Score:" << report.totalScore;
+    qDebug() << "Grade:" << report.grade;
+
     emit learningSessionCompleted(m_totalScore, m_violations.size());
+
     qDebug() << "LearningMode: Exited with score" << m_totalScore;
 }
 
@@ -53,6 +89,7 @@ void LearningMode::update(qint64 elapsedMs)
     checkTrafficLightViolations(elapsedMs);
     updateSpeedLimit(elapsedMs);
     processPedestrianZones();
+    m_aiManager->update(elapsedMs);
 
     emit modeUpdated(elapsedMs);
 }
@@ -274,6 +311,9 @@ void LearningMode::recordViolation(ViolationType type, const QString& descriptio
                           (type == ViolationType::RedLight) ? 10 : 5;
 
     m_violations.append(event);
+
+    m_scoreManager->recordViolation(event);
+
     emit violationRecorded(event);
 }
 

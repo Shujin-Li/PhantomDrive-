@@ -198,5 +198,39 @@ void AIOpponentManager::fromJson(const QJsonObject& json)
         }
     }
 }
+void AIOpponentManager::onQLearningFeedbackReady(const QLearningFeedback& feedback)
+{
+    qDebug() << "=== QLearning Feedback Received ===";
+    qDebug() << "Reward:" << feedback.reward;
+    qDebug() << "Normalized Score:" << feedback.normalizedScore;
+    qDebug() << "Safety Risk:" << feedback.safetyRisk;
+    qDebug() << "Rule Compliance:" << feedback.ruleCompliance;
+    qDebug() << "Recommended Action:" << feedback.recommendedActionHint;
 
+    for (AIOpponent* opponent : m_opponents) {
+
+        AIConfig config = opponent->getConfig();
+
+        if (feedback.ruleCompliance > 0.8) {
+            config.maxSpeed += 5.0;
+            config.aggressionLevel += 0.05;
+        }
+
+        if (feedback.safetyRisk > 0.5) {
+            config.maxSpeed -= 5.0;
+            config.aggressionLevel -= 0.05;
+        }
+
+        config.maxSpeed = qBound(80.0, config.maxSpeed, 300.0);
+        config.aggressionLevel = qBound(0.1, config.aggressionLevel, 1.0);
+
+        opponent->setConfig(config);
+
+        qDebug() << opponent->getId()
+                 << "updated maxSpeed:"
+                 << config.maxSpeed
+                 << "aggression:"
+                 << config.aggressionLevel;
+    }
+}
 } // namespace PhantomDrive

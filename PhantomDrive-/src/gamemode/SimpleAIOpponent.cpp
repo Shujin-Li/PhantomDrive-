@@ -102,18 +102,63 @@ AIDecision SimpleAIOpponent::makeDecision()
 void SimpleAIOpponent::update(qint64 elapsedMs)
 {
     m_stateDuration += elapsedMs;
+    AIStyle style = m_config.style;
+
+    if (m_speed < 20.0)
+    {
+        setState(AIState::Recovering);
+    }
+    else if (getDistanceToPlayer() < 120.0)
+    {
+        if (style == AIStyle::Aggressive)
+        {
+            setState(AIState::Overtaking);
+        }
+        else if (style == AIStyle::Defensive)
+        {
+            setState(AIState::Defending);
+        }
+        else
+        {
+            setState(AIState::Racing);
+        }
+    }
+    else
+    {
+        setState(AIState::Racing);
+    }
 
     if (!m_waypoints.isEmpty() && m_active && !m_finished) {
         AIDecision decision = makeDecision();
 
         m_steeringAngle = decision.steering * 30.0;
+
+        m_rotation += m_steeringAngle * (elapsedMs / 1000.0);
+
         qreal throttle = decision.throttle;
         qreal brake = decision.brake;
+
+        if (m_state == AIState::Overtaking)
+        {
+            throttle *= 1.2;
+        }
+
+        if (m_state == AIState::Recovering)
+        {
+            throttle *= 0.5;
+            brake += 0.3;
+        }
+
+        if (m_state == AIState::Defending)
+        {
+            throttle *= 0.8;
+        }
 
         qreal acceleration = m_config.acceleration * throttle - 50.0 * brake;
         m_speed += acceleration * (elapsedMs / 1000.0);
         m_speed = qMax(0.0, qMin(m_config.maxSpeed, m_speed));
 
+        m_rotation += m_steeringAngle * (elapsedMs / 1000.0) * 2.0;
         qreal rotationRad = m_rotation * M_PI / 180.0;
         m_velocity = QVector2D(qCos(rotationRad) * m_speed, qSin(rotationRad) * m_speed);
 
@@ -144,6 +189,12 @@ QVector2D SimpleAIOpponent::calculateSteering()
 
     Waypoint targetWP = getCurrentWaypoint();
     QVector2D toTarget = targetWP.position - m_position;
+    if (m_state == AIState::Overtaking)
+    {
+        QVector2D offset(80.0f, 0.0f);
+        toTarget += offset;
+    }
+
     qreal targetAngle = std::atan2(toTarget.y(), toTarget.x());
     qreal currentAngleRad = m_rotation * M_PI / 180.0;
 
@@ -151,26 +202,80 @@ QVector2D SimpleAIOpponent::calculateSteering()
     while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
     while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
 
-    return QVector2D(angleDiff / M_PI, 0);
+    qreal steeringValue = angleDiff / M_PI;
+    steeringValue = qBound(-1.0, steeringValue, 1.0);
+
+    switch (m_config.style)
+    {
+    case AIStyle::Aggressive:
+        steeringValue *= 1.2;
+        break;
+
+    case AIStyle::Conservative:
+        steeringValue *= 0.7;
+        break;
+
+    case AIStyle::Defensive:
+        steeringValue *= 0.5;
+        break;
+
+    case AIStyle::Normal:
+    default:
+        steeringValue *= 1.0;
+        break;
+    }
+
+    return QVector2D(steeringValue, 0);
 }
 
 qreal SimpleAIOpponent::calculateThrottle()
 {
+    AIStyle style = m_config.style;
     if (m_waypoints.isEmpty()) return 0.5;
 
     Waypoint currentWP = getCurrentWaypoint();
     qreal distToWP = (currentWP.position - m_position).length();
 
-    if (currentWP.isCorner) {
+    if (currentWP.isCorner)
+    {
         qreal cornerFactor = 1.0 - (currentWP.cornerSeverity / 3.0);
-        return cornerFactor * 0.7;
+
+        switch (style)
+        {
+        case AIStyle::Aggressive:
+            return cornerFactor * 1.0;
+
+        case AIStyle::Conservative:
+            return cornerFactor * 0.5;
+
+        case AIStyle::Defensive:
+            return cornerFactor * 0.4;
+
+        case AIStyle::Normal:
+        default:
+            return cornerFactor * 0.7;
+        }
     }
 
     if (distToWP < 100.0) {
         return 0.5;
     }
 
-    return 1.0;
+    switch (style)
+    {
+    case AIStyle::Aggressive:
+        return 1.0;
+
+    case AIStyle::Conservative:
+        return 0.7;
+
+    case AIStyle::Defensive:
+        return 0.5;
+
+    case AIStyle::Normal:
+    default:
+        return 0.85;
+    }
 }
 
 qreal SimpleAIOpponent::calculateBraking()
@@ -189,7 +294,21 @@ qreal SimpleAIOpponent::calculateBraking()
         return (m_speed - currentWP.preferredSpeed) / m_config.maxSpeed;
     }
 
-    return 0;
+    switch (m_config.style)
+    {
+    case AIStyle::Aggressive:
+        return 0.1;
+
+    case AIStyle::Conservative:
+        return 0.5;
+
+    case AIStyle::Defensive:
+        return 0.7;
+
+    case AIStyle::Normal:
+    default:
+        return 0.3;
+    }
 }
 
 bool SimpleAIOpponent::usePowerup(int slot)

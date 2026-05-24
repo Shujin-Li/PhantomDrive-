@@ -1,8 +1,12 @@
 #pragma once
 
+#include "DrivingData.h"
 #include "GameMode.h"
 #include "DrivingData.h"
 #include "PhantomDrive_global.h"
+#include "AIOpponentManager.h"
+#include "ScoreManager.h"
+#include "AIOpponentManager.h"
 
 #include <QRectF>
 #include <QMap>
@@ -142,6 +146,9 @@ private:
     qint64 m_sessionStartTime;
     qint64 m_lastViolationTime;
     int m_minViolationIntervalMs;
+    AIOpponentManager* m_aiManager;
+    QList<Waypoint> m_testWaypoints;
+    ScoreManager* m_scoreManager;
 };
 
 }

@@ -11,6 +11,7 @@
 #include "gamemode/DrivingDataCollector.h"
 #include "scoring/ScoreManager.h"
 #include "core/datamodels.h"
+#include "gamemode/AIOpponentManager.h"
 
 class QPushButton;
 
@@ -37,6 +38,7 @@ private:
     PhantomDrive::GameViewWidget *m_gameView;
     PhantomDrive::DrivingDataCollector *m_drivingDataCollector;
     PhantomDrive::ScoreManager *m_scoreManager;
+    PhantomDrive::AIOpponentManager *m_aiManager;
     PhantomDrive::DrivingReportWidget *m_reportWidget;
     QPushButton *m_btnFinishDrive;
     QTimer *m_simTimer;

@@ -2,6 +2,7 @@
 
 #include "AIOpponent.h"
 #include "PhantomDrive_global.h"
+#include "ScoreReport.h"
 
 #include <QObject>
 #include <QString>
@@ -64,6 +65,9 @@ public:
     // ==================== 序列化 ====================
     virtual QJsonObject toJson() const;
     virtual void fromJson(const QJsonObject& json);
+
+    // ==================== Q-Learning ====================
+    void onQLearningFeedbackReady(const QLearningFeedback& feedback);
 
 signals:
     void opponentAdded(const QString& opponentId);
