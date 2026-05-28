@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QApplication>
 #include <QVector2D>
+#include <QList>
 #include "PhantomDrive_global.h"
 #include "learninghud.h"
 #include "UI/ArcadeHUD.h"
@@ -24,6 +25,12 @@ class QComboBox;
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
+
+namespace PhantomDrive {
+class PowerupBox;
+class TrafficObjectManager;
+enum class PowerupType;
+}
 
 class PHANTOMDRIVE_EXPORT MainWindow : public QMainWindow
 {
@@ -57,6 +64,8 @@ private:
     PhantomDrive::DrivingDataCollector *m_drivingDataCollector;
     PhantomDrive::ScoreManager *m_scoreManager;
     PhantomDrive::AIOpponentManager *m_aiManager;
+    PhantomDrive::TrafficObjectManager *m_trafficObjectManager;
+    QList<PhantomDrive::PowerupBox*> m_powerupBoxes;
     PhantomDrive::DrivingReportWidget *m_reportWidget;
     QPushButton *m_btnFinishDrive;
     QComboBox *m_aiDifficultyCombo;
@@ -102,9 +111,15 @@ private:
     void updateTrafficAndHud(int tick);
     void updateRaceHud();
     int displaySpeedKmh() const;
+    QString powerupTypeToString(PhantomDrive::PowerupType type) const;
     QString formatRaceTime(qint64 milliseconds) const;
     qreal estimatePlayerProgress() const;
     void simulateGameLoop();
+    void setupEBRuntimeObjects();
+    void clearEBRuntimeObjects();
+    void updateEBRuntime(qreal deltaSeconds);
+    void handlePowerupCollected(PhantomDrive::PowerupType type);
+    void handleTrafficViolation(const PhantomDrive::ViolationEvent& violation);
     void applyPlayerSpawnAtStartLine();
     void syncRaceTrackToManager();
     void resetArcadeRaceProgress();

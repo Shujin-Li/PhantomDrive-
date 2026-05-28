@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QString>
 #include <QMap>
+#include <QHash>
 #include <QList>
 #include <QVector2D>
 
@@ -82,6 +83,7 @@ public slots:
 
 private:
     void checkSpeedLimitZones(const QVector2D& position);
+    bool shouldEmitViolation(const QString& key, qint64 timestampMs, int cooldownMs);
 
     QMap<QString, TrafficObject*> m_trafficObjects;
     QMap<QString, TrafficLightObject*> m_trafficLights;
@@ -92,6 +94,7 @@ private:
     qreal m_lastVehicleSpeed;
 
     QString m_currentSpeedLimitZoneId;
+    QHash<QString, qint64> m_lastViolationByKey;
 };
 
 }

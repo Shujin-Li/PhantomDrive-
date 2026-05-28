@@ -134,13 +134,7 @@ bool TrafficLightObject::checkRedLightViolation(const QVector2D& vehiclePosition
         return false;
     }
 
-    if (getBounds().contains(vehiclePosition.toPointF())) {
-        if (m_wasRedWhenApproaching) {
-            return true;
-        }
-    }
-
-    return false;
+    return getBounds().contains(vehiclePosition.toPointF());
 }
 
 int TrafficLightObject::getTotalCycleDurationMs() const
@@ -155,6 +149,12 @@ void TrafficLightObject::onVehicleApproaching(const QVector2D& vehiclePosition)
     if (isRed()) {
         m_wasRedWhenApproaching = true;
     }
+}
+
+void TrafficLightObject::markViolation()
+{
+    ++m_redLightViolationCount;
+    emit redLightViolation(getId());
 }
 
 void TrafficLightObject::reset()

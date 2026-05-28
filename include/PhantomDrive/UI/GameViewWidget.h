@@ -33,6 +33,8 @@ public:
     void addSpeedLimitSign(const QString& signId, const QVector2D& position, int limit);
     void updateSpeedLimitSign(const QString& signId, int limit);
     void addPedestrianCrossing(const QString& crossingId, const QVector2D& position, const QSizeF& size);
+    void clearScenarioObjects();
+    void setPlayerEffectState(bool boostActive, bool shieldActive);
     void setRenderState(const RenderState& state);
     const RenderState& getRenderState() const { return m_renderState; }
     void setCameraPosition(const QVector2D& pos);
@@ -77,6 +79,8 @@ private:
     qreal m_tileSize;
     QColor m_backgroundColor;
     bool m_showGrid;
+    bool m_playerBoostActive;
+    bool m_playerShieldActive;
 };
 
 }

@@ -17,6 +17,7 @@ VehicleSensor::VehicleSensor(QObject* parent)
     , m_isBraking(false) // 是否正在刹车
     , m_isAccelerating(false) // 是否正在加速
     , m_isHonking(false) // 是否正在鸣笛
+    , m_speedLimitViolationEnabled(true)
     , m_samplingTimer(new QTimer(this)) // 采样定时器
     , m_lastSampleTime(0) // 上次采样时间
 {
@@ -76,6 +77,11 @@ void VehicleSensor::stopSensing()
     m_isSensing = false;
 
     emit sensorStopped();
+}
+
+void VehicleSensor::setSpeedLimitViolationEnabled(bool enabled)
+{
+    m_speedLimitViolationEnabled = enabled;
 }
 
 DrivingData VehicleSensor::getCurrentReading() const
@@ -138,7 +144,7 @@ void VehicleSensor::updateSpeedLimit(qreal limit, const QString& zoneId)
     DrivingData currentData = getCurrentReading();
     qreal currentSpeed = calculateSpeed(m_currentVelocity);
 
-    if (limit > 0.0 && currentSpeed > limit) {
+    if (m_speedLimitViolationEnabled && limit > 0.0 && currentSpeed > limit) {
         emit speedLimitExceeded(currentSpeed, limit);
     }
 }

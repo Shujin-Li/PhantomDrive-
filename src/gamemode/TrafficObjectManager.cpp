@@ -171,7 +171,10 @@ void TrafficObjectManager::update(qint64 elapsedMs)
 
     for (TrafficLightObject* light : m_trafficLights.values()) {
         light->update(elapsedMs);
-        if (light->checkRedLightViolation(m_lastVehiclePosition)) {
+        const QString violationKey = QStringLiteral("red:%1").arg(light->getId());
+        if (light->checkRedLightViolation(m_lastVehiclePosition)
+            && shouldEmitViolation(violationKey, ts, ViolationConfig::redLightCooldownMs)) {
+            light->markViolation();
             ViolationEvent event;
             event.timestamp = ts;
             event.type = ViolationType::RedLight;
@@ -321,7 +324,11 @@ void TrafficObjectManager::onVehiclePositionChanged(const QVector2D& position)
 
     for (SpeedLimitSignObject* sign : m_speedLimitSigns.values()) {
         sign->onVehiclePositionChanged(position);
-        if (sign->isVehicleInZone(position) && sign->checkSpeedViolation(currentSpeed)) {
+        const QString violationKey = QStringLiteral("speed:%1").arg(sign->getId());
+        if (sign->isVehicleInZone(position)
+            && sign->checkSpeedViolation(currentSpeed)
+            && shouldEmitViolation(violationKey, ts, ViolationConfig::speedCooldownMs)) {
+            sign->incrementViolationCount();
             ViolationEvent event;
             event.timestamp = ts;
             event.type = ViolationType::SpeedOverLimit;
@@ -335,8 +342,10 @@ void TrafficObjectManager::onVehiclePositionChanged(const QVector2D& position)
     }
 
     for (PedestrianCrossingObject* crossing : m_pedestrianCrossings.values()) {
-        crossing->onVehicleInZone(position);
-        if (crossing->checkPedestrianViolation(position)) {
+        const QString violationKey = QStringLiteral("pedestrian:%1").arg(crossing->getId());
+        if (crossing->checkPedestrianViolation(position)
+            && shouldEmitViolation(violationKey, ts, ViolationConfig::pedestrianCooldownMs)) {
+            crossing->incrementViolationCount();
             ViolationEvent event;
             event.timestamp = ts;
             event.type = ViolationType::PedestrianCollision;
@@ -356,7 +365,7 @@ void TrafficObjectManager::onVehiclePositionChanged(const QVector2D& position)
 void TrafficObjectManager::onVehicleSpeedChanged(qreal speed)
 {
     for (SpeedLimitSignObject* sign : m_speedLimitSigns.values()) {
-        sign->onVehicleSpeedChanged(speed);
+        sign->updateMaxSpeed(speed);
     }
     m_lastVehicleSpeed = speed;
 }
@@ -368,7 +377,19 @@ void TrafficObjectManager::clear()
     m_trafficLights.clear();
     m_speedLimitSigns.clear();
     m_pedestrianCrossings.clear();
+    m_lastViolationByKey.clear();
     emit managerCleared();
+}
+
+bool TrafficObjectManager::shouldEmitViolation(const QString& key, qint64 timestampMs, int cooldownMs)
+{
+    const qint64 lastTimestamp = m_lastViolationByKey.value(key, 0);
+    if (lastTimestamp > 0 && timestampMs - lastTimestamp < cooldownMs) {
+        return false;
+    }
+
+    m_lastViolationByKey.insert(key, timestampMs);
+    return true;
 }
 
 void TrafficObjectManager::checkSpeedLimitZones(const QVector2D& position)

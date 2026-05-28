@@ -27,6 +27,9 @@ public:
     void stopSensing(); // 停止传感器采样
     bool isSensing() const { return m_isSensing; } // 是否正在采样
 
+    void setSpeedLimitViolationEnabled(bool enabled);
+    bool isSpeedLimitViolationEnabled() const { return m_speedLimitViolationEnabled; }
+
     DrivingData getCurrentReading() const; // 获取当前传感器数据
     QList<DrivingData> getReadingsHistory() const { return m_readingsHistory; } // 获取传感器数据历史记录
 
@@ -74,6 +77,7 @@ private:
     bool m_isBraking; // 是否正在刹车
     bool m_isAccelerating; // 是否正在加速
     bool m_isHonking; // 是否正在鸣笛
+    bool m_speedLimitViolationEnabled;
 
     QList<DrivingData> m_readingsHistory; // 传感器数据历史记录
 

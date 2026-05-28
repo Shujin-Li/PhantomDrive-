@@ -55,6 +55,7 @@ public:
     void setViolationPenalty(int penalty) { m_violationPenalty = penalty; }
 
     int getRedLightViolationCount() const { return m_redLightViolationCount; }
+    void markViolation();
     void resetViolationCount() override { m_redLightViolationCount = 0; }
 
 signals:

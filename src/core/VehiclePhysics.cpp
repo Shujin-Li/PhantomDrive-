@@ -28,6 +28,9 @@ VehiclePhysics::VehiclePhysics(QObject* parent)
     , m_frictionCoefficient(0.95)
     , m_grassFrictionMultiplier(0.6)
     , m_gravity(0)
+    , m_speedBoostMultiplier(1.0)
+    , m_speedBoostTimerMs(0.0)
+    , m_shieldTimerMs(0.0)
     , m_isAccelerating(false)
     , m_isBraking(false)
     , m_isSteeringLeft(false)
@@ -87,6 +90,9 @@ void VehiclePhysics::reset()
     m_isSteeringLeft = false;
     m_isSteeringRight = false;
     m_isHandbrake = false;
+    m_speedBoostMultiplier = 1.0;
+    m_speedBoostTimerMs = 0.0;
+    m_shieldTimerMs = 0.0;
 }
 
 void VehiclePhysics::resetRaceProgress()
@@ -129,6 +135,20 @@ bool VehiclePhysics::crossedCheckpointGate(const Checkpoint* cp,
 void VehiclePhysics::update(qreal deltaTimeMs)
 {
     const QVector2D positionBeforeUpdate = m_position;
+
+    if (m_speedBoostTimerMs > 0.0) {
+        m_speedBoostTimerMs = qMax<qreal>(0.0, m_speedBoostTimerMs - deltaTimeMs);
+        if (m_speedBoostTimerMs <= 0.0) {
+            m_speedBoostMultiplier = 1.0;
+            if (m_speed > m_maxSpeed) {
+                m_speed = m_maxSpeed;
+            }
+        }
+    }
+
+    if (m_shieldTimerMs > 0.0) {
+        m_shieldTimerMs = qMax<qreal>(0.0, m_shieldTimerMs - deltaTimeMs);
+    }
 
     if (m_collisionCooldown > 0) {
         m_collisionCooldown -= deltaTimeMs;
@@ -191,6 +211,29 @@ void VehiclePhysics::handleKeyRelease(QKeyEvent* event)
     event->accept();
 }
 
+void VehiclePhysics::activateSpeedBoost(qreal multiplier, qint64 durationMs)
+{
+    m_speedBoostMultiplier = qMax<qreal>(1.0, multiplier);
+    m_speedBoostTimerMs = qMax<qint64>(0, durationMs);
+    const qreal launchSpeed = m_maxSpeed * 0.45;
+    m_speed = qMin(m_maxSpeed * m_speedBoostMultiplier,
+                   qMax(qAbs(m_speed) * m_speedBoostMultiplier, launchSpeed));
+}
+
+void VehiclePhysics::activateShield(qint64 durationMs)
+{
+    m_shieldTimerMs = qMax<qint64>(0, durationMs);
+}
+
+void VehiclePhysics::activateRepair()
+{
+    m_isColliding = false;
+    m_collisionCooldown = 0.0;
+    if (qAbs(m_speed) < m_maxSpeed * 0.25) {
+        m_speed = m_maxSpeed * 0.25;
+    }
+}
+
 void VehiclePhysics::applyAcceleration(qreal deltaTime)
 {
     if (m_isColliding) {
@@ -201,8 +244,9 @@ void VehiclePhysics::applyAcceleration(qreal deltaTime)
 
     if (m_isAccelerating) {
         m_speed += m_accelerationRate * deltaTime;
-        if (m_speed > m_maxSpeed) {
-            m_speed = m_maxSpeed;
+        const qreal effectiveMaxSpeed = m_maxSpeed * m_speedBoostMultiplier;
+        if (m_speed > effectiveMaxSpeed) {
+            m_speed = effectiveMaxSpeed;
         }
         m_acceleration = m_accelerationRate;
     } else if (m_isBraking) {
@@ -577,6 +621,13 @@ void VehiclePhysics::handleCollision(const QVector2D& normal, qreal impactForce)
 
 void VehiclePhysics::handleCollisionResponse(const QVector2D& normal, qreal impactForce)
 {
+    if (m_shieldTimerMs > 0.0) {
+        m_speed *= 0.75;
+        m_isColliding = true;
+        m_collisionCooldown = qMin<qreal>(m_collisionDuration, 250.0);
+        return;
+    }
+
     m_speed *= 0.3;
 
     QVector2D velocity(qCos(qDegreesToRadians(m_rotation)) * m_speed,

@@ -21,6 +21,8 @@ GameViewWidget::GameViewWidget(QWidget* parent)
     , m_tileSize(64.0)
     , m_backgroundColor(QColor(34, 49, 63))
     , m_showGrid(false)
+    , m_playerBoostActive(false)
+    , m_playerShieldActive(false)
 {
     setMinimumSize(400, 300);
     setMouseTracking(true);
@@ -52,6 +54,8 @@ void GameViewWidget::updatePlayerCar(const QVector2D& position, qreal rotation, 
     car.color = QColor(231, 76, 60);
     car.label = QString("Player (%1 km/h)").arg(qRound(speed));
     car.extraData["speed"] = speed;
+    car.extraData["boostActive"] = m_playerBoostActive;
+    car.extraData["shieldActive"] = m_playerShieldActive;
 
     m_renderState.playerCars.clear();
     m_renderState.playerCars.append(car);
@@ -115,8 +119,23 @@ void GameViewWidget::addPowerupBox(const QString& boxId, const QVector2D& positi
     box.position = position;
     box.rotation = 0;
     box.size = QSizeF(28, 28);
-    box.color = QColor(241, 196, 15);
-    box.label = powerupType.isEmpty() ? "?" : powerupType;
+    const QString normalizedType = powerupType.toLower();
+    if (normalizedType.contains(QStringLiteral("boost"))) {
+        box.color = QColor(46, 204, 113);
+        box.label = QStringLiteral(">>");
+    } else if (normalizedType.contains(QStringLiteral("shield"))) {
+        box.color = QColor(52, 152, 219);
+        box.label = QStringLiteral("SH");
+    } else if (normalizedType.contains(QStringLiteral("emp"))) {
+        box.color = QColor(155, 89, 182);
+        box.label = QStringLiteral("EMP");
+    } else if (normalizedType.contains(QStringLiteral("repair"))) {
+        box.color = QColor(231, 76, 60);
+        box.label = QStringLiteral("+");
+    } else {
+        box.color = QColor(241, 196, 15);
+        box.label = powerupType.isEmpty() ? "?" : powerupType;
+    }
     box.extraData["id"] = boxId;
     box.extraData["powerupType"] = powerupType;
 
@@ -199,10 +218,30 @@ void GameViewWidget::addPedestrianCrossing(const QString& crossingId, const QVec
     crossing.rotation = 0;
     crossing.size = size;
     crossing.color = QColor(255, 255, 255);
-    crossing.label = "Pedestrian";
+    crossing.label = "Pedestrian Zone";
     crossing.extraData["id"] = crossingId;
+    crossing.extraData["pedestrianCount"] = 3;
 
     m_renderState.pedestrianCrossings.append(crossing);
+    update();
+}
+
+void GameViewWidget::clearScenarioObjects()
+{
+    m_renderState.powerupBoxes.clear();
+    m_renderState.trafficLights.clear();
+    m_renderState.speedLimitSigns.clear();
+    m_renderState.pedestrianCrossings.clear();
+    update();
+}
+
+void GameViewWidget::setPlayerEffectState(bool boostActive, bool shieldActive)
+{
+    if (m_playerBoostActive == boostActive && m_playerShieldActive == shieldActive) {
+        return;
+    }
+    m_playerBoostActive = boostActive;
+    m_playerShieldActive = shieldActive;
     update();
 }
 
@@ -407,6 +446,23 @@ void GameViewWidget::drawPlayerCar(QPainter& painter, const GameRenderObject& ca
     painter.translate(center);
     painter.rotate(car.rotation);
 
+    if (car.extraData.value(QStringLiteral("shieldActive")).toBool()) {
+        painter.setBrush(QColor(52, 152, 219, 55));
+        painter.setPen(QPen(QColor(93, 173, 226), 3));
+        painter.drawEllipse(QPointF(0, 0), halfH * 1.35, halfH * 1.35);
+    }
+
+    if (car.extraData.value(QStringLiteral("boostActive")).toBool()) {
+        painter.setBrush(QColor(46, 204, 113, 130));
+        painter.setPen(Qt::NoPen);
+        QPointF flame[] = {
+            QPointF(-halfW * 0.45, halfH * 0.75),
+            QPointF(0, halfH * 1.75),
+            QPointF(halfW * 0.45, halfH * 0.75)
+        };
+        painter.drawPolygon(flame, 3);
+    }
+
     painter.setBrush(QBrush(car.color));
     painter.setPen(QPen(QColor(255, 255, 255), 2));
 
@@ -478,12 +534,18 @@ void GameViewWidget::drawPowerupBox(QPainter& painter, const GameRenderObject& b
     QRectF boxRect(center.x() - halfW, center.y() - halfH, halfW * 2, halfH * 2);
 
     painter.setBrush(QBrush(box.color));
-    painter.setPen(QPen(QColor(243, 156, 18), 2));
+    painter.setPen(QPen(box.color.lighter(140), 3));
     painter.drawRoundedRect(boxRect, 4, 4);
 
-    painter.setPen(QColor(44, 62, 80));
-    painter.setFont(QFont("Arial", 12, QFont::Bold));
+    painter.setPen(Qt::white);
+    painter.setFont(QFont("Arial", box.label.size() > 2 ? 9 : 13, QFont::Bold));
     painter.drawText(boxRect, Qt::AlignCenter, box.label);
+
+    painter.setPen(QColor(255, 255, 255, 210));
+    painter.setFont(QFont("Arial", 8));
+    painter.drawText(QRectF(center.x() - 38, center.y() + halfH + 4, 76, 14),
+                     Qt::AlignCenter,
+                     box.extraData.value(QStringLiteral("powerupType")).toString());
 }
 
 void GameViewWidget::drawTrafficLight(QPainter& painter, const GameRenderObject& light)
@@ -566,6 +628,21 @@ void GameViewWidget::drawPedestrianCrossing(QPainter& painter, const GameRenderO
     painter.setFont(QFont("Arial", 9));
     painter.drawText(QRectF(center.x() - halfW, center.y() + halfH + 2, halfW * 2, 12),
                      Qt::AlignCenter, crossing.label);
+
+    const QVariant pedestrianValue = crossing.extraData.value(QStringLiteral("pedestrianCount"));
+    const int pedestrianCount = qMax(1, pedestrianValue.isValid() ? pedestrianValue.toInt() : 3);
+    for (int i = 0; i < pedestrianCount; ++i) {
+        const qreal t = (i + 1.0) / (pedestrianCount + 1.0);
+        const QPointF p(center.x() - halfW + t * halfW * 2.0,
+                        center.y() - halfH * 0.55 + (i % 2) * halfH * 0.75);
+        painter.setPen(QPen(QColor(44, 62, 80), 2));
+        painter.setBrush(QColor(241, 196, 15));
+        painter.drawEllipse(QPointF(p.x(), p.y() - 7), 5, 5);
+        painter.drawLine(QPointF(p.x(), p.y() - 2), QPointF(p.x(), p.y() + 13));
+        painter.drawLine(QPointF(p.x() - 8, p.y() + 4), QPointF(p.x() + 8, p.y() + 4));
+        painter.drawLine(QPointF(p.x(), p.y() + 13), QPointF(p.x() - 7, p.y() + 23));
+        painter.drawLine(QPointF(p.x(), p.y() + 13), QPointF(p.x() + 7, p.y() + 23));
+    }
 }
 
 QPointF GameViewWidget::worldToScreen(const QVector2D& worldPos) const

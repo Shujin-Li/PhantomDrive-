@@ -26,11 +26,16 @@ public:
     void handleKeyPress(QKeyEvent* event);
     void handleKeyRelease(QKeyEvent* event);
     void handleCollision(const QVector2D& normal, qreal impactForce);
+    void activateSpeedBoost(qreal multiplier, qint64 durationMs);
+    void activateShield(qint64 durationMs);
+    void activateRepair();
 
     QVector2D getPosition() const { return m_position; }
     qreal getRotation() const { return m_rotation; }
     qreal getSpeed() const { return m_speed; }
     qreal getAcceleration() const { return m_acceleration; }
+    bool isSpeedBoostActive() const { return m_speedBoostTimerMs > 0.0; }
+    bool isShieldActive() const { return m_shieldTimerMs > 0.0; }
 
     void setPosition(const QVector2D& pos) { m_position = pos; }
     void setRotation(qreal rot) { m_rotation = rot; }
@@ -82,6 +87,9 @@ private:
     qreal m_frictionCoefficient;
     qreal m_grassFrictionMultiplier;
     qreal m_gravity;
+    qreal m_speedBoostMultiplier;
+    qreal m_speedBoostTimerMs;
+    qreal m_shieldTimerMs;
 
     bool m_isAccelerating;
     bool m_isBraking;

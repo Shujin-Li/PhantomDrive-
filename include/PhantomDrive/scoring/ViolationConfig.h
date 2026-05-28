@@ -12,6 +12,7 @@ struct ViolationConfig {
     static constexpr int wrongWayPenalty = 10;
 
     static constexpr int speedCooldownMs = 1000;
+    static constexpr int redLightCooldownMs = 1500;
     static constexpr int pedestrianCooldownMs = 1000;
 };
 

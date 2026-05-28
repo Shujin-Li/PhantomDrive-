@@ -4,6 +4,11 @@
 #include "UI/DrivingReportWidget.h"
 #include "UI/ThemeManager.h"
 #include "gamemode/VehicleSensor.h"
+#include "gamemode/PowerupBox.h"
+#include "gamemode/TrafficLightObject.h"
+#include "gamemode/TrafficObjectManager.h"
+#include "gamemode/SpeedLimitSignObject.h"
+#include "gamemode/PedestrianCrossingObject.h"
 #include "track/TrackData.h"
 #include "track/TrackManager.h"
 #include "track/TrackTile.h"
@@ -22,9 +27,11 @@
 #include <QLabel>
 #include <QLayoutItem>
 #include <QMessageBox>
+#include <QPointer>
 #include <QPushButton>
 #include <QStatusBar>
 #include <QVBoxLayout>
+#include <QVariant>
 #include <QtMath>
 
 #include "UI/SoundGenerator.h"
@@ -113,6 +120,7 @@ void addGateCheckpoint(TrackData* track, int id, int routeIndex,
 }
 
 constexpr qreal kPhysicsMaxSpeed = 300.0;
+constexpr qreal kDisplayMaxSpeedKmh = 120.0;
 constexpr qreal kTileSize = 64.0;
 
 bool tileAtIsStartFinish(PhantomDrive::TrackData* track, const QVector2D& position)
@@ -165,6 +173,20 @@ bool crossedCheckpointGate(const PhantomDrive::Checkpoint* cp,
     return false;
 }
 
+QString lightColorToString(PhantomDrive::TrafficLightObject::LightColor color)
+{
+    switch (color) {
+    case PhantomDrive::TrafficLightObject::LightColor::Red:
+        return QStringLiteral("red");
+    case PhantomDrive::TrafficLightObject::LightColor::Yellow:
+        return QStringLiteral("yellow");
+    case PhantomDrive::TrafficLightObject::LightColor::Green:
+        return QStringLiteral("green");
+    default:
+        return QStringLiteral("green");
+    }
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -177,6 +199,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_drivingDataCollector(new DrivingDataCollector(this))
     , m_scoreManager(new ScoreManager(this))
     , m_aiManager(new AIOpponentManager(this))
+    , m_trafficObjectManager(new TrafficObjectManager(this))
     , m_reportWidget(new DrivingReportWidget(this))
     , m_btnFinishDrive(nullptr)
     , m_aiDifficultyCombo(nullptr)
@@ -301,6 +324,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_drivingDataCollector->setVehicleId("player");
     m_drivingDataCollector->setSamplingInterval(50);
     m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
+    if (m_drivingDataCollector->vehicleSensor()) {
+        m_drivingDataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
+    }
 
     initializeAIOpponents();
     simulateGameLoop();
@@ -335,6 +361,10 @@ void MainWindow::setupDataBindings()
         return;
     }
 
+    if (m_drivingDataCollector->vehicleSensor()) {
+        m_drivingDataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
+    }
+
     connect(m_drivingDataCollector, &IDrivingDataCollector::dataCollected,
             this, &MainWindow::onDrivingDataCollected, Qt::UniqueConnection);
     connect(m_drivingDataCollector, &IDrivingDataCollector::violationDetected,
@@ -342,7 +372,13 @@ void MainWindow::setupDataBindings()
     connect(m_drivingDataCollector, &IDrivingDataCollector::violationDetected,
             m_scoreManager, &ScoreManager::onViolationDetected, Qt::UniqueConnection);
 
+    if (m_trafficObjectManager) {
+        connect(m_trafficObjectManager, &TrafficObjectManager::violationDetected,
+                this, &MainWindow::handleTrafficViolation, Qt::UniqueConnection);
+    }
+
     if (m_scoreManager) {
+        m_scoreManager->setTrafficObjectManager(m_trafficObjectManager);
         connect(m_scoreManager, &ScoreManager::scoreReady,
                 this, &MainWindow::onScoreReady, Qt::UniqueConnection);
         connect(m_scoreManager, &ScoreManager::coachReportReady,
@@ -452,6 +488,7 @@ void MainWindow::setupGameView()
                 loadedTrack->setStartRotation(0.0);
             }
             syncRaceTrackToManager();
+            setupEBRuntimeObjects();
             return;
         }
     }
@@ -584,11 +621,154 @@ void MainWindow::setupGameView()
     }
     syncRaceTrackToManager();
 
-    m_gameView->addPowerupBox("powerup_1", QVector2D(200, 150), "Shield");
-    m_gameView->addPowerupBox("powerup_2", QVector2D(400, 300), "Boost");
-    m_gameView->addTrafficLight("light_1", QVector2D(300, 200), m_currentTrafficLightState);
-    m_gameView->addSpeedLimitSign("sign_1", QVector2D(250, 100), m_currentSpeedLimit);
-    m_gameView->addPedestrianCrossing("crossing_1", QVector2D(350, 250), QSizeF(80, 40));
+    setupEBRuntimeObjects();
+}
+
+QString MainWindow::powerupTypeToString(PhantomDrive::PowerupType type) const
+{
+    switch (type) {
+    case PhantomDrive::PowerupType::Boost:
+        return QStringLiteral("Boost");
+    case PhantomDrive::PowerupType::Shield:
+        return QStringLiteral("Shield");
+    case PhantomDrive::PowerupType::Missile:
+        return QStringLiteral("Missile");
+    case PhantomDrive::PowerupType::OilSlick:
+        return QStringLiteral("Oil Slick");
+    case PhantomDrive::PowerupType::EMP:
+        return QStringLiteral("EMP");
+    case PhantomDrive::PowerupType::Invisibility:
+        return QStringLiteral("Invisibility");
+    case PhantomDrive::PowerupType::Repair:
+        return QStringLiteral("Repair");
+    case PhantomDrive::PowerupType::Teleport:
+        return QStringLiteral("Teleport");
+    case PhantomDrive::PowerupType::Magnet:
+        return QStringLiteral("Magnet");
+    default:
+        return QStringLiteral("Powerup");
+    }
+}
+
+void MainWindow::clearEBRuntimeObjects()
+{
+    qDeleteAll(m_powerupBoxes);
+    m_powerupBoxes.clear();
+
+    if (m_trafficObjectManager) {
+        m_trafficObjectManager->clear();
+    }
+
+    if (m_gameView) {
+        m_gameView->clearScenarioObjects();
+        m_gameView->setPlayerEffectState(false, false);
+    }
+
+    if (m_learningHUD) {
+        m_learningHUD->updatePowerupState(QStringLiteral("eb_boost"), QStringLiteral("Boost"), false);
+        m_learningHUD->updatePowerupState(QStringLiteral("eb_shield"), QStringLiteral("Shield"), false);
+        m_learningHUD->updatePowerupState(QStringLiteral("eb_emp"), QStringLiteral("EMP"), false);
+        m_learningHUD->updatePowerupState(QStringLiteral("eb_repair"), QStringLiteral("Repair"), false);
+    }
+
+    m_currentSpeedLimit = 60;
+    m_currentTrafficLightState = QStringLiteral("green");
+}
+
+void MainWindow::setupEBRuntimeObjects()
+{
+    clearEBRuntimeObjects();
+
+    if (!m_gameView || !m_gameView->trackData() || !m_trafficObjectManager) {
+        return;
+    }
+
+    TrackData* track = m_gameView->trackData();
+    const QList<Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    auto checkpointPosition = [&](int index, const QVector2D& fallback) {
+        if (index >= 0 && index < checkpoints.size() && checkpoints.at(index)) {
+            return checkpoints.at(index)->getPosition();
+        }
+        return fallback;
+    };
+
+    const QVector2D start = track->getStartPosition();
+    const QVector2D north = checkpointPosition(0, start + QVector2D(0.0f, 120.0f));
+    const QVector2D east = checkpointPosition(1, start + QVector2D(520.0f, 520.0f));
+    const QVector2D south = checkpointPosition(2, start + QVector2D(0.0f, 1040.0f));
+    const QVector2D west = checkpointPosition(3, start + QVector2D(-520.0f, 520.0f));
+
+    auto addPowerupBox = [this](const QString& id, const QVector2D& position, PowerupType type) {
+        auto* box = new PowerupBox(position, 72.0f, this);
+        box->setFixedPowerupType(type);
+        box->setRespawnTime(8.0f);
+        m_powerupBoxes.append(box);
+
+        const QString typeName = powerupTypeToString(type);
+        if (m_gameView) {
+            m_gameView->addPowerupBox(id, position, typeName);
+        }
+
+        connect(box, &PowerupBox::collected,
+                this, [this, id](const QString&, const PowerupType& collectedType) {
+                    if (m_gameView) {
+                        m_gameView->removePowerupBox(id);
+                    }
+                    handlePowerupCollected(collectedType);
+                });
+        connect(box, &PowerupBox::respawned,
+                this, [this, id, position, typeName]() {
+                    if (m_gameView) {
+                        m_gameView->addPowerupBox(id, position, typeName);
+                    }
+                });
+    };
+
+    addPowerupBox(QStringLiteral("eb_boost_box"), north + QVector2D(0.0f, 120.0f), PowerupType::Boost);
+    addPowerupBox(QStringLiteral("eb_shield_box"), east, PowerupType::Shield);
+    addPowerupBox(QStringLiteral("eb_emp_box"), west, PowerupType::EMP);
+    addPowerupBox(QStringLiteral("eb_repair_box"), south + QVector2D(140.0f, 0.0f), PowerupType::Repair);
+
+    auto* light = new TrafficLightObject(QStringLiteral("eb_light_1"), m_trafficObjectManager);
+    light->setPosition(north + QVector2D(0.0f, 190.0f));
+    light->setBounds(QRectF(light->getPosition().x() - 95.0,
+                            light->getPosition().y() - 95.0,
+                            190.0,
+                            190.0));
+    light->setCurrentColor(TrafficLightObject::LightColor::Red);
+    light->setRedDurationMs(7000);
+    light->setGreenDurationMs(6000);
+    light->setYellowDurationMs(2000);
+    m_trafficObjectManager->registerTrafficObject(light);
+    light->start();
+    m_currentTrafficLightState = QStringLiteral("red");
+    m_gameView->addTrafficLight(light->getId(), light->getPosition(), m_currentTrafficLightState);
+    connect(light, &TrafficLightObject::colorChanged,
+            this, [this, light](TrafficLightObject::LightColor, TrafficLightObject::LightColor color) {
+                m_currentTrafficLightState = lightColorToString(color);
+                if (m_gameView) {
+                    m_gameView->updateTrafficLight(light->getId(), m_currentTrafficLightState);
+                }
+            });
+
+    auto* sign = new SpeedLimitSignObject(QStringLiteral("eb_speed_zone_1"), m_trafficObjectManager);
+    sign->setPosition(east + QVector2D(-70.0f, 0.0f));
+    sign->setSpeedLimit(45.0);
+    sign->setDetectionRadius(180.0);
+    sign->setZoneId(QStringLiteral("eb_east_speed_zone"));
+    m_trafficObjectManager->registerTrafficObject(sign);
+    m_gameView->addSpeedLimitSign(sign->getId(), sign->getPosition(), static_cast<int>(sign->getSpeedLimit()));
+
+    auto* crossing = new PedestrianCrossingObject(QStringLiteral("eb_crossing_1"), m_trafficObjectManager);
+    const QSizeF crossingSize(240.0, 120.0);
+    crossing->setPosition(south);
+    crossing->setBounds(QRectF(south.x() - crossingSize.width() / 2.0,
+                               south.y() - crossingSize.height() / 2.0,
+                               crossingSize.width(),
+                               crossingSize.height()));
+    crossing->spawnPedestrian();
+    m_trafficObjectManager->registerTrafficObject(crossing);
+    m_gameView->addPedestrianCrossing(crossing->getId(), south, crossingSize);
 }
 
 void MainWindow::setupVehiclePhysics()
@@ -612,6 +792,8 @@ void MainWindow::setupVehiclePhysics()
                 m_playerSpeed = m_vehiclePhysics->getSpeed();
 
                 if (m_gameView && m_driveActive) {
+                    m_gameView->setPlayerEffectState(m_vehiclePhysics->isSpeedBoostActive(),
+                                                     m_vehiclePhysics->isShieldActive());
                     m_gameView->updatePlayerCar(m_playerPosition, m_playerRotation, displaySpeedKmh());
                     m_gameView->setCameraPosition(m_playerPosition);
                 }
@@ -787,6 +969,7 @@ void MainWindow::loadCustomTrack()
         loadedTrack->setStartPosition(QVector2D(15 * tileSize + tileSize / 2.0, 3 * tileSize + tileSize / 2.0));
         loadedTrack->setStartRotation(0.0);
     }
+    setupEBRuntimeObjects();
     initializeAIOpponents();
     statusBar()->showMessage(QStringLiteral("Loaded custom track: %1").arg(filePath), 5000);
 }
@@ -811,7 +994,126 @@ qreal MainWindow::estimatePlayerProgress() const
 
 int MainWindow::displaySpeedKmh() const
 {
-    return qBound(0, qRound(qAbs(m_playerSpeed) * m_currentSpeedLimit / kPhysicsMaxSpeed), 999);
+    return qBound(0, qRound(qAbs(m_playerSpeed) * kDisplayMaxSpeedKmh / kPhysicsMaxSpeed), 999);
+}
+
+void MainWindow::updateEBRuntime(qreal deltaSeconds)
+{
+    for (PowerupBox* box : m_powerupBoxes) {
+        if (!box) {
+            continue;
+        }
+        box->update(static_cast<float>(deltaSeconds));
+        if (box->isActive()) {
+            box->tryCollect(m_playerPosition, QStringLiteral("player"));
+        }
+    }
+
+    if (!m_trafficObjectManager) {
+        return;
+    }
+
+    if (m_currentMode != QStringLiteral("Learning")) {
+        return;
+    }
+
+    const qreal speedKmh = displaySpeedKmh();
+    m_trafficObjectManager->onVehicleSpeedChanged(speedKmh);
+    m_trafficObjectManager->onVehiclePositionChanged(m_playerPosition);
+
+    for (PedestrianCrossingObject* crossing : m_trafficObjectManager->getPedestrianCrossings()) {
+        if (crossing && crossing->getPedestrianCount() == 0) {
+            crossing->spawnPedestrian();
+        }
+    }
+
+    m_trafficObjectManager->update(static_cast<qint64>(deltaSeconds * 1000.0));
+
+    const qreal zoneLimit = m_trafficObjectManager->getCurrentSpeedLimit(m_playerPosition);
+    if (zoneLimit > 0.0) {
+        m_currentSpeedLimit = qRound(zoneLimit);
+    } else {
+        m_currentSpeedLimit = 80;
+    }
+}
+
+void MainWindow::handlePowerupCollected(PhantomDrive::PowerupType type)
+{
+    const QString typeName = powerupTypeToString(type);
+    const QString powerupId = QStringLiteral("eb_%1").arg(typeName.toLower().replace(QStringLiteral(" "), QStringLiteral("_")));
+
+    onPowerupCollected(typeName);
+
+    if (type == PowerupType::Boost && m_vehiclePhysics) {
+        m_vehiclePhysics->activateSpeedBoost(1.35, 4000);
+        playSound(SoundEffect::SpeedBoost);
+        if (m_learningHUD) {
+            m_learningHUD->updatePowerupState(powerupId, QStringLiteral("Boost"), true);
+        }
+        QTimer::singleShot(4000, this, [this, powerupId]() {
+            if (m_learningHUD) {
+                m_learningHUD->updatePowerupState(powerupId, QStringLiteral("Boost"), false);
+            }
+        });
+    } else if (type == PowerupType::Shield && m_vehiclePhysics) {
+        m_vehiclePhysics->activateShield(6000);
+        if (m_learningHUD) {
+            m_learningHUD->updatePowerupState(powerupId, QStringLiteral("Shield"), true);
+        }
+        QTimer::singleShot(6000, this, [this, powerupId]() {
+            if (m_learningHUD) {
+                m_learningHUD->updatePowerupState(powerupId, QStringLiteral("Shield"), false);
+            }
+        });
+    } else if (type == PowerupType::EMP) {
+        QList<QPair<QPointer<AIOpponent>, qreal>> affectedOpponents;
+        if (m_aiManager) {
+            for (AIOpponent* opponent : m_aiManager->getAllOpponents()) {
+                if (!opponent || opponent->hasFinished()) {
+                    continue;
+                }
+                const qreal originalSpeed = opponent->getMaxSpeed();
+                affectedOpponents.append(qMakePair(QPointer<AIOpponent>(opponent), originalSpeed));
+                opponent->setMaxSpeed(qMax<qreal>(35.0, originalSpeed * 0.45));
+            }
+        }
+        if (m_learningHUD) {
+            m_learningHUD->updatePowerupState(powerupId, QStringLiteral("EMP"), true);
+        }
+        statusBar()->showMessage(QStringLiteral("EMP Pulse! AI opponents slowed for 3 seconds."), 3000);
+        QTimer::singleShot(3000, this, [this, powerupId, affectedOpponents]() {
+            for (const auto& entry : affectedOpponents) {
+                if (entry.first) {
+                    entry.first->setMaxSpeed(entry.second);
+                }
+            }
+            if (m_learningHUD) {
+                m_learningHUD->updatePowerupState(powerupId, QStringLiteral("EMP"), false);
+            }
+        });
+    } else if (type == PowerupType::Repair && m_vehiclePhysics) {
+        m_vehiclePhysics->activateRepair();
+        if (m_learningHUD) {
+            m_learningHUD->updatePowerupState(powerupId, QStringLiteral("Repair"), true);
+        }
+        statusBar()->showMessage(QStringLiteral("Repair Kit! Vehicle stability restored."), 2500);
+        QTimer::singleShot(1200, this, [this, powerupId]() {
+            if (m_learningHUD) {
+                m_learningHUD->updatePowerupState(powerupId, QStringLiteral("Repair"), false);
+            }
+        });
+    }
+}
+
+void MainWindow::handleTrafficViolation(const PhantomDrive::ViolationEvent& violation)
+{
+    if (m_learningHUD && ui->stackedWidget->currentIndex() == 1 && m_currentMode == QStringLiteral("Learning")) {
+        m_learningHUD->showPenaltyMessage(violation.description, violation.penaltyPoints);
+        m_learningHUD->showViolationWarning(violation.description);
+    }
+
+    playSound(SoundEffect::Violation);
+    statusBar()->showMessage(violation.description, 3000);
 }
 
 void MainWindow::updateRaceHud()
@@ -982,6 +1284,7 @@ void MainWindow::simulateGameLoop()
 
         m_previousPlayerPosition = m_playerPosition;
 
+        updateEBRuntime(0.05);
         updateTrafficAndHud(m_simTick);
 
         if (m_aiManager && m_driveActive) {
@@ -1065,6 +1368,9 @@ void MainWindow::startDrivingSession(const QString& mode)
         m_drivingDataCollector->stopCollection();
         m_drivingDataCollector->clearData();
         m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
+        if (m_drivingDataCollector->vehicleSensor()) {
+            m_drivingDataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
+        }
         m_drivingDataCollector->startCollection();
     }
     if (m_scoreManager) {
@@ -1083,6 +1389,7 @@ void MainWindow::startDrivingSession(const QString& mode)
         m_arcadeHUD->hide();
     }
     syncRaceTrackToManager();
+    setupEBRuntimeObjects();
 
     if (m_vehiclePhysics) {
         m_vehiclePhysics->reset();
@@ -1143,26 +1450,9 @@ void MainWindow::showReportWindow(const ScoreReport* report)
 
 void MainWindow::updateTrafficAndHud(int tick)
 {
-    if (tick % 180 == 0) {
-        m_currentTrafficLightState = (m_currentTrafficLightState == "green") ? "yellow"
-            : (m_currentTrafficLightState == "yellow") ? "red" : "green";
-        if (m_gameView) {
-            m_gameView->updateTrafficLight("light_1", m_currentTrafficLightState);
-        }
-    }
-
-    if (tick % 300 == 0) {
-        m_currentSpeedLimit = (m_currentSpeedLimit == 60) ? 80 : 60;
-        if (m_gameView) {
-            m_gameView->updateSpeedLimitSign("sign_1", m_currentSpeedLimit);
-        }
-    }
-
     const int remainingSeconds = 9 - ((tick / 20) % 10);
     if (m_learningHUD) {
-        const qreal currentSpeed = m_drivingDataCollector
-            ? m_drivingDataCollector->getCurrentData().speed
-            : 0.0;
+        const qreal currentSpeed = displaySpeedKmh();
 
         m_learningHUD->updateCurrentSpeed(currentSpeed);
         m_learningHUD->updateSpeedLimit(m_currentSpeedLimit);
@@ -1412,9 +1702,13 @@ void MainWindow::onPowerupCollected(const QString& powerupType)
     PhantomDrive::FeedbackType type = PhantomDrive::FeedbackType::Powerup;
 
     if (powerupType.toLower().contains("boost")) {
-        displayText = "Speed Boost!";
+        displayText = "Boost Collected!";
     } else if (powerupType.toLower().contains("shield")) {
         displayText = "Shield Active!";
+    } else if (powerupType.toLower().contains("emp")) {
+        displayText = "EMP Pulse!";
+    } else if (powerupType.toLower().contains("repair")) {
+        displayText = "Repair Kit!";
     } else {
         displayText = QString("%1 Collected!").arg(powerupType);
     }

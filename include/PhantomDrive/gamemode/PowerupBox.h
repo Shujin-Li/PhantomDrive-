@@ -35,6 +35,11 @@ public:
     void setMaxRarity(PowerupRarity rarity) { m_maxRarity = rarity; }
     PowerupRarity maxRarity() const { return m_maxRarity; }
 
+    void setFixedPowerupType(PowerupType type);
+    void clearFixedPowerupType();
+    bool hasFixedPowerupType() const { return m_hasFixedPowerupType; }
+    PowerupType fixedPowerupType() const { return m_fixedPowerupType; }
+
     /**
      * @brief 检测碰撞并给予道具
      * @param playerPosition 玩家位置
@@ -66,6 +71,8 @@ private:
     float m_respawnTimer;
     
     PowerupRarity m_maxRarity;
+    bool m_hasFixedPowerupType;
+    PowerupType m_fixedPowerupType;
     
     QString m_lastCollectorId;
     qint64 m_lastCollectionTime;

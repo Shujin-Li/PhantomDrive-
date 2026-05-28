@@ -14,6 +14,8 @@ PowerupBox::PowerupBox(const QVector2D& position, float radius, QObject* parent)
     , m_respawnTime(5.0f)
     , m_respawnTimer(0.0f)
     , m_maxRarity(PowerupRarity::Legendary)
+    , m_hasFixedPowerupType(false)
+    , m_fixedPowerupType(PowerupType::Boost)
     , m_lastCollectionTime(0)
 {
 }
@@ -41,9 +43,13 @@ bool PowerupBox::tryCollect(const QVector2D& playerPosition, const QString& play
     }
     
     // 生成随机道具
-    PowerupPtr powerup = PowerupManager::getRandomPowerup(m_maxRarity);
-    if (!powerup) {
-        return false;
+    PowerupType collectedType = m_fixedPowerupType;
+    if (!m_hasFixedPowerupType) {
+        PowerupPtr powerup = PowerupManager::getRandomPowerup(m_maxRarity);
+        if (!powerup) {
+            return false;
+        }
+        collectedType = powerup->type();
     }
     
     // 更新状态
@@ -51,13 +57,24 @@ bool PowerupBox::tryCollect(const QVector2D& playerPosition, const QString& play
     m_lastCollectionTime = currentTime;
     m_isActive = false;
     
-    emit collected(playerId, powerup->type());
+    emit collected(playerId, collectedType);
     emit emptied();
     
     // 开始重生计时
     startRespawnTimer();
     
     return true;
+}
+
+void PowerupBox::setFixedPowerupType(PowerupType type)
+{
+    m_hasFixedPowerupType = true;
+    m_fixedPowerupType = type;
+}
+
+void PowerupBox::clearFixedPowerupType()
+{
+    m_hasFixedPowerupType = false;
 }
 
 void PowerupBox::update(float deltaTime)
