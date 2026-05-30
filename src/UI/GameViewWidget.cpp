@@ -15,6 +15,92 @@
 
 namespace PhantomDrive {
 
+namespace {
+
+void dumpTrackLayoutForDebug(const TrackData* track, const QString& label)
+{
+    if (!track) {
+        qDebug() << "[CustomTrackDebug]" << label << "track=null";
+        return;
+    }
+
+    int roadCount = 0;
+    int grassCount = 0;
+    int wallCount = 0;
+    QPoint finishTile(-1, -1);
+    for (int row = 0; row < track->getRowCount(); ++row) {
+        for (int col = 0; col < track->getColCount(); ++col) {
+            const TrackTile* tile = track->getTileAt(row, col);
+            if (!tile) {
+                continue;
+            }
+            switch (tile->getType()) {
+            case TileType::Road:
+            case TileType::Asphalt:
+                ++roadCount;
+                break;
+            case TileType::Grass:
+                ++grassCount;
+                break;
+            case TileType::Wall:
+            case TileType::Barrier:
+                ++wallCount;
+                break;
+            case TileType::FinishLine:
+            case TileType::StartLine:
+                finishTile = QPoint(col, row);
+                ++roadCount;
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    const QList<QVector2D> starts = track->getStartPositions();
+    const QPoint startTile = starts.isEmpty() ? QPoint(-1, -1) : TrackData::worldToTile(starts.first());
+    qDebug().noquote()
+        << QStringLiteral("[CustomTrackDebug] %1 rows=%2 cols=%3 start(row=%4,col=%5) finish(row=%6,col=%7) road=%8 grass=%9 wall=%10")
+               .arg(label)
+               .arg(track->getRowCount())
+               .arg(track->getColCount())
+               .arg(startTile.y())
+               .arg(startTile.x())
+               .arg(finishTile.y())
+               .arg(finishTile.x())
+               .arg(roadCount)
+               .arg(grassCount)
+               .arg(wallCount);
+
+    const QList<Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    for (int i = 0; i < checkpoints.size(); ++i) {
+        const Checkpoint* cp = checkpoints.at(i);
+        if (!cp) {
+            continue;
+        }
+        const QPoint cpTile = TrackData::worldToTile(cp->getPosition());
+        qDebug().noquote()
+            << QStringLiteral("[CustomTrackDebug] %1 CP%2 row=%3 col=%4")
+                   .arg(label)
+                   .arg(i + 1)
+                   .arg(cpTile.y())
+                   .arg(cpTile.x());
+    }
+
+    const QList<QVector2D> items = track->getItemBoxPositions();
+    for (int i = 0; i < items.size(); ++i) {
+        const QPoint itemTile = TrackData::worldToTile(items.at(i));
+        qDebug().noquote()
+            << QStringLiteral("[CustomTrackDebug] %1 Item%2 row=%3 col=%4")
+                   .arg(label)
+                   .arg(i + 1)
+                   .arg(itemTile.y())
+                   .arg(itemTile.x());
+    }
+}
+
+} // namespace
+
 GameViewWidget::GameViewWidget(QWidget* parent)
     : QWidget(parent)
     , m_currentTrack(nullptr)
@@ -40,6 +126,7 @@ GameViewWidget::~GameViewWidget()
 void GameViewWidget::setTrackData(TrackData* track)
 {
     m_currentTrack = track;
+    dumpTrackLayoutForDebug(track, QStringLiteral("GameView::setTrackData"));
     updateRenderState();
     update();
 }
@@ -293,6 +380,7 @@ void GameViewWidget::paintEvent(QPaintEvent* event)
     painter.fillRect(rect(), m_backgroundColor);
 
     drawTrack(painter);
+    drawStartFinishMarkers(painter);
     drawCheckpoints(painter);
 
     for (const auto& crossing : m_renderState.pedestrianCrossings) {
@@ -364,8 +452,9 @@ void GameViewWidget::drawTrack(QPainter& painter)
             TrackTile* tile = m_currentTrack->getTileAt(row, col);
             if (!tile) continue;
 
-            QPointF screenPos = worldToScreen(QVector2D(col * m_tileSize, row * m_tileSize));
-            QRectF tileRect(screenPos.x(), screenPos.y(), m_tileSize, m_tileSize);
+            const QPointF cornerA = worldToScreen(QVector2D(col * m_tileSize, row * m_tileSize));
+            const QPointF cornerB = worldToScreen(QVector2D((col + 1) * m_tileSize, (row + 1) * m_tileSize));
+            const QRectF tileRect = QRectF(cornerA, cornerB).normalized();
 
             if (!rect().toRectF().intersects(tileRect)) continue;
 
@@ -422,18 +511,90 @@ void GameViewWidget::drawCheckpoints(QPainter& painter)
         }
 
         const QRectF worldBounds = cp->getBounds();
-        const QPointF topLeft = worldToScreen(QVector2D(worldBounds.left(), worldBounds.top()));
-        const QPointF bottomRight = worldToScreen(QVector2D(worldBounds.right(), worldBounds.bottom()));
-        const QRectF screenRect(topLeft, bottomRight);
+        const QPointF cornerA = worldToScreen(QVector2D(worldBounds.left(), worldBounds.top()));
+        const QPointF cornerB = worldToScreen(QVector2D(worldBounds.right(), worldBounds.bottom()));
+        const QRectF screenRect = QRectF(cornerA, cornerB).normalized();
 
-        painter.setPen(QPen(QColor(241, 196, 15), 4));
-        painter.setBrush(QColor(241, 196, 15, 70));
-        painter.drawRect(screenRect);
+        painter.save();
+        painter.setPen(QPen(QColor(255, 216, 80, 80), 8));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(screenRect.adjusted(-2, -2, 2, 2), 8, 8);
+        painter.setPen(QPen(QColor(255, 216, 80), 3));
+        painter.setBrush(QColor(255, 216, 80, 55));
+        painter.drawRoundedRect(screenRect, 6, 6);
 
+        const QRectF labelRect(screenRect.center().x() - 24,
+                               screenRect.center().y() - 13,
+                               48,
+                               26);
+        painter.setBrush(QColor(8, 18, 32, 230));
+        painter.setPen(QPen(QColor(255, 216, 80), 2));
+        painter.drawRoundedRect(labelRect, 7, 7);
         painter.setPen(Qt::white);
-        painter.setFont(QFont(QStringLiteral("Arial"), 12, QFont::Bold));
-        painter.drawText(screenRect, Qt::AlignCenter, QString::number(i + 1));
+        painter.setFont(QFont(QStringLiteral("Arial"), 10, QFont::Bold));
+        painter.drawText(labelRect, Qt::AlignCenter, QStringLiteral("CP%1").arg(i + 1));
+        painter.restore();
     }
+}
+
+void GameViewWidget::drawStartFinishMarkers(QPainter& painter)
+{
+    if (!m_currentTrack) {
+        return;
+    }
+
+    painter.save();
+
+    const QList<QVector2D> starts = m_currentTrack->getStartPositions();
+    if (!starts.isEmpty()) {
+        const QPointF center = worldToScreen(starts.first());
+        const qreal glowRadius = 26.0;
+        painter.setBrush(QColor(0, 230, 255, 55));
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(center, glowRadius, glowRadius);
+        const qreal radius = 18.0;
+        const QRectF marker(center.x() - radius, center.y() - radius, radius * 2.0, radius * 2.0);
+        painter.setBrush(QColor(0, 205, 255, 235));
+        painter.setPen(QPen(QColor(226, 255, 255), 3));
+        painter.drawEllipse(marker);
+        painter.setPen(Qt::white);
+        painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
+        painter.drawText(marker, Qt::AlignCenter, QStringLiteral("S"));
+        const QRectF tag(center.x() - 34, center.y() + 20, 68, 20);
+        painter.setBrush(QColor(5, 18, 32, 230));
+        painter.setPen(QPen(QColor(0, 230, 255), 1));
+        painter.drawRoundedRect(tag, 6, 6);
+        painter.setPen(QColor(220, 255, 255));
+        painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
+        painter.drawText(tag, Qt::AlignCenter, QStringLiteral("START"));
+    }
+
+    for (int row = 0; row < m_currentTrack->getRowCount(); ++row) {
+        for (int col = 0; col < m_currentTrack->getColCount(); ++col) {
+            const TrackTile* tile = m_currentTrack->getTileAt(row, col);
+            if (!tile) {
+                continue;
+            }
+            const TileType type = tile->getType();
+            if (type != TileType::FinishLine && type != TileType::StartLine) {
+                continue;
+            }
+
+            const QPointF center = worldToScreen(TrackData::tileToWorldCenter(row, col, m_tileSize));
+            painter.setBrush(QColor(255, 70, 110, 55));
+            painter.setPen(Qt::NoPen);
+            painter.drawEllipse(center, 30.0, 30.0);
+            const QRectF flag(center.x() - 34.0, center.y() - 15.0, 68.0, 30.0);
+            painter.setBrush(QColor(255, 255, 255, 235));
+            painter.setPen(QPen(QColor(255, 66, 104), 3));
+            painter.drawRoundedRect(flag, 4, 4);
+            painter.setPen(QColor(231, 76, 60));
+            painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
+            painter.drawText(flag, Qt::AlignCenter, QStringLiteral("FINISH"));
+        }
+    }
+
+    painter.restore();
 }
 
 void GameViewWidget::drawPlayerCar(QPainter& painter, const GameRenderObject& car)
@@ -671,7 +832,7 @@ QRectF GameViewWidget::getViewportWorldBounds() const
 {
     QVector2D topLeft = screenToWorld(QPointF(0, 0));
     QVector2D bottomRight = screenToWorld(QPointF(width(), height()));
-    return QRectF(topLeft.x(), topLeft.y(), bottomRight.x() - topLeft.x(), bottomRight.y() - topLeft.y());
+    return QRectF(topLeft.toPointF(), bottomRight.toPointF()).normalized();
 }
 
 void GameViewWidget::updateRenderState()

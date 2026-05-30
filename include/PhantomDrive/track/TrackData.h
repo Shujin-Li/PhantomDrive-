@@ -8,6 +8,7 @@
 #include <QString>
 #include <QList>
 #include <QMap>
+#include <QPoint>
 #include <QVector2D>
 #include <QRectF>
 #include <QJsonArray>
@@ -39,6 +40,11 @@ public:
     int getColCount() const { return m_colCount; }
     void setSize(int rows, int cols);
 
+    // Tile coordinates use QPoint(col, row): x is column, y is row.
+    static constexpr qreal DefaultTileSize = 64.0;
+    static QVector2D tileToWorldCenter(int row, int col, qreal tileSize = DefaultTileSize);
+    static QPoint worldToTile(const QVector2D& worldPos, qreal tileSize = DefaultTileSize);
+
     QList<QList<TrackTile*>> getTiles() const { return m_tiles; }
     TrackTile* getTileAt(int row, int col) const;
     void setTileAt(int row, int col, TrackTile* tile);
@@ -60,6 +66,11 @@ public:
     QList<QVector2D> getStartPositions() const { return m_startPositions; }
     void addStartPosition(const QVector2D& pos) { m_startPositions.append(pos); }
     void clearStartPositions() { m_startPositions.clear(); }
+
+    QList<QVector2D> getItemBoxPositions() const { return m_itemBoxPositions; }
+    void addItemBoxPosition(const QVector2D& pos);
+    bool removeItemBoxAt(const QVector2D& pos, qreal radius = 32.0);
+    void clearItemBoxPositions();
 
     qreal getEstimatedLapTime() const { return m_estimatedLapTime; }
     void setEstimatedLapTime(qreal time) { m_estimatedLapTime = time; }
@@ -108,6 +119,7 @@ private:
     QVector2D m_startPosition;
     qreal m_startRotation;
     QList<QVector2D> m_startPositions;
+    QList<QVector2D> m_itemBoxPositions;
 
     qreal m_estimatedLapTime;
     qreal m_trackLength;

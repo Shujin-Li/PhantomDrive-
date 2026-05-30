@@ -27,6 +27,9 @@ namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
 namespace PhantomDrive {
+class CustomTrackEditorWidget;
+class CustomTrackMode;
+class TrackData;
 class PowerupBox;
 class TrafficObjectManager;
 enum class PowerupType;
@@ -70,6 +73,15 @@ private:
     QPushButton *m_btnFinishDrive;
     QComboBox *m_aiDifficultyCombo;
     QPushButton *m_btnLoadCustomTrack;
+    QPushButton *m_btnCustomTrackMode;
+    QPushButton *m_btnPlayCustomTrack;
+    QPushButton *m_btnSaveCustomTrack;
+    QPushButton *m_btnLoadCustomTrackForEdit;
+    QPushButton *m_btnExportCustomTrackJson;
+    PhantomDrive::CustomTrackEditorWidget *m_customTrackEditor;
+    PhantomDrive::CustomTrackMode *m_customTrackMode;
+    PhantomDrive::TrackData *m_defaultRaceTrack;
+    PhantomDrive::TrackData *m_runtimeCustomTrack;
     QTimer *m_simTimer;
     QString m_currentMode;
     QString m_customTrackPath;
@@ -78,6 +90,7 @@ private:
     bool m_driveActive;
     bool m_countdownActive;
     bool m_arcadeRaceFinished;
+    bool m_customTrackPlaying;
     int m_lapsCompleted;
     int m_totalLaps;
     int m_simTick;
@@ -101,9 +114,19 @@ private:
     void setupVehiclePhysics();
     void setupDataBindings();
     void setupDemoControls();
+    void setupCustomTrackControls();
     void initializeAIOpponents();
     void applyAIDifficultySelection();
     void loadCustomTrack();
+    void showCustomTrackEditor();
+    void hideCustomTrackEditor();
+    void playCurrentCustomTrack();
+    void startCustomTrackSession(PhantomDrive::TrackData* track);
+    void saveCurrentCustomTrack();
+    void loadCustomTrackIntoEditor();
+    void exportCurrentCustomTrackJson();
+    void restoreDefaultRaceTrack();
+    void focusGameViewForDriving();
     void startDrivingSession(const QString& mode);
     void finishDrivingSession();
     void showReportWindow(const PhantomDrive::ScoreReport* report = nullptr);
@@ -116,6 +139,7 @@ private:
     qreal estimatePlayerProgress() const;
     void simulateGameLoop();
     void setupEBRuntimeObjects();
+    void setupCustomTrackRuntimeObjects(PhantomDrive::TrackData* track);
     void clearEBRuntimeObjects();
     void updateEBRuntime(qreal deltaSeconds);
     void handlePowerupCollected(PhantomDrive::PowerupType type);
@@ -124,6 +148,7 @@ private:
     void syncRaceTrackToManager();
     void resetArcadeRaceProgress();
     void updateArcadeRaceProgress(const QVector2D& positionBefore);
+    void finishCustomTrackRoute();
 
 private slots:
     void onDrivingDataCollected(const PhantomDrive::DrivingData& data);

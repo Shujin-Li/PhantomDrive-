@@ -21,10 +21,12 @@ public:
 
     void updateSpeed(qreal speed);
     void updateLap(int currentLap, int totalLaps);
+    void updateRouteProgress(int checkpointsPassed, int totalCheckpoints, const QString& nextTarget);
     void updateLapTime(const QString& time);
     void updateTotalTime(const QString& time);
     void updatePosition(int position, int totalRacers);
     void updateBestLapTime(const QString& time);
+    void setCustomTrackVisualMode(bool enabled);
 
     void showCountdown(int seconds);
     void showGo();
@@ -47,8 +49,10 @@ private slots:
 private:
     void setupUI();
     void setFloatingStyle();
+    void setCustomTrackStyle();
     void showFloatingMessage(const QString& message, const QString& style);
 
+    QLabel* m_titleLabel;
     QLabel* m_speedLabel;
     QLabel* m_speedUnitLabel;
     QLabel* m_lapLabel;
@@ -66,6 +70,7 @@ private:
     int m_currentLap;
     int m_totalLaps;
     qreal m_currentSpeed;
+    bool m_customTrackVisualMode;
 
     static const int COUNTDOWN_START = 3;
 };

@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QtMath>
 
 namespace PhantomDrive {
 
@@ -50,6 +51,18 @@ void TrackData::setSize(int rows, int cols)
     }
 
     emit trackChanged();
+}
+
+QVector2D TrackData::tileToWorldCenter(int row, int col, qreal tileSize)
+{
+    return QVector2D(col * tileSize + tileSize / 2.0,
+                     row * tileSize + tileSize / 2.0);
+}
+
+QPoint TrackData::worldToTile(const QVector2D& worldPos, qreal tileSize)
+{
+    return QPoint(static_cast<int>(qFloor(worldPos.x() / tileSize)),
+                  static_cast<int>(qFloor(worldPos.y() / tileSize)));
 }
 
 TrackTile* TrackData::getTileAt(int row, int col) const
@@ -129,6 +142,35 @@ void TrackData::clearCheckpoints()
     emit checkpointsChanged();
 }
 
+void TrackData::addItemBoxPosition(const QVector2D& pos)
+{
+    m_itemBoxPositions.append(pos);
+    emit trackChanged();
+}
+
+bool TrackData::removeItemBoxAt(const QVector2D& pos, qreal radius)
+{
+    for (int i = 0; i < m_itemBoxPositions.size(); ++i) {
+        if ((m_itemBoxPositions.at(i) - pos).length() <= radius) {
+            m_itemBoxPositions.removeAt(i);
+            emit trackChanged();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void TrackData::clearItemBoxPositions()
+{
+    if (m_itemBoxPositions.isEmpty()) {
+        return;
+    }
+
+    m_itemBoxPositions.clear();
+    emit trackChanged();
+}
+
 bool TrackData::isValid() const
 {
     if (m_rowCount <= 0 || m_colCount <= 0) {
@@ -181,6 +223,7 @@ void TrackData::clear()
     clearTiles();
     clearCheckpoints();
     m_startPositions.clear();
+    m_itemBoxPositions.clear();
     emit trackChanged();
 }
 
@@ -222,6 +265,15 @@ QJsonObject TrackData::toJsonObject() const
         startPositions.append(posObj);
     }
     map["startPositions"] = startPositions;
+
+    QJsonArray itemBoxes;
+    for (const QVector2D& pos : m_itemBoxPositions) {
+        QJsonObject itemObj;
+        itemObj["x"] = pos.x();
+        itemObj["y"] = pos.y();
+        itemBoxes.append(itemObj);
+    }
+    map["itemBoxes"] = itemBoxes;
 
     QJsonArray tilesArray;
     for (int r = 0; r < m_rowCount; ++r) {
@@ -272,6 +324,13 @@ void TrackData::fromJsonObject(const QJsonObject& obj)
     for (const QJsonValue& val : startPosArray) {
         QJsonObject posObj = val.toObject();
         m_startPositions.append(QVector2D(posObj["x"].toDouble(), posObj["y"].toDouble()));
+    }
+
+    m_itemBoxPositions.clear();
+    const QJsonArray itemBoxArray = obj["itemBoxes"].toArray();
+    for (const QJsonValue& val : itemBoxArray) {
+        const QJsonObject itemObj = val.toObject();
+        m_itemBoxPositions.append(QVector2D(itemObj["x"].toDouble(), itemObj["y"].toDouble()));
     }
 
     if (m_rowCount > 0 && m_colCount > 0) {

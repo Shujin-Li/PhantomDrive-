@@ -1,12 +1,13 @@
 # PhantomDrive
 
-A dual-mode 2D racing game framework built on Qt 6.
+A tri-mode 2D racing game framework built on Qt 6.
 
 ## Overview
 
-PhantomDrive is a racing game framework that implements two game modes:
+PhantomDrive is a racing game framework that implements three game modes:
 - **Arcade Mode**: High-speed racing with power-ups, AI opponents, and lap timing
 - **Learning Mode**: Practice driving with traffic rules and AI coaching
+- **Custom Track Mode**: Build a tile-based custom track in the main app and race it
 
 ## Architecture
 
@@ -51,10 +52,12 @@ int main(int argc, char *argv[]) {
     // Create modes
     ArcadeMode* arcadeMode = new ArcadeMode();
     LearningMode* learningMode = new LearningMode();
+    CustomTrackMode* customTrackMode = new CustomTrackMode();
 
     // Register modes
     manager->registerMode(arcadeMode, ModeType::Arcade);
     manager->registerMode(learningMode, ModeType::Learning);
+    manager->registerMode(customTrackMode, ModeType::CustomTrack);
 
     // Switch to Arcade Mode with fade transition
     manager->switchTo(ModeType::Arcade, TransitionType::Fade);
@@ -72,6 +75,7 @@ int main(int argc, char *argv[]) {
 | `ModeTransition` | Handles animated transitions between modes |
 | `ArcadeMode` | Arcade racing with power-ups and AI |
 | `LearningMode` | Learning mode with traffic rules and scoring |
+| `CustomTrackMode` | In-app tile editor and custom track racing |
 | `DrivingData` | Data structures for driving telemetry |
 | `IDrivingDataCollector` | Interface for data collection (to be implemented by Engine Group B) |
 

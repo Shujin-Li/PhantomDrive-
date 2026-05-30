@@ -13,6 +13,7 @@ enum class ModeType {
     Unknown = -1,
     Arcade = 0,
     Learning = 1,
+    CustomTrack = 2,
     Count
 };
 

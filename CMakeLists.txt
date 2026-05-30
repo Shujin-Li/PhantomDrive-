@@ -22,6 +22,7 @@ set(HEADER_FILES
     include/PhantomDrive/gamemode/GameModeManager.h
     include/PhantomDrive/gamemode/ArcadeMode.h
     include/PhantomDrive/gamemode/LearningMode.h
+    include/PhantomDrive/gamemode/CustomTrackMode.h
     include/PhantomDrive/gamemode/VehicleSensor.h
     include/PhantomDrive/gamemode/CollisionDetector.h
     include/PhantomDrive/gamemode/DrivingDataStorage.h
@@ -50,6 +51,7 @@ set(HEADER_FILES
     include/PhantomDrive/track/TrackIO.h
     include/PhantomDrive/track/TrackDatabase.h
     include/PhantomDrive/track/TrackManager.h
+    include/PhantomDrive/track/TrackValidator.h
     include/PhantomDrive/physics/Physics.h
     include/PhantomDrive/physics/MCPhysicsWorld.h
     include/PhantomDrive/physics/mcbbox.hh
@@ -138,6 +140,7 @@ set(HEADER_FILES
     include/PhantomDrive/UI/SoundManager.h
     include/PhantomDrive/UI/SoundGenerator.h
     include/PhantomDrive/UI/ArcadeHUD.h
+    include/PhantomDrive/UI/CustomTrackEditorWidget.h
     include/PhantomDrive/core/GameEngine.h
     include/PhantomDrive/core/saveloadmanager.h
     include/PhantomDrive/core/VehiclePhysics.h
@@ -149,6 +152,7 @@ set(SOURCE_FILES
     src/gamemode/GameModeManager.cpp
     src/gamemode/ArcadeMode.cpp
     src/gamemode/LearningMode.cpp
+    src/gamemode/CustomTrackMode.cpp
     src/gamemode/VehicleSensor.cpp
     src/gamemode/CollisionDetector.cpp
     src/gamemode/DrivingDataStorage.cpp
@@ -176,6 +180,7 @@ set(SOURCE_FILES
     src/track/TrackIO.cpp
     src/track/TrackDatabase.cpp
     src/track/TrackManager.cpp
+    src/track/TrackValidator.cpp
     src/physics/MCPhysicsWorld.cpp
     src/physics/glew.c
     # src/physics/mcobjectfactory.cc
@@ -257,6 +262,7 @@ set(SOURCE_FILES
     src/UI/SoundManager.cpp
     src/UI/SoundGenerator.cpp
     src/UI/ArcadeHUD.cpp
+    src/UI/CustomTrackEditorWidget.cpp
     src/core/GameEngine.cpp
     src/core/saveloadmanager.cpp
     src/core/VehiclePhysics.cpp

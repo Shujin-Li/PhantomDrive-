@@ -69,6 +69,7 @@ private:
     void drawSpeedLimitSign(QPainter& painter, const GameRenderObject& sign);
     void drawPedestrianCrossing(QPainter& painter, const GameRenderObject& crossing);
     void drawCheckpoints(QPainter& painter);
+    void drawStartFinishMarkers(QPainter& painter);
     QPointF worldToScreen(const QVector2D& worldPos) const;
     QVector2D screenToWorld(const QPointF& screenPos) const;
     QRectF getViewportWorldBounds() const;

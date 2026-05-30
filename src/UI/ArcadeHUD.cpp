@@ -10,6 +10,7 @@ using namespace PhantomDrive;
 
 ArcadeHUD::ArcadeHUD(QWidget* parent)
     : QWidget(parent)
+    , m_titleLabel(nullptr)
     , m_speedLabel(nullptr)
     , m_speedUnitLabel(nullptr)
     , m_lapLabel(nullptr)
@@ -25,6 +26,7 @@ ArcadeHUD::ArcadeHUD(QWidget* parent)
     , m_currentLap(1)
     , m_totalLaps(3)
     , m_currentSpeed(0.0)
+    , m_customTrackVisualMode(false)
 {
     setupUI();
     setFloatingStyle();
@@ -44,8 +46,9 @@ void ArcadeHUD::setupUI()
     mainLayout->setSpacing(8);
     mainLayout->setContentsMargins(12, 12, 12, 12);
 
-    QLabel* titleLabel = new QLabel("Arcade Mode", this);
-    titleLabel->setStyleSheet(R"(
+    m_titleLabel = new QLabel("Arcade Mode", this);
+    m_titleLabel->setAlignment(Qt::AlignCenter);
+    m_titleLabel->setStyleSheet(R"(
         QLabel {
             color: #E74C3C;
             font-size: 18px;
@@ -53,7 +56,7 @@ void ArcadeHUD::setupUI()
             padding: 5px;
         }
     )");
-    mainLayout->addWidget(titleLabel, 0, Qt::AlignCenter);
+    mainLayout->addWidget(m_titleLabel, 0, Qt::AlignCenter);
 
     QHBoxLayout* speedLayout = new QHBoxLayout();
     m_speedLabel = new QLabel("0", this);
@@ -186,6 +189,19 @@ void ArcadeHUD::setupUI()
 
 void ArcadeHUD::setFloatingStyle()
 {
+    m_customTrackVisualMode = false;
+    setFixedSize(300, 280);
+    if (m_titleLabel) {
+        m_titleLabel->setText(QStringLiteral("Arcade Mode"));
+        m_titleLabel->setStyleSheet(R"(
+            QLabel {
+                color: #E74C3C;
+                font-size: 18px;
+                font-weight: bold;
+                padding: 5px;
+            }
+        )");
+    }
     setStyleSheet(R"(
         ArcadeHUD {
             background-color: rgba(20, 20, 30, 235);
@@ -193,6 +209,76 @@ void ArcadeHUD::setFloatingStyle()
             border-radius: 10px;
         }
     )");
+}
+
+void ArcadeHUD::setCustomTrackStyle()
+{
+    m_customTrackVisualMode = true;
+    setFixedSize(320, 330);
+    if (m_titleLabel) {
+        m_titleLabel->setText(QStringLiteral("Custom Track Mode"));
+        m_titleLabel->setStyleSheet(R"(
+            QLabel {
+                color: #59F7FF;
+                font-size: 18px;
+                font-weight: 900;
+                padding: 7px;
+                border-bottom: 1px solid rgba(89, 247, 255, 120);
+            }
+        )");
+    }
+    if (m_speedLabel) {
+        m_speedLabel->setStyleSheet(R"(
+            QLabel {
+                color: #4DFFB8;
+                font-size: 46px;
+                font-weight: bold;
+                font-family: 'Consolas', 'Courier New', monospace;
+            }
+        )");
+    }
+    if (m_lapLabel) {
+        m_lapLabel->setStyleSheet(R"(
+            QLabel {
+                color: #FFFFFF;
+                font-size: 16px;
+                font-weight: bold;
+                background: rgba(0, 210, 255, 35);
+                border: 1px solid rgba(0, 210, 255, 100);
+                border-radius: 6px;
+                padding: 5px 8px;
+            }
+        )");
+    }
+    if (m_positionLabel) {
+        m_positionLabel->setStyleSheet(R"(
+            QLabel {
+                color: #FFD85A;
+                font-size: 15px;
+                font-weight: bold;
+                padding: 3px;
+            }
+        )");
+    }
+    setStyleSheet(R"(
+        ArcadeHUD {
+            background-color: rgba(4, 12, 25, 238);
+            border: 2px solid rgba(0, 229, 255, 190);
+            border-radius: 14px;
+        }
+        QLabel {
+            color: #CFEFFF;
+        }
+    )");
+}
+
+void ArcadeHUD::setCustomTrackVisualMode(bool enabled)
+{
+    if (enabled) {
+        setCustomTrackStyle();
+    } else {
+        setFloatingStyle();
+    }
 }
 
 void ArcadeHUD::showEvent(QShowEvent* event)
@@ -215,6 +301,18 @@ void ArcadeHUD::updateLap(int lapsCompleted, int totalLaps)
             .arg(lapsCompleted)
             .arg(totalLaps)
             .arg(lapsCompleted + 1));
+}
+
+void ArcadeHUD::updateRouteProgress(int checkpointsPassed, int totalCheckpoints, const QString& nextTarget)
+{
+    m_currentLap = 1;
+    m_totalLaps = 1;
+    if (m_lapLabel) {
+        m_lapLabel->setText(QStringLiteral("Route: %1/%2 CPs").arg(checkpointsPassed).arg(totalCheckpoints));
+    }
+    if (m_positionLabel) {
+        m_positionLabel->setText(QStringLiteral("Next: %1").arg(nextTarget));
+    }
 }
 
 void ArcadeHUD::updateLapTime(const QString& time)

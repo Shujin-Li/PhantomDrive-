@@ -122,6 +122,15 @@ bool TrackIO::saveTrackToJson(TrackData* track, QJsonObject& json) const
     }
     json["startPositions"] = startPositions;
 
+    QJsonArray itemBoxes;
+    for (const QVector2D& pos : track->getItemBoxPositions()) {
+        QJsonObject itemObj;
+        itemObj["x"] = pos.x();
+        itemObj["y"] = pos.y();
+        itemBoxes.append(itemObj);
+    }
+    json["itemBoxes"] = itemBoxes;
+
     QJsonArray tilesArray;
     for (int r = 0; r < track->getRowCount(); ++r) {
         for (int c = 0; c < track->getColCount(); ++c) {
@@ -188,6 +197,12 @@ bool TrackIO::loadTrackFromJson(TrackData* track, const QJsonObject& jsonObject)
     for (const QJsonValue& val : startPosArray) {
         QJsonObject posObj = val.toObject();
         track->addStartPosition(QVector2D(posObj["x"].toDouble(), posObj["y"].toDouble()));
+    }
+
+    QJsonArray itemBoxArray = jsonObject["itemBoxes"].toArray();
+    for (const QJsonValue& val : itemBoxArray) {
+        QJsonObject itemObj = val.toObject();
+        track->addItemBoxPosition(QVector2D(itemObj["x"].toDouble(), itemObj["y"].toDouble()));
     }
 
     QJsonArray tilesArray = jsonObject["tiles"].toArray();

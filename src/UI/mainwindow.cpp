@@ -2,7 +2,9 @@
 #include "ui_mainwindow.h"
 
 #include "UI/DrivingReportWidget.h"
+#include "UI/CustomTrackEditorWidget.h"
 #include "UI/ThemeManager.h"
+#include "gamemode/CustomTrackMode.h"
 #include "gamemode/VehicleSensor.h"
 #include "gamemode/PowerupBox.h"
 #include "gamemode/TrafficLightObject.h"
@@ -13,6 +15,8 @@
 #include "track/TrackManager.h"
 #include "track/TrackTile.h"
 #include "track/Checkpoint.h"
+#include "track/TrackIO.h"
+#include "track/TrackValidator.h"
 
 #include <QRectF>
 #include "scoring/ScoreReport.h"
@@ -22,7 +26,9 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDebug>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLayoutItem>
@@ -128,8 +134,9 @@ bool tileAtIsStartFinish(PhantomDrive::TrackData* track, const QVector2D& positi
     if (!track) {
         return false;
     }
-    const int row = static_cast<int>(position.y() / kTileSize);
-    const int col = static_cast<int>(position.x() / kTileSize);
+    const QPoint tileCoord = PhantomDrive::TrackData::worldToTile(position, kTileSize);
+    const int row = tileCoord.y();
+    const int col = tileCoord.x();
     PhantomDrive::TrackTile* tile = track->getTileAt(row, col);
     if (!tile) {
         return false;
@@ -173,6 +180,163 @@ bool crossedCheckpointGate(const PhantomDrive::Checkpoint* cp,
     return false;
 }
 
+void dumpCustomTrackLayoutForDebug(PhantomDrive::TrackData* track, const QString& label)
+{
+    if (!track) {
+        qDebug() << "[CustomTrackDebug]" << label << "track=null";
+        return;
+    }
+
+    int roadCount = 0;
+    int grassCount = 0;
+    int wallCount = 0;
+    QPoint finishTile(-1, -1);
+    for (int row = 0; row < track->getRowCount(); ++row) {
+        for (int col = 0; col < track->getColCount(); ++col) {
+            const PhantomDrive::TrackTile* tile = track->getTileAt(row, col);
+            if (!tile) {
+                continue;
+            }
+            switch (tile->getType()) {
+            case PhantomDrive::TileType::Road:
+            case PhantomDrive::TileType::Asphalt:
+                ++roadCount;
+                break;
+            case PhantomDrive::TileType::Grass:
+                ++grassCount;
+                break;
+            case PhantomDrive::TileType::Wall:
+            case PhantomDrive::TileType::Barrier:
+                ++wallCount;
+                break;
+            case PhantomDrive::TileType::FinishLine:
+            case PhantomDrive::TileType::StartLine:
+                finishTile = QPoint(col, row);
+                ++roadCount;
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    const QList<QVector2D> starts = track->getStartPositions();
+    const QPoint startTile = starts.isEmpty() ? QPoint(-1, -1) : PhantomDrive::TrackData::worldToTile(starts.first());
+    qDebug().noquote()
+        << QStringLiteral("[CustomTrackDebug] %1 rows=%2 cols=%3 start(row=%4,col=%5) finish(row=%6,col=%7) road=%8 grass=%9 wall=%10")
+               .arg(label)
+               .arg(track->getRowCount())
+               .arg(track->getColCount())
+               .arg(startTile.y())
+               .arg(startTile.x())
+               .arg(finishTile.y())
+               .arg(finishTile.x())
+               .arg(roadCount)
+               .arg(grassCount)
+               .arg(wallCount);
+
+    const QList<PhantomDrive::Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    for (int i = 0; i < checkpoints.size(); ++i) {
+        const PhantomDrive::Checkpoint* cp = checkpoints.at(i);
+        if (!cp) {
+            continue;
+        }
+        const QPoint cpTile = PhantomDrive::TrackData::worldToTile(cp->getPosition());
+        qDebug().noquote()
+            << QStringLiteral("[CustomTrackDebug] %1 CP%2 row=%3 col=%4")
+                   .arg(label)
+                   .arg(i + 1)
+                   .arg(cpTile.y())
+                   .arg(cpTile.x());
+    }
+
+    const QList<QVector2D> items = track->getItemBoxPositions();
+    for (int i = 0; i < items.size(); ++i) {
+        const QPoint itemTile = PhantomDrive::TrackData::worldToTile(items.at(i));
+        qDebug().noquote()
+            << QStringLiteral("[CustomTrackDebug] %1 Item%2 row=%3 col=%4")
+                   .arg(label)
+                   .arg(i + 1)
+                   .arg(itemTile.y())
+                   .arg(itemTile.x());
+    }
+}
+
+PhantomDrive::TrackData* cloneCustomTrackSnapshot(PhantomDrive::TrackData* source, QObject* parent)
+{
+    if (!source) {
+        return nullptr;
+    }
+
+    auto* snapshot = new PhantomDrive::TrackData(parent);
+    const int rows = source->getRowCount();
+    const int cols = source->getColCount();
+
+    snapshot->setName(source->getName());
+    snapshot->setId(source->getId());
+    snapshot->setAuthor(source->getAuthor());
+    snapshot->setDescription(source->getDescription());
+    snapshot->setDifficulty(source->getDifficulty());
+    snapshot->setEstimatedLapTime(source->getEstimatedLapTime());
+    snapshot->setTrackLength(source->getTrackLength());
+    snapshot->setMaxLaps(1);
+    snapshot->setSize(rows, cols);
+    snapshot->setStartRotation(source->getStartRotation());
+
+    // Editor rows grow downward. The existing driving renderer/physics path is y-up,
+    // so flip rows once in the runtime snapshot instead of adding a custom input mode.
+    for (int row = 0; row < rows; ++row) {
+        const int engineRow = rows - 1 - row;
+        for (int col = 0; col < cols; ++col) {
+            const PhantomDrive::TrackTile* srcTile = source->getTileAt(row, col);
+            PhantomDrive::TrackTile* dstTile = snapshot->getTileAt(engineRow, col);
+            if (srcTile && dstTile) {
+                dstTile->setType(srcTile->getType());
+                dstTile->setDirection(srcTile->getDirection());
+                dstTile->setFriction(srcTile->getFriction());
+                dstTile->setDrivable(srcTile->isDrivable());
+                dstTile->setCollisionTile(srcTile->isCollisionTile());
+                dstTile->setAssetId(srcTile->getAssetId());
+            }
+        }
+    }
+
+    const qreal trackHeight = rows * PhantomDrive::TrackData::DefaultTileSize;
+    auto flipWorldY = [trackHeight](const QVector2D& pos) {
+        return QVector2D(pos.x(), trackHeight - pos.y());
+    };
+
+    snapshot->clearStartPositions();
+    const QList<QVector2D> starts = source->getStartPositions();
+    for (const QVector2D& start : starts) {
+        snapshot->addStartPosition(flipWorldY(start));
+    }
+    snapshot->setStartPosition(starts.isEmpty() ? flipWorldY(source->getStartPosition()) : flipWorldY(starts.first()));
+
+    const QList<PhantomDrive::Checkpoint*> checkpoints = source->getCheckpointsInOrder();
+    for (int i = 0; i < checkpoints.size(); ++i) {
+        const PhantomDrive::Checkpoint* srcCp = checkpoints.at(i);
+        if (!srcCp) {
+            continue;
+        }
+        auto* cp = new PhantomDrive::Checkpoint(srcCp->getId(), flipWorldY(srcCp->getPosition()), snapshot);
+        cp->setIndexInRoute(srcCp->getIndexInRoute());
+        cp->setWidth(srcCp->getWidth());
+        cp->setHeight(srcCp->getHeight());
+        cp->setActive(srcCp->isActive());
+        cp->setMandatory(srcCp->isMandatory());
+        cp->setRequiredLap(srcCp->getRequiredLap());
+        snapshot->addCheckpoint(cp);
+    }
+
+    snapshot->clearItemBoxPositions();
+    for (const QVector2D& item : source->getItemBoxPositions()) {
+        snapshot->addItemBoxPosition(flipWorldY(item));
+    }
+
+    return snapshot;
+}
+
 QString lightColorToString(PhantomDrive::TrafficLightObject::LightColor color)
 {
     switch (color) {
@@ -204,6 +368,15 @@ MainWindow::MainWindow(QWidget *parent)
     , m_btnFinishDrive(nullptr)
     , m_aiDifficultyCombo(nullptr)
     , m_btnLoadCustomTrack(nullptr)
+    , m_btnCustomTrackMode(nullptr)
+    , m_btnPlayCustomTrack(nullptr)
+    , m_btnSaveCustomTrack(nullptr)
+    , m_btnLoadCustomTrackForEdit(nullptr)
+    , m_btnExportCustomTrackJson(nullptr)
+    , m_customTrackEditor(nullptr)
+    , m_customTrackMode(new CustomTrackMode(this))
+    , m_defaultRaceTrack(nullptr)
+    , m_runtimeCustomTrack(nullptr)
     , m_simTimer(nullptr)
     , m_currentMode("Arcade")
     , m_customTrackPath()
@@ -212,6 +385,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_driveActive(false)
     , m_countdownActive(false)
     , m_arcadeRaceFinished(false)
+    , m_customTrackPlaying(false)
     , m_lapsCompleted(0)
     , m_totalLaps(3)
     , m_simTick(0)
@@ -247,6 +421,7 @@ MainWindow::MainWindow(QWidget *parent)
     setupGameView();
     setupVehiclePhysics();
     setupDemoControls();
+    setupCustomTrackControls();
     setupDataBindings();
     connect(m_scoreManager,
             &ScoreManager::qLearningFeedbackReady,
@@ -304,9 +479,16 @@ MainWindow::MainWindow(QWidget *parent)
 
     if (ui->btn_Back) {
         connect(ui->btn_Back, &QPushButton::clicked, this, [this]() {
+            if (m_currentMode == QStringLiteral("Custom Track") && !m_customTrackPlaying) {
+                hideCustomTrackEditor();
+                ui->stackedWidget->setCurrentIndex(0);
+                statusBar()->clearMessage();
+                return;
+            }
             if (m_driveActive) {
                 finishDrivingSession();
             }
+            m_customTrackPlaying = false;
             ui->stackedWidget->setCurrentIndex(0);
             if (m_gameView) {
                 m_gameView->hide();
@@ -444,6 +626,268 @@ void MainWindow::setupDemoControls()
             this, &MainWindow::finishDrivingSession);
 }
 
+void MainWindow::setupCustomTrackControls()
+{
+    if (!m_btnCustomTrackMode && ui->verticalLayout) {
+        m_btnCustomTrackMode = new QPushButton(QStringLiteral("Custom Track Mode"), this);
+        m_btnCustomTrackMode->setObjectName(QStringLiteral("btn_CustomTrackMode"));
+
+        const int learningIndex = ui->btn_Learn ? ui->verticalLayout->indexOf(ui->btn_Learn) : -1;
+        const int insertIndex = learningIndex >= 0 ? learningIndex + 1 : ui->verticalLayout->count();
+        ui->verticalLayout->insertWidget(insertIndex, m_btnCustomTrackMode);
+
+        connect(m_btnCustomTrackMode, &QPushButton::clicked,
+                this, &MainWindow::showCustomTrackEditor);
+    }
+
+    if (!m_customTrackEditor && ui->stackedWidget && ui->stackedWidget->count() > 1) {
+        QWidget* gamePage = ui->stackedWidget->widget(1);
+        QVBoxLayout* pageLayout = gamePage ? qobject_cast<QVBoxLayout*>(gamePage->layout()) : nullptr;
+        if (pageLayout) {
+            m_customTrackEditor = new CustomTrackEditorWidget(gamePage);
+            m_customTrackEditor->hide();
+            pageLayout->addWidget(m_customTrackEditor, 1);
+
+            connect(m_customTrackEditor, &CustomTrackEditorWidget::playRequested,
+                    this, &MainWindow::playCurrentCustomTrack);
+            connect(m_customTrackEditor, &CustomTrackEditorWidget::saveRequested,
+                    this, &MainWindow::saveCurrentCustomTrack);
+            connect(m_customTrackEditor, &CustomTrackEditorWidget::loadRequested,
+                    this, &MainWindow::loadCustomTrackIntoEditor);
+            connect(m_customTrackEditor, &CustomTrackEditorWidget::exportJsonRequested,
+                    this, &MainWindow::exportCurrentCustomTrackJson);
+            connect(m_customTrackEditor, &CustomTrackEditorWidget::backRequested,
+                    this, [this]() {
+                        hideCustomTrackEditor();
+                        if (ui->stackedWidget) {
+                            ui->stackedWidget->setCurrentIndex(0);
+                        }
+                        statusBar()->clearMessage();
+                    });
+            connect(m_customTrackEditor, &CustomTrackEditorWidget::trackChanged,
+                    this, [this](TrackData* track) {
+                        if (m_customTrackMode) {
+                            m_customTrackMode->setTrack(track);
+                        }
+                    });
+        }
+    }
+}
+
+void MainWindow::showCustomTrackEditor()
+{
+    if (m_driveActive) {
+        finishDrivingSession();
+    }
+
+    m_currentMode = QStringLiteral("Custom Track");
+    m_customTrackPlaying = false;
+    m_arcadeRaceLogicActive = false;
+    m_countdownActive = false;
+
+    if (m_customTrackMode) {
+        m_customTrackMode->onEnter();
+        m_customTrackMode->setCustomState(CustomTrackModeState::Editing);
+        if (m_customTrackEditor) {
+            m_customTrackMode->setTrack(m_customTrackEditor->trackData());
+        }
+    }
+
+    if (ui->stackedWidget) {
+        ui->stackedWidget->setCurrentIndex(1);
+    }
+    if (m_gameView) {
+        m_gameView->hide();
+    }
+    if (m_arcadeHUD) {
+        m_arcadeHUD->hide();
+    }
+    if (m_learningHUD) {
+        m_learningHUD->hide();
+    }
+    if (m_btnFinishDrive) {
+        m_btnFinishDrive->setEnabled(false);
+        m_btnFinishDrive->hide();
+    }
+    if (m_customTrackEditor) {
+        m_customTrackEditor->show();
+        m_customTrackEditor->setFocus();
+    }
+
+    clearEBRuntimeObjects();
+    statusBar()->showMessage(QStringLiteral("Custom Track Mode: edit a 24 x 18 tile track"));
+}
+
+void MainWindow::hideCustomTrackEditor()
+{
+    if (m_customTrackEditor) {
+        m_customTrackEditor->hide();
+        m_customTrackEditor->clearFocus();
+    }
+    if (m_btnFinishDrive) {
+        m_btnFinishDrive->show();
+    }
+    if (m_customTrackMode) {
+        m_customTrackMode->setCustomState(CustomTrackModeState::Editing);
+    }
+}
+
+void MainWindow::playCurrentCustomTrack()
+{
+    TrackData* track = m_customTrackEditor ? m_customTrackEditor->trackData() : nullptr;
+    if (!track) {
+        QMessageBox::warning(this,
+                             QStringLiteral("Custom Track"),
+                             QStringLiteral("No custom track is available to play."));
+        return;
+    }
+
+    const TrackValidationResult validation = TrackValidator::validateCustomTrack(*track);
+    if (!validation.ok) {
+        QMessageBox::warning(this,
+                             QStringLiteral("Track Is Not Playable"),
+                             validation.errors.join(QStringLiteral("\n")));
+        return;
+    }
+
+    dumpCustomTrackLayoutForDebug(track, QStringLiteral("Editor before Play snapshot"));
+    if (m_runtimeCustomTrack) {
+        m_runtimeCustomTrack->deleteLater();
+        m_runtimeCustomTrack = nullptr;
+    }
+    m_runtimeCustomTrack = cloneCustomTrackSnapshot(track, this);
+    dumpCustomTrackLayoutForDebug(m_runtimeCustomTrack, QStringLiteral("Runtime Play snapshot"));
+
+    startCustomTrackSession(m_runtimeCustomTrack);
+}
+
+void MainWindow::saveCurrentCustomTrack()
+{
+    TrackData* track = m_customTrackEditor ? m_customTrackEditor->trackData() : nullptr;
+    if (!track) {
+        return;
+    }
+
+    const QString filePath = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("Save Custom Track"),
+        QString(),
+        QStringLiteral("PhantomDrive Track (*.pdtrack)"));
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    QString finalPath = filePath;
+    if (QFileInfo(finalPath).suffix().isEmpty()) {
+        finalPath += QStringLiteral(".pdtrack");
+    }
+
+    TrackIO io;
+    if (!io.saveTrack(track, finalPath)) {
+        QMessageBox::warning(this,
+                             QStringLiteral("Track Save Failed"),
+                             io.getLastError());
+        return;
+    }
+
+    statusBar()->showMessage(QStringLiteral("Saved custom track: %1").arg(finalPath), 5000);
+}
+
+void MainWindow::loadCustomTrackIntoEditor()
+{
+    const QString filePath = QFileDialog::getOpenFileName(
+        this,
+        QStringLiteral("Load Custom Track Into Editor"),
+        QString(),
+        QStringLiteral("PhantomDrive Track (*.pdtrack *.json)"));
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    TrackIO io;
+    TrackData* track = io.loadTrack(filePath);
+    if (!track) {
+        QMessageBox::warning(this,
+                             QStringLiteral("Track Load Failed"),
+                             io.getLastError());
+        return;
+    }
+
+    track->setMaxLaps(1);
+    if (m_customTrackEditor) {
+        m_customTrackEditor->setTrackData(track);
+    }
+    if (m_customTrackMode) {
+        m_customTrackMode->setTrack(track);
+    }
+    statusBar()->showMessage(QStringLiteral("Loaded custom track into editor: %1").arg(filePath), 5000);
+}
+
+void MainWindow::exportCurrentCustomTrackJson()
+{
+    TrackData* track = m_customTrackEditor ? m_customTrackEditor->trackData() : nullptr;
+    if (!track) {
+        return;
+    }
+
+    const QString filePath = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("Export Custom Track JSON"),
+        QString(),
+        QStringLiteral("JSON (*.json)"));
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    QString finalPath = filePath;
+    if (QFileInfo(finalPath).suffix().isEmpty()) {
+        finalPath += QStringLiteral(".json");
+    }
+
+    TrackIO io;
+    if (!io.saveTrack(track, finalPath)) {
+        QMessageBox::warning(this,
+                             QStringLiteral("JSON Export Failed"),
+                             io.getLastError());
+        return;
+    }
+
+    statusBar()->showMessage(QStringLiteral("Exported custom track JSON: %1").arg(finalPath), 5000);
+}
+
+void MainWindow::restoreDefaultRaceTrack()
+{
+    if (!m_defaultRaceTrack || !m_gameView) {
+        return;
+    }
+
+    m_gameView->setTrackData(m_defaultRaceTrack);
+    TrackManager* trackMgr = TrackManager::instance(this);
+    if (trackMgr) {
+        trackMgr->setCurrentTrack(m_defaultRaceTrack);
+        QList<QVector2D> waypoints;
+        for (Checkpoint* cp : m_defaultRaceTrack->getCheckpointsInOrder()) {
+            if (cp) {
+                waypoints.append(cp->getPosition());
+            }
+        }
+        waypoints.append(m_defaultRaceTrack->getStartPosition());
+        trackMgr->setWaypoints(waypoints);
+    }
+}
+
+void MainWindow::focusGameViewForDriving()
+{
+    if (!m_gameView) {
+        return;
+    }
+
+    m_gameView->show();
+    m_gameView->raise();
+    m_gameView->activateWindow();
+    m_gameView->setFocus(Qt::OtherFocusReason);
+}
+
 void MainWindow::setupGameView()
 {
     m_gameView = new GameViewWidget(this);
@@ -480,6 +924,7 @@ void MainWindow::setupGameView()
     if (trackMgr && trackMgr->hasCurrentTrack()) {
         TrackData* loadedTrack = trackMgr->getCurrentTrack();
         if (!loadedTrack->getCheckpointsInOrder().isEmpty()) {
+            m_defaultRaceTrack = loadedTrack;
             m_gameView->setTrackData(loadedTrack);
             if (loadedTrack->getStartPosition() == QVector2D(0, 0)) {
                 const qreal tileSize = 64.0;
@@ -494,6 +939,7 @@ void MainWindow::setupGameView()
     }
 
     TrackData* testTrack = new TrackData();
+    m_defaultRaceTrack = testTrack;
     testTrack->setId("main_city_training_route");
     testTrack->setName("Main City Training Route");
     testTrack->setSize(30, 30);
@@ -919,9 +1365,17 @@ void MainWindow::applyPlayerSpawnAtStartLine()
     QVector2D spawnPos(320.0, 320.0);
     qreal spawnRotation = 0.0;
     if (track) {
-        spawnPos = track->getStartPosition();
+        const QList<QVector2D> startPositions = track->getStartPositions();
+        spawnPos = startPositions.isEmpty() ? track->getStartPosition() : startPositions.first();
         spawnRotation = track->getStartRotation();
     }
+    const QPoint spawnTile = TrackData::worldToTile(spawnPos);
+    qDebug().noquote()
+        << QStringLiteral("[CustomTrackDebug] applyPlayerSpawnAtStartLine row=%1 col=%2 world=(%3,%4)")
+               .arg(spawnTile.y())
+               .arg(spawnTile.x())
+               .arg(spawnPos.x())
+               .arg(spawnPos.y());
 
     m_playerPosition = spawnPos;
     m_playerRotation = spawnRotation;
@@ -972,6 +1426,125 @@ void MainWindow::loadCustomTrack()
     setupEBRuntimeObjects();
     initializeAIOpponents();
     statusBar()->showMessage(QStringLiteral("Loaded custom track: %1").arg(filePath), 5000);
+}
+
+void MainWindow::setupCustomTrackRuntimeObjects(TrackData* track)
+{
+    clearEBRuntimeObjects();
+
+    if (!track || !m_gameView) {
+        return;
+    }
+
+    const QList<QVector2D> itemBoxes = track->getItemBoxPositions();
+    for (int i = 0; i < itemBoxes.size(); ++i) {
+        m_gameView->addPowerupBox(QStringLiteral("custom_item_box_%1").arg(i + 1),
+                                  itemBoxes.at(i),
+                                  QStringLiteral("Item"));
+    }
+}
+
+void MainWindow::startCustomTrackSession(TrackData* track)
+{
+    if (!track) {
+        return;
+    }
+
+    if (m_driveActive) {
+        finishDrivingSession();
+    }
+
+    m_currentMode = QStringLiteral("Custom Track");
+    m_customTrackPlaying = true;
+    m_arcadeRaceLogicActive = true;
+    m_driveActive = true;
+    m_arcadeRaceFinished = false;
+    m_lapsCompleted = 0;
+    m_totalLaps = 1;
+    m_simTick = 0;
+    m_sessionElapsedMs = 0;
+    m_currentLapStartMs = 0;
+    m_bestLapMs = 0;
+    m_playerSpeed = 0.0;
+    track->setMaxLaps(1);
+
+    if (m_customTrackMode) {
+        m_customTrackMode->setTrack(track);
+        m_customTrackMode->setCustomState(CustomTrackModeState::Playing);
+    }
+
+    if (m_customTrackEditor) {
+        m_customTrackEditor->hide();
+    }
+    if (ui->stackedWidget) {
+        ui->stackedWidget->setCurrentIndex(1);
+    }
+    if (m_gameView) {
+        m_gameView->show();
+        m_gameView->setTrackData(track);
+        m_gameView->clearAllAICars();
+    }
+
+    TrackManager* trackMgr = TrackManager::instance(this);
+    if (trackMgr) {
+        trackMgr->setCurrentTrack(track);
+        QList<QVector2D> waypoints;
+        for (Checkpoint* cp : track->getCheckpointsInOrder()) {
+            if (cp) {
+                waypoints.append(cp->getPosition());
+            }
+        }
+        waypoints.append(track->getStartPosition());
+        trackMgr->setWaypoints(waypoints);
+    }
+
+    if (m_drivingDataCollector) {
+        m_drivingDataCollector->stopCollection();
+        m_drivingDataCollector->clearData();
+        m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, QStringLiteral("custom_track"));
+        if (m_drivingDataCollector->vehicleSensor()) {
+            m_drivingDataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
+        }
+        m_drivingDataCollector->startCollection();
+    }
+    if (m_scoreManager) {
+        m_scoreManager->startSession(QStringLiteral("player"));
+    }
+    if (m_aiManager) {
+        m_aiManager->destroyAllOpponents();
+        m_aiManager->setRaceTotalLaps(1);
+        m_aiManager->setPlayerRaceProgress(0, 0, 0.0, false, 0.0);
+        m_aiManager->setTrackBounds(track->getBounds());
+    }
+
+    if (m_learningHUD) {
+        m_learningHUD->hide();
+    }
+    if (m_arcadeHUD) {
+        m_arcadeHUD->setCustomTrackVisualMode(true);
+        m_arcadeHUD->show();
+        updateRaceHud();
+    }
+    if (m_btnFinishDrive) {
+        m_btnFinishDrive->show();
+        m_btnFinishDrive->setEnabled(false);
+    }
+
+    setupCustomTrackRuntimeObjects(track);
+
+    if (m_vehiclePhysics) {
+        m_vehiclePhysics->reset();
+        m_vehiclePhysics->resetRaceProgress();
+        m_vehiclePhysics->setRaceLogicEnabled(false);
+    }
+    applyPlayerSpawnAtStartLine();
+    resetArcadeRaceProgress();
+    focusGameViewForDriving();
+
+    m_countdownActive = true;
+    showCountdown();
+
+    statusBar()->showMessage(QStringLiteral("Custom Track Mode running"));
 }
 
 QString MainWindow::formatRaceTime(qint64 milliseconds) const
@@ -1127,16 +1700,27 @@ void MainWindow::updateRaceHud()
     }
 
     m_arcadeHUD->updateSpeed(displaySpeedKmh());
-    m_arcadeHUD->updateLap(m_lapsCompleted, m_totalLaps);
+    if (m_customTrackPlaying) {
+        const int total = qMax(0, m_raceCheckpointTotal);
+        const int passed = qBound(0, m_nextCheckpointIndex, total);
+        const QString nextTarget = passed >= total
+            ? QStringLiteral("FINISH")
+            : QStringLiteral("CP%1").arg(passed + 1);
+        m_arcadeHUD->updateRouteProgress(passed, total, nextTarget);
+    } else {
+        m_arcadeHUD->updateLap(m_lapsCompleted, m_totalLaps);
+    }
     m_arcadeHUD->updateTotalTime(formatRaceTime(m_sessionElapsedMs));
     m_arcadeHUD->updateLapTime(formatRaceTime(qMax<qint64>(0, m_sessionElapsedMs - m_currentLapStartMs)));
     if (m_bestLapMs > 0) {
         m_arcadeHUD->updateBestLapTime(formatRaceTime(m_bestLapMs));
     }
 
-    const int totalRacers = m_aiManager ? (m_aiManager->getOpponentCount() + 1) : 1;
-    const int playerPosition = m_aiManager ? m_aiManager->getPlayerRacePosition() : 1;
-    m_arcadeHUD->updatePosition(playerPosition, totalRacers);
+    if (!m_customTrackPlaying) {
+        const int totalRacers = m_aiManager ? (m_aiManager->getOpponentCount() + 1) : 1;
+        const int playerPosition = m_aiManager ? m_aiManager->getPlayerRacePosition() : 1;
+        m_arcadeHUD->updatePosition(playerPosition, totalRacers);
+    }
 }
 
 void MainWindow::syncRaceTrackToManager()
@@ -1189,9 +1773,9 @@ void MainWindow::updateArcadeRaceProgress(const QVector2D& positionBefore)
 
     const QVector2D& pos = m_playerPosition;
     const bool onStartLine = tileAtIsStartFinish(track, pos);
-    const bool inNorthGate = positionInNorthGate(track, pos);
-    const bool inNorthSector = onStartLine || inNorthGate;
-    const bool wasInNorthSector = m_wasOnStartLine || m_wasInNorthGate;
+    const bool inNorthGate = !m_customTrackPlaying && positionInNorthGate(track, pos);
+    const bool inNorthSector = m_customTrackPlaying ? onStartLine : (onStartLine || inNorthGate);
+    const bool wasInNorthSector = m_customTrackPlaying ? m_wasOnStartLine : (m_wasOnStartLine || m_wasInNorthGate);
 
     if (!inNorthSector) {
         m_hasLeftNorthSector = true;
@@ -1202,39 +1786,46 @@ void MainWindow::updateArcadeRaceProgress(const QVector2D& positionBefore)
 
     if (allCheckpointsCollected && m_hasLeftNorthSector) {
         const bool enteredStartLine = onStartLine && !m_wasOnStartLine;
-        const bool enteredNorthGate = inNorthGate && !m_wasInNorthGate;
+        const bool enteredNorthGate = !m_customTrackPlaying && inNorthGate && !m_wasInNorthGate;
         if (enteredStartLine || enteredNorthGate) {
-            const int completedLap = m_lapsCompleted + 1;
-            const qint64 lapMs = qMax<qint64>(0, m_sessionElapsedMs - m_currentLapStartMs);
+            if (m_customTrackPlaying) {
+                finishCustomTrackRoute();
+            } else {
+                const int completedLap = m_lapsCompleted + 1;
+                const qint64 lapMs = qMax<qint64>(0, m_sessionElapsedMs - m_currentLapStartMs);
 
-            onLapCompleted(completedLap);
-            m_lapsCompleted = completedLap;
+                onLapCompleted(completedLap);
+                m_lapsCompleted = completedLap;
 
-            if (lapMs > 0 && (m_bestLapMs == 0 || lapMs < m_bestLapMs)) {
-                m_bestLapMs = lapMs;
+                if (lapMs > 0 && (m_bestLapMs == 0 || lapMs < m_bestLapMs)) {
+                    m_bestLapMs = lapMs;
+                }
+
+                if (m_lapsCompleted < m_totalLaps) {
+                    m_currentLapStartMs = m_sessionElapsedMs;
+                    updateRaceHud();
+                }
+
+                m_nextCheckpointIndex = 0;
+                m_hasLeftNorthSector = false;
+                m_blockCheckpointsUntilLeaveNorth = true;
             }
-
-            if (m_lapsCompleted < m_totalLaps) {
-                m_currentLapStartMs = m_sessionElapsedMs;
-                updateRaceHud();
-            }
-
-            m_nextCheckpointIndex = 0;
-            m_hasLeftNorthSector = false;
-            m_blockCheckpointsUntilLeaveNorth = true;
         }
     }
 
     if (!m_blockCheckpointsUntilLeaveNorth && m_nextCheckpointIndex < checkpoints.size()) {
         if (m_nextCheckpointIndex == 0) {
-            const bool leavingNorth = !inNorthSector && wasInNorthSector;
             PhantomDrive::Checkpoint* cp0 = checkpoints.first();
-            const bool crossedCp0 = m_hasLeftNorthSector
+            const bool leavingNorth = !m_customTrackPlaying && !inNorthSector && wasInNorthSector;
+            const bool insideCp0 = cp0 && cp0->containsPoint(pos);
+            const bool enteredCp0 = insideCp0 && !m_wasInsideNextGate;
+            const bool crossedCp0 = (m_customTrackPlaying || m_hasLeftNorthSector)
                 && cp0
                 && crossedCheckpointGate(cp0, positionBefore, pos);
-            if (leavingNorth || crossedCp0) {
+            if (leavingNorth || enteredCp0 || crossedCp0) {
                 onCheckpointReached(0);
                 m_nextCheckpointIndex = 1;
+                m_wasInsideNextGate = false;
             }
         } else {
             PhantomDrive::Checkpoint* nextCp = checkpoints.at(m_nextCheckpointIndex);
@@ -1258,6 +1849,41 @@ void MainWindow::updateArcadeRaceProgress(const QVector2D& positionBefore)
     } else {
         m_wasInsideNextGate = false;
     }
+}
+
+void MainWindow::finishCustomTrackRoute()
+{
+    if (m_arcadeRaceFinished) {
+        return;
+    }
+
+    m_arcadeRaceFinished = true;
+    m_lapsCompleted = 1;
+    m_nextCheckpointIndex = m_raceCheckpointTotal;
+    const qint64 elapsedMs = qMax<qint64>(0, m_sessionElapsedMs - m_currentLapStartMs);
+    if (elapsedMs > 0 && (m_bestLapMs == 0 || elapsedMs < m_bestLapMs)) {
+        m_bestLapMs = elapsedMs;
+    }
+
+    if (m_aiManager) {
+        m_aiManager->setPlayerRaceProgress(1, m_raceCheckpointTotal, 100.0, true, m_sessionElapsedMs / 1000.0);
+    }
+
+    if (m_arcadeHUD) {
+        m_arcadeHUD->updateRouteProgress(m_raceCheckpointTotal, m_raceCheckpointTotal, QStringLiteral("FINISH"));
+        m_arcadeHUD->showRaceBanner(QStringLiteral("Custom Track Finished"));
+        m_arcadeHUD->showRaceFinished(1, formatRaceTime(m_sessionElapsedMs));
+    }
+
+    showInteractiveFeedback(QStringLiteral("Custom Track Finished!"), FeedbackType::Milestone);
+    playSound(PhantomDrive::SoundEffect::RaceFinish);
+    statusBar()->showMessage(QStringLiteral("Custom Track Finished"), 4000);
+
+    QTimer::singleShot(2000, this, [this]() {
+        if (m_driveActive) {
+            finishDrivingSession();
+        }
+    });
 }
 
 void MainWindow::simulateGameLoop()
@@ -1350,6 +1976,7 @@ void MainWindow::startDrivingSession(const QString& mode)
 
     m_currentMode = mode;
     m_arcadeRaceLogicActive = (mode == QStringLiteral("Arcade"));
+    m_customTrackPlaying = false;
     m_driveActive = true;
     m_arcadeRaceFinished = false;
     m_lapsCompleted = 0;
@@ -1378,17 +2005,22 @@ void MainWindow::startDrivingSession(const QString& mode)
     }
 
     ui->stackedWidget->setCurrentIndex(1);
+    if (m_customTrackEditor) {
+        m_customTrackEditor->hide();
+    }
     if (m_gameView) {
         m_gameView->show();
-        m_gameView->setFocus();
     }
+    restoreDefaultRaceTrack();
+    focusGameViewForDriving();
     if (m_arcadeHUD && m_currentMode == QStringLiteral("Arcade")) {
+        m_arcadeHUD->setCustomTrackVisualMode(false);
         m_arcadeHUD->show();
         updateRaceHud();
     } else if (m_arcadeHUD) {
+        m_arcadeHUD->setCustomTrackVisualMode(false);
         m_arcadeHUD->hide();
     }
-    syncRaceTrackToManager();
     setupEBRuntimeObjects();
 
     if (m_vehiclePhysics) {
@@ -1551,7 +2183,9 @@ void MainWindow::showCountdown()
     feedback.raise();
     feedback.showCountdown(3);
 
-    if (m_arcadeHUD && m_currentMode == QStringLiteral("Arcade")) {
+    const bool raceHudMode = m_currentMode == QStringLiteral("Arcade")
+        || m_currentMode == QStringLiteral("Custom Track");
+    if (m_arcadeHUD && raceHudMode) {
         m_arcadeHUD->show();
         m_arcadeHUD->showCountdown(3);
         updateRaceHud();
@@ -1578,6 +2212,10 @@ void MainWindow::onRaceStart()
         m_vehiclePhysics->resetRaceProgress();
         m_vehiclePhysics->setRaceLogicEnabled(false);
     }
+    focusGameViewForDriving();
+    QTimer::singleShot(50, this, [this]() {
+        focusGameViewForDriving();
+    });
 
     const int checkpointCount = m_gameView && m_gameView->trackData()
         ? m_gameView->trackData()->getCheckpointsInOrder().size()
@@ -1590,6 +2228,12 @@ void MainWindow::onRaceStart()
 
     PhantomDrive::InteractiveFeedback::instance(this).showGo();
     playSound(PhantomDrive::SoundEffect::CountdownGo);
+    QTimer::singleShot(0, this, [this]() {
+        focusGameViewForDriving();
+    });
+    QTimer::singleShot(100, this, [this]() {
+        focusGameViewForDriving();
+    });
 
     if (m_learningHUD) {
         if (m_currentMode == QStringLiteral("Learning")) {
@@ -1615,6 +2259,11 @@ void MainWindow::onRaceStart()
 
     if (m_btnFinishDrive) {
         m_btnFinishDrive->setEnabled(true);
+    }
+
+    if (m_customTrackPlaying) {
+        statusBar()->showMessage(QStringLiteral("Custom Track | GO! Next: CP1"), 4000);
+        return;
     }
 
     statusBar()->showMessage(
@@ -1670,6 +2319,31 @@ void MainWindow::onCheckpointReached(int checkpointNumber)
 {
     const int displayIndex = checkpointNumber + 1;
     const int totalGates = m_raceCheckpointTotal > 0 ? m_raceCheckpointTotal : 4;
+
+    if (m_customTrackPlaying) {
+        const QString nextTarget = displayIndex >= totalGates
+            ? QStringLiteral("FINISH")
+            : QStringLiteral("CP%1").arg(displayIndex + 1);
+        if (m_arcadeHUD) {
+            m_arcadeHUD->showRaceBanner(
+                QStringLiteral("CP %1/%2 passed | Next: %3")
+                    .arg(displayIndex)
+                    .arg(totalGates)
+                    .arg(nextTarget));
+        }
+        PhantomDrive::InteractiveFeedback& feedback = PhantomDrive::InteractiveFeedback::instance(this);
+        feedback.show();
+        feedback.raise();
+        feedback.showCheckpoint(displayIndex);
+        playSound(PhantomDrive::SoundEffect::Checkpoint);
+        statusBar()->showMessage(
+            QStringLiteral("Checkpoint %1/%2 passed. Next: %3")
+                .arg(displayIndex)
+                .arg(totalGates)
+                .arg(nextTarget),
+            5000);
+        return;
+    }
 
     if (m_arcadeHUD) {
         m_arcadeHUD->showRaceBanner(
