@@ -1,0 +1,18 @@
+# ninja log v7
+29	613	8018070631672444	ab_report_widget_demo_autogen/timestamp	bc061f93bc975657
+29	613	8018070631672444	ab_report_widget_demo_autogen/mocs_compilation.cpp	bc061f93bc975657
+29	613	8018070631672444	D:/c++大作业/PhantomDrive--feature-a-b-custom-track-mode/build-mingw/ab_report_widget_demo_autogen/timestamp	bc061f93bc975657
+29	613	8018070631672444	D:/c++大作业/PhantomDrive--feature-a-b-custom-track-mode/build-mingw/ab_report_widget_demo_autogen/mocs_compilation.cpp	bc061f93bc975657
+641	909	8018070632574604	CMakeFiles/ab_report_widget_demo.dir/ab_report_widget_demo_autogen/mocs_compilation.cpp.obj	3db4d97042c88624
+23	5162	8018070676941740	test_visualization_autogen/timestamp	ceeed52e9b3c06cb
+23	5162	8018070676941740	test_visualization_autogen/mocs_compilation.cpp	ceeed52e9b3c06cb
+23	5162	8018070676941740	D:/c++大作业/PhantomDrive--feature-a-b-custom-track-mode/build-mingw/test_visualization_autogen/timestamp	ceeed52e9b3c06cb
+23	5162	8018070676941740	D:/c++大作业/PhantomDrive--feature-a-b-custom-track-mode/build-mingw/test_visualization_autogen/mocs_compilation.cpp	ceeed52e9b3c06cb
+5170	5333	8018070677867668	CMakeFiles/test_visualization.dir/test_visualization_autogen/mocs_compilation.cpp.obj	a55509feff578c86
+647	8172	8018070632634613	CMakeFiles/ab_report_widget_demo.dir/examples/ab-report-widget-demo/main.cpp.obj	b6f8c4622405d479
+5177	8552	8018070677937662	CMakeFiles/test_visualization.dir/tests/test_visualization_simple.cpp.obj	63e4d4145bff81e9
+654	8804	8018070632704613	CMakeFiles/ab_report_widget_demo.dir/src/UI/ABDrivingReportWidget.cpp.obj	62b2b072c3578dfa
+18	12202	8018070747616884	PhantomDrive_autogen/timestamp	b0c95f0c8ca3cfdb
+18	12202	8018070747616884	PhantomDrive_autogen/mocs_compilation.cpp	b0c95f0c8ca3cfdb
+18	12202	8018070747616884	D:/c++大作业/PhantomDrive--feature-a-b-custom-track-mode/build-mingw/PhantomDrive_autogen/timestamp	b0c95f0c8ca3cfdb
+18	12202	8018070747616884	D:/c++大作业/PhantomDrive--feature-a-b-custom-track-mode/build-mingw/PhantomDrive_autogen/mocs_compilation.cpp	b0c95f0c8ca3cfdb
