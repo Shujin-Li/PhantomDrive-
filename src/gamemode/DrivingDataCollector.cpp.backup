@@ -1,0 +1,338 @@
+#include "DrivingDataCollector.h"
+
+#include <QDateTime>
+#include <QFile>
+#include <QDir>
+#include <QDebug>
+
+namespace PhantomDrive {
+
+DrivingDataCollector::DrivingDataCollector(QObject* parent)
+    : IDrivingDataCollector(parent)//parent：父对象指针
+    , m_vehicleId()
+    , m_samplingInterval(100)
+    , m_isCollecting(false)
+    , m_isStorageEnabled(true)
+    , m_collectionStartTime(0)
+    , m_collectionEndTime(0)
+    , m_vehicleSensor(nullptr)
+    , m_collisionDetector(nullptr)
+    , m_dataStorage(nullptr)
+    , m_currentCheckpoint(0)
+    , m_currentLapTime(0.0)
+    , m_currentLapNumber(0)
+{
+    initializeComponents();
+}
+
+DrivingDataCollector::~DrivingDataCollector()
+{
+    stopCollection();
+    cleanupComponents();
+}
+
+void DrivingDataCollector::setVehicleId(const QString& vehicleId)// 统一设置vehicle sensor和collision detector车辆ID
+{
+    m_vehicleId = vehicleId;
+
+    if (m_vehicleSensor) {
+        m_vehicleSensor->setVehicleId(m_vehicleId);
+    }
+
+    if (m_collisionDetector) {
+        m_collisionDetector->setVehicleId(m_vehicleId);
+    }
+}
+
+void DrivingDataCollector::setSamplingInterval(int intervalMs)// 设置采样间隔
+{
+{
+    if (intervalMs <= 0) {
+        qWarning() << "Sampling interval must be positive";
+        return;
+    }
+
+    m_samplingInterval = intervalMs;
+
+    if (m_vehicleSensor) {
+        m_vehicleSensor->setSamplingInterval(m_samplingInterval);
+    }
+}
+
+int DrivingDataCollector::samplingInterval() const// 获取采样间隔
+{
+    return m_samplingInterval;
+}
+
+void DrivingDataCollector::setStorageEnabled(bool enabled)
+{
+    m_isStorageEnabled = enabled;
+}
+
+void DrivingDataCollector::setCollisionDetectionEnabled(bool enabled)
+{
+    if (m_collisionDetector) {
+        m_collisionDetector->enableCollisionDetection(enabled);
+    }
+}
+
+bool DrivingDataCollector::isCollisionDetectionEnabled() const
+{
+    return m_collisionDetector ? m_collisionDetector->isCollisionDetectionEnabled() : false;
+}
+
+void DrivingDataCollector::startCollection()
+{
+    if (m_isCollecting) {
+        qWarning() << "Collection is already in progress";
+        return;
+    }
+
+    m_collectionStartTime = QDateTime::currentMSecsSinceEpoch();
+    m_isCollecting = true;
+
+    if (m_vehicleSensor) {
+        m_vehicleSensor->startSensing();
+    }
+
+    emit collectionStarted(m_samplingInterval);
+    emit collectionStarted();
+}
+
+void DrivingDataCollector::stopCollection()
+{
+    if (!m_isCollecting) {
+        return;
+    }
+
+    m_collectionEndTime = QDateTime::currentMSecsSinceEpoch();
+    m_isCollecting = false;
+
+    if (m_vehicleSensor) {
+        m_vehicleSensor->stopSensing();
+    }
+
+    int totalPoints = m_dataStorage ? m_dataStorage->currentSize() : 0;
+    emit collectionStopped(totalPoints);
+    emit collectionStopped();
+}
+
+DrivingData DrivingDataCollector::getCurrentData() const
+{
+    if (m_vehicleSensor) {
+        return m_vehicleSensor->getCurrentReading();
+    }
+    return DrivingData();
+}
+
+QList<DrivingData> DrivingDataCollector::getCollectedData() const
+{
+    if (m_dataStorage) {
+        return m_dataStorage->getData();
+    }
+    return QList<DrivingData>();
+}
+
+QList<ViolationEvent> DrivingDataCollector::getViolations() const
+{
+    if (m_dataStorage) {
+        return m_dataStorage->getViolations();
+    }
+    return QList<ViolationEvent>();
+}
+
+void DrivingDataCollector::clearData()
+{
+    if (m_vehicleSensor) {
+        m_vehicleSensor->clearHistory();
+    }
+
+    if (m_collisionDetector) {
+        m_collisionDetector->clearCollisionHistory();
+    }
+
+    if (m_dataStorage) {
+        m_dataStorage->clear();
+    }
+
+    m_currentCheckpoint = 0;
+    m_currentLapTime = 0.0;
+    m_currentLapNumber = 0;
+}
+
+bool DrivingDataCollector::exportData(const QString& filePath) const
+{
+    if (!m_dataStorage) {
+        return false;
+    }
+
+    return m_dataStorage->exportToFile(filePath);
+}
+
+bool DrivingDataCollector::importData(const QString& filePath)
+{
+    if (!m_dataStorage) {
+        return false;
+    }
+
+    return m_dataStorage->importFromFile(filePath);
+}
+
+qint64 DrivingDataCollector::getCollectionDuration() const
+{
+    if (m_collectionStartTime == 0) {
+        return 0;
+    }
+
+    qint64 endTime = m_isCollecting ? QDateTime::currentMSecsSinceEpoch() : m_collectionEndTime;
+    return endTime - m_collectionStartTime;
+}
+
+int DrivingDataCollector::getTotalDataPoints() const
+{
+    return m_dataStorage ? m_dataStorage->currentSize() : 0;
+}
+
+int DrivingDataCollector::getTotalViolations() const
+{
+    return m_dataStorage ? m_dataStorage->getViolations().size() : 0;
+}
+
+void DrivingDataCollector::registerCollidableObject(const QString& objectId, const QVector2D& position, qreal radius)
+{
+    if (m_collisionDetector) {
+        m_collisionDetector->registerCollidableObject(objectId, position, radius);
+    }
+}
+
+void DrivingDataCollector::updateCollidableObject(const QString& objectId, const QVector2D& position)
+{
+    if (m_collisionDetector) {
+        m_collisionDetector->updateCollidableObject(objectId, position);
+    }
+}
+
+void DrivingDataCollector::removeCollidableObject(const QString& objectId)
+{
+    if (m_collisionDetector) {
+        m_collisionDetector->removeCollidableObject(objectId);
+    }
+}
+
+void DrivingDataCollector::setCurrentSpeedLimit(qreal limit, const QString& zoneId)
+{
+    if (m_vehicleSensor) {
+        m_vehicleSensor->updateSpeedLimit(limit, zoneId);
+    }
+}
+
+void DrivingDataCollector::updateCheckpointProgress(int checkpointId, qreal lapTime, qint32 currentLap)
+{
+    m_currentCheckpoint = checkpointId;
+    m_currentLapTime = lapTime;
+    m_currentLapNumber = currentLap;
+}
+
+void DrivingDataCollector::onSensorDataReady(const DrivingData& data)
+{
+    emitDataCollected(data);
+
+    if (m_isStorageEnabled && m_dataStorage) {
+        m_dataStorage->addData(data);
+    }
+}
+
+void DrivingDataCollector::onCollisionDetected(const QString& objectId, const QVector2D& position, qreal impactForce)
+{
+    ViolationEvent violation = createViolationEvent(ViolationType::Collision,
+                                                    QString("Collision with %1").arg(objectId),
+                                                    0.0);
+    violation.position = position;
+
+    if (m_dataStorage) {
+        m_dataStorage->addViolation(violation);
+    }
+
+    emitViolationDetected(violation);
+
+    if (impactForce > 10000.0) {
+        emit criticalCollisionDetected(objectId, impactForce);
+    }
+}
+
+void DrivingDataCollector::onSpeedLimitExceeded(qreal currentSpeed, qreal limit)
+{
+    ViolationEvent violation = createViolationEvent(ViolationType::SpeedOverLimit,
+                                                    QString("Speed %1 exceeded limit %2").arg(currentSpeed).arg(limit),
+                                                    currentSpeed);
+    violation.speedLimit = limit;
+
+    if (m_dataStorage) {
+        m_dataStorage->addViolation(violation);
+    }
+
+    emitViolationDetected(violation);
+}
+
+void DrivingDataCollector::onStorageBufferFull()
+{
+    emit storageBufferFull();
+}
+
+void DrivingDataCollector::initializeComponents()
+{
+    m_vehicleSensor = new VehicleSensor(this);
+    m_collisionDetector = new CollisionDetector(this);
+    m_dataStorage = new DrivingDataStorage(this);
+
+    connect(m_vehicleSensor, &VehicleSensor::sensorDataReady,
+            this, &DrivingDataCollector::onSensorDataReady);
+
+    connect(m_vehicleSensor, &VehicleSensor::speedLimitExceeded,
+            this, &DrivingDataCollector::onSpeedLimitExceeded);
+
+    connect(m_collisionDetector, &CollisionDetector::collisionDetected,
+            this, &DrivingDataCollector::onCollisionDetected);
+
+    connect(m_dataStorage, &DrivingDataStorage::bufferFull,
+            this, &DrivingDataCollector::onStorageBufferFull);
+
+    if (!m_vehicleId.isEmpty()) {
+        m_vehicleSensor->setVehicleId(m_vehicleId);
+        m_collisionDetector->setVehicleId(m_vehicleId);
+    }
+
+    m_vehicleSensor->setSamplingInterval(m_samplingInterval);
+}
+
+void DrivingDataCollector::cleanupComponents()
+{
+    if (m_vehicleSensor) {
+        m_vehicleSensor->deleteLater();
+        m_vehicleSensor = nullptr;
+    }
+
+    if (m_collisionDetector) {
+        m_collisionDetector->deleteLater();
+        m_collisionDetector = nullptr;
+    }
+
+    if (m_dataStorage) {
+        m_dataStorage->deleteLater();
+        m_dataStorage = nullptr;
+    }
+}
+
+ViolationEvent DrivingDataCollector::createViolationEvent(ViolationType type, const QString& description, qreal speed) const
+{
+    ViolationEvent event;
+    event.timestamp = QDateTime::currentMSecsSinceEpoch();
+    event.type = type;
+    event.description = description;
+    event.speedAtViolation = speed;
+    event.penaltyPoints = (type == ViolationType::Collision) ? 10 :
+                          (type == ViolationType::SpeedOverLimit) ? 5 : 0;
+    return event;
+}
+
+}
