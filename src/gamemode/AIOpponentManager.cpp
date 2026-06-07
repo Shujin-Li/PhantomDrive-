@@ -459,25 +459,26 @@ void AIOpponentManager::refreshRaceProgressFromOpponents()
         entry.checkpointIndex = opponent->getCheckpointsPassed();
         entry.progressPercent = opponent->getProgressPercentage();
 
-        if (!entry.finished && m_totalLaps > 0)
-        {
-            qDebug()
-            << "FINISH CHECK"
-            << it.key()
-            << "lap =" << opponent->getCurrentLap()
-            << "totalLaps =" << m_totalLaps
-            << "checkpoint =" << opponent->getCheckpointsPassed();
-
+        if (!entry.finished && m_totalLaps > 0) {
             if (opponent->getCurrentLap() >= m_totalLaps) {
-                qDebug() << "ENTER FINISH BLOCK" << it.key();
                 entry.finished = true;
                 if (entry.totalTime <= 0.0) {
                     entry.totalTime = opponent->getLapTime();
                 }
                 entry.finalPosition = m_finishOrder.size() + 1;
                 m_finishOrder.append(it.key());
+                const QList<Waypoint> waypoints = opponent->getWaypoints();
+                if (!waypoints.isEmpty()) {
+                    opponent->setPosition(waypoints.last().position);
+                    if (waypoints.size() > 1) {
+                        const QVector2D finishDirection = waypoints.last().position - waypoints.at(waypoints.size() - 2).position;
+                        if (!finishDirection.isNull()) {
+                            opponent->setRotation(qRadiansToDegrees(std::atan2(finishDirection.x(), finishDirection.y())));
+                        }
+                    }
+                }
+                opponent->setVelocity(QVector2D(0.0, 0.0));
                 opponent->setFinished(true);
-                opponent->setState(AIState::Finished);
                 emit opponentFinished(it.key(), entry.finalPosition);
 
                 updateRaceRankings();   // ← 新增这一行
@@ -547,20 +548,8 @@ void AIOpponentManager::updateRaceRankings()
 
 bool AIOpponentManager::areAllOpponentsFinished() const
 {
-    qDebug() << "CHECK ALL FINISHED";
-
-    for (auto it = m_opponents.begin();
-         it != m_opponents.end();
-         ++it)
-    {
-        qDebug()
-        << it.key()
-        << "finished="
-        << it.value()->hasFinished();
-
-        if (it.value() &&
-            !it.value()->hasFinished())
-        {
+    for (auto it = m_opponents.begin(); it != m_opponents.end(); ++it) {
+        if (it.value() && !it.value()->hasFinished()) {
             return false;
         }
     }

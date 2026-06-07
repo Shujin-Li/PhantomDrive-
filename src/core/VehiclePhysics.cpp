@@ -13,6 +13,7 @@ namespace PhantomDrive {
 VehiclePhysics::VehiclePhysics(QObject* parent)
     : QObject(parent)
     , m_trackManager(nullptr)
+    , m_controlScheme(ControlScheme::Combined)
     , m_position(0, 0)
     , m_previousPosition(0, 0)
     , m_rotation(0)
@@ -236,9 +237,31 @@ bool VehiclePhysics::isPositionFree(const QVector2D& position) const
     return canOccupyPosition(position);
 }
 
+bool VehiclePhysics::acceptsKey(int key) const
+{
+    const bool wasdKey = key == Qt::Key_W || key == Qt::Key_S
+        || key == Qt::Key_A || key == Qt::Key_D
+        || key == Qt::Key_Space;
+    const bool arrowKey = key == Qt::Key_Up || key == Qt::Key_Down
+        || key == Qt::Key_Left || key == Qt::Key_Right;
+
+    switch (m_controlScheme) {
+    case ControlScheme::Wasd:
+        return wasdKey;
+    case ControlScheme::Arrows:
+        return arrowKey;
+    case ControlScheme::Combined:
+    default:
+        return wasdKey || arrowKey;
+    }
+}
+
 void VehiclePhysics::handleKeyPress(QKeyEvent* event)
 {
     int key = event->key();
+    if (!acceptsKey(key)) {
+        return;
+    }
     if (key == Qt::Key_W || key == Qt::Key_Up) {
         m_isAccelerating = true;
         m_isBraking = false;
@@ -260,6 +283,9 @@ void VehiclePhysics::handleKeyPress(QKeyEvent* event)
 void VehiclePhysics::handleKeyRelease(QKeyEvent* event)
 {
     int key = event->key();
+    if (!acceptsKey(key)) {
+        return;
+    }
     if (key == Qt::Key_W || key == Qt::Key_Up) {
         m_isAccelerating = false;
     } else if (key == Qt::Key_S || key == Qt::Key_Down) {

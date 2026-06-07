@@ -18,6 +18,7 @@
 #include "UI/SoundManager.h"
 #include "gamemode/DrivingDataCollector.h"
 #include "scoring/ScoreManager.h"
+#include "scoring/ScoreReport.h"
 #include "core/datamodels.h"
 #include "gamemode/AIOpponentManager.h"
 #include "gamemode/AIOpponent.h"
@@ -69,8 +70,11 @@ private:
     PhantomDrive::ArcadeHUD* m_arcadeHUD;
     PhantomDrive::GameViewWidget *m_gameView;
     PhantomDrive::VehiclePhysics *m_vehiclePhysics;
+    PhantomDrive::VehiclePhysics *m_player2Physics;
     PhantomDrive::DrivingDataCollector *m_drivingDataCollector;
+    PhantomDrive::DrivingDataCollector *m_player2DataCollector;
     PhantomDrive::ScoreManager *m_scoreManager;
+    PhantomDrive::ScoreManager *m_player2ScoreManager;
     PhantomDrive::AIOpponentManager *m_aiManager;
     PhantomDrive::TrafficObjectManager *m_trafficObjectManager;
     QList<PhantomDrive::PowerupBox*> m_powerupBoxes;
@@ -81,6 +85,7 @@ private:
     QComboBox *m_aiDifficultyCombo;
     QPushButton *m_btnLoadCustomTrack;
     QPushButton *m_btnCustomTrackMode;
+    QPushButton *m_btnGuide;
     QPushButton *m_btnPlayCustomTrack;
     QPushButton *m_btnSaveCustomTrack;
     QPushButton *m_btnLoadCustomTrackForEdit;
@@ -88,11 +93,16 @@ private:
     PhantomDrive::CustomTrackEditorWidget *m_customTrackEditor;
     PhantomDrive::CustomTrackMode *m_customTrackMode;
     PhantomDrive::TrackData *m_defaultRaceTrack;
+    PhantomDrive::TrackData *m_selectedBuiltInTrack;
     PhantomDrive::TrackData *m_runtimeCustomTrack;
     QTimer *m_simTimer;
     QTimer *m_learningSessionTimer;   // auto-ends Learning Mode after max duration
     QString m_currentMode;
     QString m_customTrackPath;
+    QComboBox* m_trackSelectCombo;
+    QComboBox* m_playerCountCombo;
+    QString m_selectedTrackId;
+    bool m_twoPlayerMode;
     int m_currentSpeedLimit;
     QString m_currentTrafficLightState;
     bool m_driveActive;
@@ -109,6 +119,18 @@ private:
     QVector2D m_previousPlayerPosition;
     qreal m_playerRotation;
     qreal m_playerSpeed;
+    QVector2D m_player2Position;
+    QVector2D m_previousPlayer2Position;
+    qreal m_player2Rotation;
+    qreal m_player2Speed;
+    int m_player2LapsCompleted;
+    int m_player2NextCheckpointIndex;
+    bool m_player2WasInsideNextGate;
+    bool m_twoPlayerFinishHandled;
+    PhantomDrive::ScoreReport m_player1PendingReport;
+    PhantomDrive::ScoreReport m_player2PendingReport;
+    QList<PhantomDrive::DrivingData> m_player1PendingSamples;
+    QList<PhantomDrive::DrivingData> m_player2PendingSamples;
     bool m_arcadeRaceLogicActive;
     int m_nextCheckpointIndex;
     int m_raceCheckpointTotal;
@@ -124,6 +146,7 @@ private:
     void setupDataBindings();
     void setupDemoControls();
     void setupCustomTrackControls();
+    void setupRaceSetupControls();
     void styleMainMenu();
     void setGameHeaderVisible(bool visible);
     void initializeAIOpponents();
@@ -133,12 +156,14 @@ private:
     void hideCustomTrackEditor();
     void playCurrentCustomTrack();
     void startCustomTrackSession(PhantomDrive::TrackData* track);
+    void showArcadeSetupDialog();
     void saveCurrentCustomTrack();
     void loadCustomTrackIntoEditor();
     void exportCurrentCustomTrackJson();
     void restoreDefaultRaceTrack();
     void focusGameViewForDriving();
     void startDrivingSession(const QString& mode);
+    void startBuiltInTrackSession(const QString& mode);
     void finishDrivingSession();
     void onGameFinished();          // unified end-of-game entry point (shows report)
     void silentFinishSession();     // end session without showing report (used when starting a new game)
@@ -160,13 +185,22 @@ private:
     void clearEBRuntimeObjects();
     void updateEBRuntime(qreal deltaSeconds);
     void handlePowerupCollected(PhantomDrive::PowerupType type);
+    void handlePowerupCollectedForPlayer(PhantomDrive::PowerupType type, int playerIndex);
     void handleTrafficViolation(const PhantomDrive::ViolationEvent& violation);
     void applyPlayerSpawnAtStartLine();
     void syncRaceTrackToManager();
     void resetArcadeRaceProgress();
     void updateArcadeRaceProgress(const QVector2D& positionBefore);
+    void updatePlayer2RaceProgress(const QVector2D& positionBefore);
     void finishCustomTrackRoute();
+    void finishTwoPlayerRace(int winnerIndex);
     void resolvePlayerAiVehicleContact(PhantomDrive::AIOpponent* ai);
+    void applyPlayer2SpawnAtStartLine();
+    void updateTwoPlayerCamera();
+    int selectedPlayerCount() const;
+    bool isTwoPlayerSelected() const;
+    void preparePlayerReportSystems();
+    void showGuideDialog();
 
 private slots:
     void onDrivingDataCollected(const PhantomDrive::DrivingData& data);

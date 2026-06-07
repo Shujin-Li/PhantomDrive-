@@ -22,6 +22,8 @@
 #include "scoring/ScoreReport.h"
 #include "gamemode/DrivingData.h"
 
+class QPushButton;
+
 namespace PhantomDrive {
 
 class PHANTOMDRIVE_EXPORT DrivingReportWidget : public QWidget
@@ -40,6 +42,11 @@ public:
     void setCurrentReport(const ScoreReport& report);
     void setReport(const ScoreReport& report);
     void setCoachReportMarkdown(const QString& markdown);
+    void setPlayerReports(const ScoreReport& p1Report,
+                          const QList<DrivingData>& p1Samples,
+                          const ScoreReport& p2Report,
+                          const QList<DrivingData>& p2Samples);
+    void clearPlayerReports();
 
     // ---- history ----
     void loadHistoryFromSaveLoadManager();
@@ -84,6 +91,8 @@ private:
     void updateHistoryChart();
     void updateHistoryPlaceholder();
     void updateLiveChartPlaceholder();
+    void applyPlayerReport(int playerIndex);
+    void updatePlayerSwitchState();
 
     void resizeEvent(QResizeEvent* event) override;
 
@@ -103,6 +112,11 @@ private:
     QLabel*  m_loadingLabel;
     QTimer*  m_loadingDotTimer;
     int      m_loadingDotCount;
+
+    // ---- player report switch ----
+    QWidget*     m_playerSwitchWidget;
+    QPushButton* m_player1Button;
+    QPushButton* m_player2Button;
 
     // ---- summary labels ----
     QLabel* m_avgSpeedLabel;
@@ -157,6 +171,13 @@ private:
     ScoreReport        m_currentReport;
     QList<ViolationEvent> m_violations;
     QList<ScoreReport> m_historyReports;
+    ScoreReport        m_player1Report;
+    ScoreReport        m_player2Report;
+    QList<DrivingData> m_player1Samples;
+    QList<DrivingData> m_player2Samples;
+    bool               m_hasPlayerReports;
+    int                m_activePlayerIndex;
+    bool               m_applyingPlayerReport;
 };
 
 } // namespace PhantomDrive

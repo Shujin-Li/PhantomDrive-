@@ -3,6 +3,7 @@
 #include "track/Checkpoint.h"
 
 #include <QPainter>
+#include <QPainterPath>
 #include <QPaintEvent>
 #include <QResizeEvent>
 #include <QMouseEvent>
@@ -16,6 +17,27 @@
 namespace PhantomDrive {
 
 namespace {
+
+QColor playerColorForId(const QString& playerId)
+{
+    const QString id = playerId.trimmed().toUpper();
+    if (id == QStringLiteral("P2") || id == QStringLiteral("2")) {
+        return QColor(255, 45, 126);
+    }
+    if (id == QStringLiteral("P3") || id == QStringLiteral("3")) {
+        return QColor(255, 213, 74);
+    }
+    if (id == QStringLiteral("P4") || id == QStringLiteral("4")) {
+        return QColor(97, 255, 149);
+    }
+    return QColor(26, 241, 255);
+}
+
+QString normalizedPlayerId(const QString& playerId)
+{
+    const QString trimmed = playerId.trimmed();
+    return trimmed.isEmpty() ? QStringLiteral("P1") : trimmed;
+}
 
 void dumpTrackLayoutForDebug(const TrackData* track, const QString& label)
 {
@@ -135,20 +157,57 @@ void GameViewWidget::setTrackData(TrackData* track)
 
 void GameViewWidget::updatePlayerCar(const QVector2D& position, qreal rotation, qreal speed)
 {
+    updatePlayerCar(QStringLiteral("P1"),
+                    position,
+                    rotation,
+                    speed,
+                    QColor(26, 241, 255),
+                    m_playerBoostActive,
+                    m_playerShieldActive,
+                    m_playerInvisibleActive,
+                    m_playerMagnetActive);
+
+    for (int i = m_renderState.playerCars.size() - 1; i >= 0; --i) {
+        if (m_renderState.playerCars.at(i).extraData.value(QStringLiteral("playerId")).toString() != QStringLiteral("P1")) {
+            m_renderState.playerCars.removeAt(i);
+        }
+    }
+    update();
+}
+
+void GameViewWidget::updatePlayerCar(const QString& playerId,
+                                     const QVector2D& position,
+                                     qreal rotation,
+                                     qreal speed,
+                                     const QColor& color,
+                                     bool boostActive,
+                                     bool shieldActive,
+                                     bool invisibleActive,
+                                     bool magnetActive)
+{
     GameRenderObject car;
     car.type = RenderObjectType::PlayerCar;
     car.position = position;
     car.rotation = rotation;
-    car.size = QSizeF(24, 40);
-    car.color = QColor(231, 76, 60);
-    car.label = QString("Player (%1 km/h)").arg(qRound(speed));
-    car.extraData["speed"] = speed;
-    car.extraData["boostActive"] = m_playerBoostActive;
-    car.extraData["shieldActive"] = m_playerShieldActive;
-    car.extraData["invisibleActive"] = m_playerInvisibleActive;
-    car.extraData["magnetActive"] = m_playerMagnetActive;
+    car.size = QSizeF(28, 46);
+    const QString id = normalizedPlayerId(playerId);
+    car.color = color.isValid() ? color : playerColorForId(id);
+    car.label = QStringLiteral("%1  %2 km/h").arg(id).arg(qRound(speed));
+    car.extraData[QStringLiteral("playerId")] = id;
+    car.extraData[QStringLiteral("speed")] = speed;
+    car.extraData[QStringLiteral("boostActive")] = boostActive;
+    car.extraData[QStringLiteral("shieldActive")] = shieldActive;
+    car.extraData[QStringLiteral("invisibleActive")] = invisibleActive;
+    car.extraData[QStringLiteral("magnetActive")] = magnetActive;
 
-    m_renderState.playerCars.clear();
+    for (GameRenderObject& existing : m_renderState.playerCars) {
+        if (existing.extraData.value(QStringLiteral("playerId")).toString() == id) {
+            existing = car;
+            update();
+            return;
+        }
+    }
+
     m_renderState.playerCars.append(car);
     update();
 }
@@ -492,7 +551,7 @@ void GameViewWidget::mousePressEvent(QMouseEvent* event)
 void GameViewWidget::drawTrack(QPainter& painter)
 {
     if (!m_currentTrack) {
-        painter.setPen(QColor(149, 165, 166));
+        painter.setPen(QColor(70, 238, 255));
         painter.setFont(QFont("Arial", 14));
         painter.drawText(rect(), Qt::AlignCenter, "No Track Loaded");
         return;
@@ -500,6 +559,10 @@ void GameViewWidget::drawTrack(QPainter& painter)
 
     int rows = m_currentTrack->getRowCount();
     int cols = m_currentTrack->getColCount();
+    const QRectF viewport = rect();
+    const QRectF worldBounds(0.0, 0.0, cols * m_tileSize, rows * m_tileSize);
+
+    drawCyberGrid(painter, worldBounds);
 
     for (int row = 0; row < rows; ++row) {
         for (int col = 0; col < cols; ++col) {
@@ -510,45 +573,181 @@ void GameViewWidget::drawTrack(QPainter& painter)
             const QPointF cornerB = worldToScreen(QVector2D((col + 1) * m_tileSize, (row + 1) * m_tileSize));
             const QRectF tileRect = QRectF(cornerA, cornerB).normalized();
 
-            if (!rect().toRectF().intersects(tileRect)) continue;
+            if (!viewport.intersects(tileRect)) continue;
 
-            QColor tileColor;
+            QColor baseColor;
+            QColor innerColor;
+            QColor edgeColor;
+            QColor accentColor;
+            bool roadLike = false;
+            bool wallLike = false;
             switch (tile->getType()) {
                 case TileType::Road:
-                    tileColor = QColor(52, 58, 64);
+                    baseColor = QColor(29, 31, 34);
+                    innerColor = QColor(47, 49, 52);
+                    edgeColor = QColor(97, 107, 112, 120);
+                    accentColor = QColor(175, 184, 184, 52);
+                    roadLike = true;
                     break;
                 case TileType::Grass:
-                    tileColor = QColor(39, 174, 96);
+                    baseColor = QColor(18, 74, 35);
+                    innerColor = QColor(48, 130, 56);
+                    edgeColor = QColor(57, 136, 62, 72);
+                    accentColor = QColor(145, 196, 88, 72);
                     break;
                 case TileType::Sand:
-                    tileColor = QColor(243, 156, 18);
+                    baseColor = QColor(88, 59, 22);
+                    innerColor = QColor(214, 169, 71);
+                    edgeColor = QColor(255, 210, 92, 95);
+                    accentColor = QColor(255, 242, 120, 70);
                     break;
                 case TileType::Asphalt:
-                    tileColor = QColor(44, 62, 80);
+                    baseColor = QColor(24, 26, 29);
+                    innerColor = QColor(41, 44, 48);
+                    edgeColor = QColor(92, 100, 105, 112);
+                    accentColor = QColor(165, 174, 174, 48);
+                    roadLike = true;
                     break;
                 case TileType::StartLine:
-                    tileColor = QColor(46, 204, 113);
+                    baseColor = QColor(7, 16, 24);
+                    innerColor = QColor(14, 78, 88);
+                    edgeColor = QColor(68, 255, 214, 210);
+                    accentColor = QColor(255, 255, 255, 165);
+                    roadLike = true;
                     break;
                 case TileType::FinishLine:
-                    tileColor = QColor(231, 76, 60);
+                    baseColor = QColor(22, 8, 18);
+                    innerColor = QColor(78, 18, 44);
+                    edgeColor = QColor(255, 49, 132, 220);
+                    accentColor = QColor(255, 255, 255, 185);
+                    roadLike = true;
                     break;
                 case TileType::Wall:
                 case TileType::Barrier:
-                    tileColor = QColor(127, 140, 141);
+                    baseColor = QColor(70, 72, 75);
+                    innerColor = QColor(128, 132, 136);
+                    edgeColor = QColor(192, 200, 202, 138);
+                    accentColor = QColor(235, 232, 210, 82);
+                    wallLike = true;
                     break;
                 default:
-                    tileColor = QColor(189, 195, 199);
+                    baseColor = QColor(22, 40, 34);
+                    innerColor = QColor(58, 96, 76);
+                    edgeColor = QColor(120, 220, 170, 70);
+                    accentColor = QColor(220, 255, 230, 55);
                     break;
             }
 
-            painter.fillRect(tileRect, tileColor);
+            QLinearGradient fill(tileRect.topLeft(), tileRect.bottomRight());
+            fill.setColorAt(0.0, innerColor.lighter(118));
+            fill.setColorAt(0.42, innerColor);
+            fill.setColorAt(1.0, baseColor);
+            painter.fillRect(tileRect, fill);
+
+            if (roadLike) {
+                const qreal markWidth = qMax<qreal>(1.0, 1.35 * m_renderState.cameraZoom);
+                painter.fillRect(tileRect.adjusted(tileRect.width() * 0.47, 0, -tileRect.width() * 0.47, 0),
+                                 QColor(210, 214, 204, 24));
+                painter.setPen(QPen(QColor(9, 11, 13, 62), markWidth));
+                painter.drawLine(QPointF(tileRect.left(), tileRect.top() + tileRect.height() * 0.16),
+                                 QPointF(tileRect.right(), tileRect.top() + tileRect.height() * 0.16));
+                painter.drawLine(QPointF(tileRect.left(), tileRect.bottom() - tileRect.height() * 0.14),
+                                 QPointF(tileRect.right(), tileRect.bottom() - tileRect.height() * 0.14));
+                painter.setPen(QPen(QColor(185, 190, 182, 46), qMax<qreal>(1.0, 1.0 * m_renderState.cameraZoom)));
+                for (int i = 0; i < 5; ++i) {
+                    const qreal seed = row * 17.0 + col * 29.0 + i * 11.0;
+                    const QPointF p(tileRect.left() + qreal((int(seed) % 82) + 9) / 100.0 * tileRect.width(),
+                                    tileRect.top() + qreal((int(seed * 1.7) % 76) + 12) / 100.0 * tileRect.height());
+                    painter.drawPoint(p);
+                }
+            } else if (wallLike) {
+                painter.fillRect(tileRect.adjusted(3, 3, -3, -3), QColor(255, 255, 255, 22));
+                painter.setPen(QPen(QColor(45, 49, 52, 120), qMax<qreal>(1.0, 1.4 * m_renderState.cameraZoom)));
+                const qreal blockH = tileRect.height() / 3.0;
+                painter.drawLine(QPointF(tileRect.left(), tileRect.top() + blockH),
+                                 QPointF(tileRect.right(), tileRect.top() + blockH));
+                painter.drawLine(QPointF(tileRect.left(), tileRect.top() + blockH * 2.0),
+                                 QPointF(tileRect.right(), tileRect.top() + blockH * 2.0));
+                painter.drawLine(QPointF(tileRect.center().x(), tileRect.top()),
+                                 QPointF(tileRect.center().x(), tileRect.top() + blockH));
+                painter.drawLine(QPointF(tileRect.left() + tileRect.width() * 0.32, tileRect.top() + blockH),
+                                 QPointF(tileRect.left() + tileRect.width() * 0.32, tileRect.top() + blockH * 2.0));
+                painter.drawLine(QPointF(tileRect.left() + tileRect.width() * 0.68, tileRect.top() + blockH * 2.0),
+                                 QPointF(tileRect.left() + tileRect.width() * 0.68, tileRect.bottom()));
+                painter.setPen(QPen(QColor(238, 232, 206, 70), qMax<qreal>(1.0, 1.0 * m_renderState.cameraZoom)));
+                painter.drawLine(tileRect.topLeft() + QPointF(4, 4), tileRect.topRight() + QPointF(-5, 4));
+                painter.setPen(QPen(QColor(32, 35, 38, 120), qMax<qreal>(1.0, 1.2 * m_renderState.cameraZoom)));
+                painter.drawLine(QPointF(tileRect.left() + tileRect.width() * 0.24, tileRect.top() + tileRect.height() * 0.30),
+                                 QPointF(tileRect.left() + tileRect.width() * 0.38, tileRect.top() + tileRect.height() * 0.48));
+                painter.drawLine(QPointF(tileRect.left() + tileRect.width() * 0.62, tileRect.top() + tileRect.height() * 0.56),
+                                 QPointF(tileRect.left() + tileRect.width() * 0.76, tileRect.top() + tileRect.height() * 0.70));
+            } else if (tile->getType() == TileType::Grass) {
+                const int variant = qAbs((row * 37 + col * 19) % 5);
+                painter.setPen(QPen(QColor(26, 86 + variant * 9, 34, 86), qMax<qreal>(1.0, 1.4 * m_renderState.cameraZoom)));
+                for (int i = 0; i < 7; ++i) {
+                    const qreal seed = row * 31.0 + col * 43.0 + i * 13.0;
+                    const qreal x = tileRect.left() + qreal((int(seed) % 74) + 13) / 100.0 * tileRect.width();
+                    const qreal y = tileRect.top() + qreal((int(seed * 1.9) % 70) + 15) / 100.0 * tileRect.height();
+                    const qreal blade = tileRect.height() * (0.08 + (i % 3) * 0.025);
+                    painter.drawLine(QPointF(x, y + blade), QPointF(x + ((i % 2) ? -blade * 0.32 : blade * 0.28), y - blade));
+                }
+                painter.setPen(QPen(QColor(153, 196, 82, 78), qMax<qreal>(1.0, 1.2 * m_renderState.cameraZoom)));
+                painter.drawArc(tileRect.adjusted(tileRect.width() * 0.18, tileRect.height() * 0.24,
+                                                  -tileRect.width() * 0.50, -tileRect.height() * 0.46),
+                                20 * 16, 130 * 16);
+                painter.drawArc(tileRect.adjusted(tileRect.width() * 0.52, tileRect.height() * 0.54,
+                                                  -tileRect.width() * 0.16, -tileRect.height() * 0.14),
+                                200 * 16, 120 * 16);
+            }
+
+            painter.setPen(QPen(edgeColor, qMax<qreal>(1.0, 1.5 * m_renderState.cameraZoom)));
+            painter.drawRect(tileRect.adjusted(0.5, 0.5, -0.5, -0.5));
+            painter.setPen(QPen(accentColor, 1));
+            painter.drawRect(tileRect.adjusted(3, 3, -3, -3));
 
             if (m_showGrid) {
-                painter.setPen(QPen(QColor(255, 255, 255, 30), 1));
+                painter.setPen(QPen(QColor(255, 255, 255, 55), 1));
                 painter.drawRect(tileRect);
             }
         }
     }
+
+    const QPointF topLeft = worldToScreen(QVector2D(0, 0));
+    const QPointF bottomRight = worldToScreen(QVector2D(worldBounds.width(), worldBounds.height()));
+    const QRectF trackRect(topLeft, bottomRight);
+    painter.setPen(QPen(QColor(43, 245, 255, 190), 3));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRoundedRect(trackRect.normalized().adjusted(-4, -4, 4, 4), 10, 10);
+}
+
+void GameViewWidget::drawCyberGrid(QPainter& painter, const QRectF& worldBounds)
+{
+    painter.save();
+
+    const QPointF topLeft = worldToScreen(QVector2D(worldBounds.left(), worldBounds.top()));
+    const QPointF bottomRight = worldToScreen(QVector2D(worldBounds.right(), worldBounds.bottom()));
+    const QRectF screenBounds(topLeft, bottomRight);
+    const QRectF bounds = screenBounds.normalized().adjusted(-m_tileSize * m_renderState.cameraZoom,
+                                                            -m_tileSize * m_renderState.cameraZoom,
+                                                            m_tileSize * m_renderState.cameraZoom,
+                                                            m_tileSize * m_renderState.cameraZoom);
+    painter.setClipRect(rect());
+    painter.setPen(QPen(QColor(0, 220, 255, 28), 1));
+
+    const qreal step = qMax<qreal>(16.0, m_tileSize * m_renderState.cameraZoom);
+    for (qreal x = bounds.left(); x <= bounds.right(); x += step) {
+        painter.drawLine(QPointF(x, 0), QPointF(x, height()));
+    }
+    for (qreal y = bounds.top(); y <= bounds.bottom(); y += step) {
+        painter.drawLine(QPointF(0, y), QPointF(width(), y));
+    }
+
+    painter.setPen(QPen(QColor(255, 45, 126, 24), 1));
+    for (qreal x = bounds.left() + step * 0.5; x <= bounds.right(); x += step * 2.0) {
+        painter.drawLine(QPointF(x, 0), QPointF(x, height()));
+    }
+
+    painter.restore();
 }
 
 void GameViewWidget::drawCheckpoints(QPainter& painter)
@@ -653,102 +852,124 @@ void GameViewWidget::drawStartFinishMarkers(QPainter& painter)
 
 void GameViewWidget::drawPlayerCar(QPainter& painter, const GameRenderObject& car)
 {
-    QPointF center = worldToScreen(car.position);
-    qreal halfW = car.size.width() * m_renderState.cameraZoom / 2;
-    qreal halfH = car.size.height() * m_renderState.cameraZoom / 2;
+    drawRaceCar(painter, car, true);
+}
+
+void GameViewWidget::drawAICar(QPainter& painter, const GameRenderObject& car)
+{
+    drawRaceCar(painter, car, false);
+}
+
+void GameViewWidget::drawRaceCar(QPainter& painter, const GameRenderObject& car, bool playerCar)
+{
+    const QPointF center = worldToScreen(car.position);
+    const qreal halfW = car.size.width() * m_renderState.cameraZoom / 2.0;
+    const qreal halfH = car.size.height() * m_renderState.cameraZoom / 2.0;
+    const QColor bodyColor = car.color.isValid() ? car.color : (playerCar ? QColor(26, 241, 255) : QColor(73, 153, 255));
+    const QColor glowColor(bodyColor.red(), bodyColor.green(), bodyColor.blue(), playerCar ? 96 : 56);
 
     painter.save();
     painter.translate(center);
     painter.rotate(car.rotation);
 
     if (car.extraData.value(QStringLiteral("shieldActive")).toBool()) {
-        painter.setBrush(QColor(52, 152, 219, 55));
-        painter.setPen(QPen(QColor(93, 173, 226), 3));
-        painter.drawEllipse(QPointF(0, 0), halfH * 1.35, halfH * 1.35);
+        painter.setBrush(QColor(70, 210, 255, 42));
+        painter.setPen(QPen(QColor(120, 240, 255, 190), qMax<qreal>(2.0, 2.5 * m_renderState.cameraZoom)));
+        painter.drawEllipse(QPointF(0, 0), halfH * 1.32, halfH * 1.32);
     }
 
     if (car.extraData.value(QStringLiteral("magnetActive")).toBool()) {
-        painter.setBrush(QColor(230, 126, 34, 45));
-        painter.setPen(QPen(QColor(243, 156, 18), 2, Qt::DashLine));
+        painter.setBrush(QColor(255, 188, 58, 36));
+        painter.setPen(QPen(QColor(255, 202, 71, 180), qMax<qreal>(1.5, 2.0 * m_renderState.cameraZoom), Qt::DashLine));
         painter.drawEllipse(QPointF(0, 0), halfH * 1.55, halfH * 1.55);
     }
 
     if (car.extraData.value(QStringLiteral("boostActive")).toBool()) {
-        painter.setBrush(QColor(46, 204, 113, 130));
+        QLinearGradient flame(0, halfH * 0.75, 0, halfH * 1.85);
+        flame.setColorAt(0.0, QColor(255, 255, 255, 190));
+        flame.setColorAt(0.36, QColor(0, 238, 255, 170));
+        flame.setColorAt(1.0, QColor(255, 45, 126, 35));
+        painter.setBrush(flame);
         painter.setPen(Qt::NoPen);
-        QPointF flame[] = {
-            QPointF(-halfW * 0.45, halfH * 0.75),
-            QPointF(0, halfH * 1.75),
-            QPointF(halfW * 0.45, halfH * 0.75)
-        };
-        painter.drawPolygon(flame, 3);
+        QPolygonF flameShape;
+        flameShape << QPointF(-halfW * 0.58, halfH * 0.68)
+                   << QPointF(0, halfH * 1.92)
+                   << QPointF(halfW * 0.58, halfH * 0.68)
+                   << QPointF(0, halfH * 1.18);
+        painter.drawPolygon(flameShape);
     }
 
-    painter.setBrush(QBrush(car.color));
-    painter.setPen(QPen(QColor(255, 255, 255), 2));
+    painter.setBrush(glowColor);
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(QPointF(0, 0), halfW * 1.5, halfH * 1.22);
 
     if (car.extraData.value(QStringLiteral("invisibleActive")).toBool()) {
-        painter.setOpacity(0.35);
+        painter.setOpacity(0.42);
     }
 
-    QPointF body[] = {
-        QPointF(0, -halfH),
-        QPointF(halfW, halfH * 0.6),
-        QPointF(halfW * 0.5, halfH),
-        QPointF(-halfW * 0.5, halfH),
-        QPointF(-halfW, halfH * 0.6)
-    };
-    painter.drawPolygon(body, 5);
+    painter.setBrush(QColor(5, 8, 15, 235));
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(QRectF(-halfW * 1.16, -halfH * 0.72, halfW * 0.38, halfH * 0.44), 2, 2);
+    painter.drawRoundedRect(QRectF(halfW * 0.78, -halfH * 0.72, halfW * 0.38, halfH * 0.44), 2, 2);
+    painter.drawRoundedRect(QRectF(-halfW * 1.16, halfH * 0.34, halfW * 0.38, halfH * 0.44), 2, 2);
+    painter.drawRoundedRect(QRectF(halfW * 0.78, halfH * 0.34, halfW * 0.38, halfH * 0.44), 2, 2);
 
-    painter.setBrush(QBrush(QColor(52, 152, 219)));
-    painter.drawRect(-halfW * 0.4, -halfH * 0.3, halfW * 0.8, halfH * 0.4);
+    QPainterPath body;
+    body.moveTo(0, -halfH);
+    body.lineTo(halfW * 0.72, -halfH * 0.58);
+    body.lineTo(halfW * 0.96, halfH * 0.22);
+    body.lineTo(halfW * 0.54, halfH * 0.94);
+    body.lineTo(-halfW * 0.54, halfH * 0.94);
+    body.lineTo(-halfW * 0.96, halfH * 0.22);
+    body.lineTo(-halfW * 0.72, -halfH * 0.58);
+    body.closeSubpath();
+
+    QLinearGradient bodyGradient(0, -halfH, 0, halfH);
+    bodyGradient.setColorAt(0.0, bodyColor.lighter(145));
+    bodyGradient.setColorAt(0.36, bodyColor);
+    bodyGradient.setColorAt(1.0, bodyColor.darker(185));
+    painter.setBrush(bodyGradient);
+    painter.setPen(QPen(QColor(238, 255, 255, playerCar ? 235 : 185), playerCar ? 2.4 : 1.7));
+    painter.drawPath(body);
+
+    painter.setPen(QPen(QColor(255, 255, 255, 210), qMax<qreal>(1.0, 1.2 * m_renderState.cameraZoom)));
+    painter.drawLine(QPointF(0, -halfH * 0.82), QPointF(0, halfH * 0.78));
+    painter.setPen(QPen(bodyColor.lighter(165), qMax<qreal>(1.5, 2.0 * m_renderState.cameraZoom)));
+    painter.drawLine(QPointF(-halfW * 0.68, -halfH * 0.12), QPointF(-halfW * 0.48, halfH * 0.54));
+    painter.drawLine(QPointF(halfW * 0.68, -halfH * 0.12), QPointF(halfW * 0.48, halfH * 0.54));
+
+    QPainterPath cockpit;
+    cockpit.addRoundedRect(QRectF(-halfW * 0.45, -halfH * 0.42, halfW * 0.9, halfH * 0.52), 4, 4);
+    QLinearGradient glass(0, -halfH * 0.42, 0, halfH * 0.1);
+    glass.setColorAt(0.0, QColor(225, 255, 255, 220));
+    glass.setColorAt(1.0, QColor(30, 64, 92, 210));
+    painter.setBrush(glass);
+    painter.setPen(QPen(QColor(170, 250, 255, 190), 1));
+    painter.drawPath(cockpit);
+
+    painter.setBrush(QColor(255, 255, 255, 230));
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(QPointF(-halfW * 0.32, -halfH * 0.76), halfW * 0.12, halfW * 0.12);
+    painter.drawEllipse(QPointF(halfW * 0.32, -halfH * 0.76), halfW * 0.12, halfW * 0.12);
 
     painter.setOpacity(1.0);
     painter.restore();
 
-    painter.setPen(QColor(255, 255, 255));
-    painter.setFont(QFont("Arial", 10, QFont::Bold));
-    QFontMetrics fm(painter.font());
-    QRect textRect = fm.boundingRect(car.label);
-    textRect.moveCenter(QPoint(center.x(), center.y() - halfH - 10));
-    painter.fillRect(textRect, QColor(0, 0, 0, 180));
-    painter.drawText(textRect, Qt::AlignCenter, car.label);
-}
-
-void GameViewWidget::drawAICar(QPainter& painter, const GameRenderObject& car)
-{
-    QPointF center = worldToScreen(car.position);
-    qreal halfW = car.size.width() * m_renderState.cameraZoom / 2;
-    qreal halfH = car.size.height() * m_renderState.cameraZoom / 2;
-
     painter.save();
-    painter.translate(center);
-    painter.rotate(car.rotation);
-
-    painter.setBrush(QBrush(car.color));
-    painter.setPen(QPen(QColor(255, 255, 255), 1));
-
-    QPointF body[] = {
-        QPointF(0, -halfH),
-        QPointF(halfW, halfH * 0.6),
-        QPointF(halfW * 0.5, halfH),
-        QPointF(-halfW * 0.5, halfH),
-        QPointF(-halfW, halfH * 0.6)
-    };
-    painter.drawPolygon(body, 5);
-
-    painter.setBrush(QBrush(QColor(149, 165, 166)));
-    painter.drawRect(-halfW * 0.3, -halfH * 0.2, halfW * 0.6, halfH * 0.3);
-
+    const QString id = car.extraData.value(QStringLiteral("playerId")).toString();
+    const QString labelText = playerCar && !id.isEmpty() ? id : car.label;
+    const qreal badgeW = qMax<qreal>(32.0, 10.0 + QFontMetrics(QFont(QStringLiteral("Arial"), 9, QFont::Bold)).horizontalAdvance(labelText));
+    const QRectF badge(center.x() - badgeW / 2.0,
+                       center.y() - halfH - (playerCar ? 28.0 : 24.0),
+                       badgeW,
+                       20.0);
+    painter.setBrush(QColor(4, 10, 22, 220));
+    painter.setPen(QPen(bodyColor.lighter(130), 1.5));
+    painter.drawRoundedRect(badge, 6, 6);
+    painter.setPen(QColor(235, 255, 255));
+    painter.setFont(QFont(QStringLiteral("Arial"), 9, QFont::Bold));
+    painter.drawText(badge, Qt::AlignCenter, labelText);
     painter.restore();
-
-    painter.setPen(QColor(200, 200, 200));
-    painter.setFont(QFont("Arial", 9));
-    QFontMetrics fm(painter.font());
-    QRect textRect = fm.boundingRect(car.label);
-    textRect.moveCenter(QPoint(center.x(), center.y() - halfH - 8));
-    painter.fillRect(textRect, QColor(0, 0, 0, 150));
-    painter.drawText(textRect, Qt::AlignCenter, car.label);
 }
 
 void GameViewWidget::drawPowerupBox(QPainter& painter, const GameRenderObject& box)

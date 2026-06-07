@@ -61,6 +61,7 @@ public:
 
     AIState getState() const override { return m_state; }
     void setState(AIState state) override;
+    void setFinished(bool finished) override;
 
     qreal getStateDuration() const override { return m_stateDuration; }
     void resetStateDuration() override { m_stateDuration = 0; }

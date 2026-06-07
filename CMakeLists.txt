@@ -49,6 +49,7 @@ set(HEADER_FILES
     include/PhantomDrive/track/TrackTile.h
     include/PhantomDrive/track/Checkpoint.h
     include/PhantomDrive/track/TrackData.h
+    include/PhantomDrive/track/BuiltInTrackFactory.h
     include/PhantomDrive/track/TrackIO.h
     include/PhantomDrive/track/TrackDatabase.h
     include/PhantomDrive/track/TrackManager.h
@@ -179,6 +180,7 @@ set(SOURCE_FILES
     src/track/TrackTile.cpp
     src/track/Checkpoint.cpp
     src/track/TrackData.cpp
+    src/track/BuiltInTrackFactory.cpp
     src/track/TrackIO.cpp
     src/track/TrackDatabase.cpp
     src/track/TrackManager.cpp
@@ -445,71 +447,4 @@ set_target_properties(test_keyboard_input PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-add_executable(ab_report_widget_demo
-    examples/ab-report-widget-demo/main.cpp
-    src/UI/ABDrivingReportWidget.cpp
-    include/PhantomDrive/UI/ABDrivingReportWidget.h
-)
 
-target_include_directories(ab_report_widget_demo PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
-)
-
-target_compile_definitions(ab_report_widget_demo PRIVATE PHANTOMDRIVE_STATIC_DEFINE)
-
-target_link_libraries(ab_report_widget_demo PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    Qt6::Charts
-)
-
-set_target_properties(ab_report_widget_demo PROPERTIES
-    AUTOMOC ON
-    OUTPUT_NAME "ab_report_widget_demo"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
-
-add_executable(a_b_ddl_event_integration_demo
-    examples/a-b-ddl-event-integration-demo/main.cpp
-)
-
-target_include_directories(a_b_ddl_event_integration_demo PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
-)
-
-target_link_libraries(a_b_ddl_event_integration_demo PRIVATE
-    PhantomDrive
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Network
-)
-
-set_target_properties(a_b_ddl_event_integration_demo PROPERTIES
-    AUTOMOC ON
-    OUTPUT_NAME "a_b_ddl_event_integration_demo"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
-
-add_executable(a_a_race_integration_test
-    examples/a-a-race-integration-test/main.cpp
-)
-
-target_include_directories(a_a_race_integration_test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
-)
-
-target_link_libraries(a_a_race_integration_test PRIVATE
-    PhantomDrive
-    Qt6::Core
-    Qt6::Gui
-)
-
-set_target_properties(a_a_race_integration_test PROPERTIES
-    AUTOMOC ON
-    OUTPUT_NAME "a_a_race_integration_test"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)

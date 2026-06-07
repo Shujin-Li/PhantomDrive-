@@ -205,6 +205,22 @@ void SimpleAIOpponent::setState(AIState state)
     }
 }
 
+void SimpleAIOpponent::setFinished(bool finished)
+{
+    m_finished = finished;
+    if (finished) {
+        m_speed = 0.0;
+        m_velocity = QVector2D(0.0, 0.0);
+        m_steeringAngle = 0.0;
+        if (m_physics) {
+            m_physics->clearDriveInput();
+        }
+        setState(AIState::Finished);
+    } else if (m_state == AIState::Finished) {
+        setState(AIState::Racing);
+    }
+}
+
 AIDecision SimpleAIOpponent::makeDecision()
 {
     AIDecision decision;

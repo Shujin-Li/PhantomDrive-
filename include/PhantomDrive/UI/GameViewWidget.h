@@ -23,6 +23,15 @@ public:
     void setTrackData(TrackData* track);
     TrackData* trackData() const { return m_currentTrack; }
     void updatePlayerCar(const QVector2D& position, qreal rotation, qreal speed = 0);
+    void updatePlayerCar(const QString& playerId,
+                         const QVector2D& position,
+                         qreal rotation,
+                         qreal speed = 0,
+                         const QColor& color = QColor(),
+                         bool boostActive = false,
+                         bool shieldActive = false,
+                         bool invisibleActive = false,
+                         bool magnetActive = false);
     void updateAICar(const QString& carId, const QVector2D& position, qreal rotation, qreal speed = 0);
     void removeAICar(const QString& carId);
     void clearAllAICars();
@@ -67,8 +76,10 @@ protected:
 
 private:
     void drawTrack(QPainter& painter);
+    void drawCyberGrid(QPainter& painter, const QRectF& worldBounds);
     void drawPlayerCar(QPainter& painter, const GameRenderObject& car);
     void drawAICar(QPainter& painter, const GameRenderObject& car);
+    void drawRaceCar(QPainter& painter, const GameRenderObject& car, bool playerCar);
     void drawPowerupBox(QPainter& painter, const GameRenderObject& box);
     void drawTrafficLight(QPainter& painter, const GameRenderObject& light);
     void drawSpeedLimitSign(QPainter& painter, const GameRenderObject& sign);

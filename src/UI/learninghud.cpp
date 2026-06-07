@@ -270,7 +270,6 @@ void LearningHUD::updateTrafficLight(const QString& state, int remainingSeconds)
             QString("QLabel{color:%1;font-size:9px;font-weight:bold;}").arg(stateColor));
     }
     updateSpeedColor();
-    qDebug() << "LearningHUD traffic:" << stateText;
 }
 
 

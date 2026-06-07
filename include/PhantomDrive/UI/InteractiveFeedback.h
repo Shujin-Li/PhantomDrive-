@@ -99,7 +99,7 @@ private:
     bool m_isPaused;
     bool m_centerMode;
 
-    static const int MAX_ACTIVE_MESSAGES = 5;
+    static const int MAX_ACTIVE_MESSAGES = 3;
     static const int QUEUE_INTERVAL_MS = 100;
 };
 

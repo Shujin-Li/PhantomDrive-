@@ -21,6 +21,7 @@
 #include "track/Checkpoint.h"
 #include "track/TrackIO.h"
 #include "track/TrackValidator.h"
+#include "track/BuiltInTrackFactory.h"
 
 #include <QRectF>
 #include "scoring/ScoreReport.h"
@@ -31,6 +32,7 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDebug>
+#include <QDialog>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -41,6 +43,7 @@
 #include <QPushButton>
 #include <QSpacerItem>
 #include <QStatusBar>
+#include <QTextEdit>
 #include <QVBoxLayout>
 #include <QVariant>
 #include <QRandomGenerator>
@@ -372,8 +375,11 @@ MainWindow::MainWindow(QWidget *parent)
     , m_arcadeHUD(nullptr)
     , m_gameView(nullptr)
     , m_vehiclePhysics(nullptr)
+    , m_player2Physics(nullptr)
     , m_drivingDataCollector(new DrivingDataCollector(this))
+    , m_player2DataCollector(new DrivingDataCollector(this))
     , m_scoreManager(new ScoreManager(this))
+    , m_player2ScoreManager(new ScoreManager(this))
     , m_aiManager(new AIOpponentManager(this))
     , m_trafficObjectManager(new TrafficObjectManager(this))
     , m_powerupWorld(new PowerupWorldRuntime(this))
@@ -383,6 +389,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_aiDifficultyCombo(nullptr)
     , m_btnLoadCustomTrack(nullptr)
     , m_btnCustomTrackMode(nullptr)
+    , m_btnGuide(nullptr)
     , m_btnPlayCustomTrack(nullptr)
     , m_btnSaveCustomTrack(nullptr)
     , m_btnLoadCustomTrackForEdit(nullptr)
@@ -390,11 +397,16 @@ MainWindow::MainWindow(QWidget *parent)
     , m_customTrackEditor(nullptr)
     , m_customTrackMode(new CustomTrackMode(this))
     , m_defaultRaceTrack(nullptr)
+    , m_selectedBuiltInTrack(nullptr)
     , m_runtimeCustomTrack(nullptr)
     , m_simTimer(nullptr)
     , m_learningSessionTimer(nullptr)
     , m_currentMode("Arcade")
     , m_customTrackPath()
+    , m_trackSelectCombo(nullptr)
+    , m_playerCountCombo(nullptr)
+    , m_selectedTrackId(QStringLiteral("neon_loop"))
+    , m_twoPlayerMode(false)
     , m_currentSpeedLimit(60)
     , m_currentTrafficLightState("green")
     , m_driveActive(false)
@@ -411,6 +423,18 @@ MainWindow::MainWindow(QWidget *parent)
     , m_previousPlayerPosition(320.0, 320.0)
     , m_playerRotation(-90.0)
     , m_playerSpeed(0.0)
+    , m_player2Position(360.0, 320.0)
+    , m_previousPlayer2Position(360.0, 320.0)
+    , m_player2Rotation(-90.0)
+    , m_player2Speed(0.0)
+    , m_player2LapsCompleted(0)
+    , m_player2NextCheckpointIndex(0)
+    , m_player2WasInsideNextGate(false)
+    , m_twoPlayerFinishHandled(false)
+    , m_player1PendingReport()
+    , m_player2PendingReport()
+    , m_player1PendingSamples()
+    , m_player2PendingSamples()
     , m_arcadeRaceLogicActive(false)
     , m_nextCheckpointIndex(0)
     , m_raceCheckpointTotal(0)
@@ -543,6 +567,7 @@ MainWindow::MainWindow(QWidget *parent)
     setupVehiclePhysics();
     setupDemoControls();
     setupCustomTrackControls();
+    setupRaceSetupControls();
     styleMainMenu();
     setupDataBindings();
     connect(m_scoreManager,
@@ -567,7 +592,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_aiManager, &AIOpponentManager::opponentFinished,
             this, [this](const QString& opponentId, int finalPosition) {
-                showInteractiveFeedback(QString("%1 finished P%2").arg(opponentId).arg(finalPosition),
+                showInteractiveFeedback(QString("%1 Finished Rank #%2").arg(opponentId).arg(finalPosition),
                                         FeedbackType::Milestone);
             });
 
@@ -612,11 +637,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_reportWidget, &DrivingReportWidget::newDriveRequested,
             this, &MainWindow::onReportNewDrive);
 
-    m_scoreManager->setVehicleId("player");
+    m_scoreManager->setVehicleId("player_1");
+    if (m_player2ScoreManager) {
+        m_player2ScoreManager->setVehicleId(QStringLiteral("player_2"));
+    }
 
     if (ui->btn_Arcade) {
         connect(ui->btn_Arcade, &QPushButton::clicked, this, [this]() {
-            startDrivingSession("Arcade");
+            showArcadeSetupDialog();
         });
     }
 
@@ -674,14 +702,21 @@ MainWindow::MainWindow(QWidget *parent)
         });
     }
 
-    m_drivingDataCollector->setVehicleId("player");
+    m_drivingDataCollector->setVehicleId("player_1");
     m_drivingDataCollector->setSamplingInterval(50);
     m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
     if (m_drivingDataCollector->vehicleSensor()) {
         m_drivingDataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
     }
+    if (m_player2DataCollector) {
+        m_player2DataCollector->setVehicleId(QStringLiteral("player_2"));
+        m_player2DataCollector->setSamplingInterval(50);
+        m_player2DataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
+        if (m_player2DataCollector->vehicleSensor()) {
+            m_player2DataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
+        }
+    }
 
-    initializeAIOpponents();
     simulateGameLoop();
 }
 
@@ -689,6 +724,9 @@ MainWindow::~MainWindow()
 {
     if (m_drivingDataCollector) {
         m_drivingDataCollector->stopCollection();
+    }
+    if (m_player2DataCollector) {
+        m_player2DataCollector->stopCollection();
     }
     delete ui;
 }
@@ -749,32 +787,14 @@ void MainWindow::setupDemoControls()
         ui->btn_History->setText(QStringLiteral("Driving Report / History"));
     }
 
-    if (!m_aiDifficultyCombo && ui->verticalLayout) {
-        QLabel* difficultyLabel = new QLabel(QStringLiteral("AI Difficulty"), this);
-        difficultyLabel->setObjectName(QStringLiteral("label_AIDifficulty"));
-        difficultyLabel->setAlignment(Qt::AlignCenter);
-
-        m_aiDifficultyCombo = new QComboBox(this);
-        m_aiDifficultyCombo->setObjectName(QStringLiteral("combo_AIDifficulty"));
-        m_aiDifficultyCombo->addItem(QStringLiteral("Easy"), QStringLiteral("easy"));
-        m_aiDifficultyCombo->addItem(QStringLiteral("Medium"), QStringLiteral("medium"));
-        m_aiDifficultyCombo->addItem(QStringLiteral("Hard"), QStringLiteral("hard"));
-        m_aiDifficultyCombo->addItem(QStringLiteral("Adaptive"), QStringLiteral("adaptive"));
-        m_aiDifficultyCombo->setCurrentIndex(1);
-
+    if (!m_btnLoadCustomTrack && ui->verticalLayout) {
         m_btnLoadCustomTrack = new QPushButton(QStringLiteral("Load Custom Track"), this);
         m_btnLoadCustomTrack->setObjectName(QStringLiteral("btn_LoadCustomTrack"));
 
-        ui->verticalLayout->insertWidget(0, difficultyLabel);
-        ui->verticalLayout->insertWidget(1, m_aiDifficultyCombo);
-        ui->verticalLayout->insertWidget(2, m_btnLoadCustomTrack);
+        const int historyIndex = ui->btn_History ? ui->verticalLayout->indexOf(ui->btn_History) : -1;
+        ui->verticalLayout->insertWidget(historyIndex >= 0 ? historyIndex : ui->verticalLayout->count(),
+                                        m_btnLoadCustomTrack);
 
-        connect(m_aiDifficultyCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-                this, [this]() {
-                    applyAIDifficultySelection();
-                    statusBar()->showMessage(QStringLiteral("AI difficulty: %1")
-                                                 .arg(m_aiDifficultyCombo->currentText()), 2500);
-                });
         connect(m_btnLoadCustomTrack, &QPushButton::clicked,
                 this, &MainWindow::loadCustomTrack);
     }
@@ -845,6 +865,118 @@ void MainWindow::setupCustomTrackControls()
     }
 }
 
+void MainWindow::setupRaceSetupControls()
+{
+    if (!m_btnGuide && ui->verticalLayout) {
+        m_btnGuide = new QPushButton(QStringLiteral("Guide / Powerups"), this);
+        m_btnGuide->setObjectName(QStringLiteral("btn_Guide"));
+
+        const int historyIndex = ui->btn_History ? ui->verticalLayout->indexOf(ui->btn_History) : -1;
+        ui->verticalLayout->insertWidget(historyIndex >= 0 ? historyIndex : ui->verticalLayout->count(), m_btnGuide);
+
+        connect(m_btnGuide, &QPushButton::clicked, this, &MainWindow::showGuideDialog);
+    }
+}
+
+void MainWindow::showArcadeSetupDialog()
+{
+    if (!ui->stackedWidget) {
+        startBuiltInTrackSession(QStringLiteral("Arcade"));
+        return;
+    }
+
+    QWidget* setupPage = ui->stackedWidget->findChild<QWidget*>(QStringLiteral("pageArcadeSetup"));
+    if (!setupPage) {
+        setupPage = new QWidget(ui->stackedWidget);
+        setupPage->setObjectName(QStringLiteral("pageArcadeSetup"));
+        setupPage->setStyleSheet(QStringLiteral(
+            "QWidget#pageArcadeSetup{background:#06101F;color:#EAFBFF;}"
+            "QLabel#label_ArcadeSetupTitle,QLabel.arcadeSetupSection{"
+            "color:#38F6FF;font-size:20px;font-weight:800;letter-spacing:7px;}"
+            "QComboBox{background:#071126;color:#F3FBFF;border:2px solid #00CFE8;"
+            "border-radius:10px;padding:0 28px;font-size:26px;font-weight:700;min-height:78px;}"
+            "QComboBox::drop-down{width:74px;border-left:1px solid #008FB0;}"
+            "QPushButton{background:#071126;color:#F3FBFF;border:2px solid #00CFE8;"
+            "border-radius:10px;min-height:64px;font-size:22px;font-weight:800;}"
+            "QPushButton:hover{background:#0A1C38;border-color:#38F6FF;}"
+            "QPushButton#btn_StartArcade{background:#0B2734;border-color:#35F6FF;color:#FFFFFF;}"));
+
+        auto* outer = new QVBoxLayout(setupPage);
+        outer->setContentsMargins(18, 22, 18, 22);
+        outer->setSpacing(18);
+
+        auto* title = new QLabel(QStringLiteral("Race Setup"), setupPage);
+        title->setObjectName(QStringLiteral("label_ArcadeSetupTitle"));
+        title->setAlignment(Qt::AlignCenter);
+        outer->addWidget(title);
+
+        m_trackSelectCombo = new QComboBox(setupPage);
+        m_trackSelectCombo->setObjectName(QStringLiteral("combo_BuiltInTrack"));
+        for (const BuiltInTrackInfo& info : BuiltInTrackFactory::tracks()) {
+            m_trackSelectCombo->addItem(info.name, info.id);
+        }
+        outer->addWidget(m_trackSelectCombo);
+
+        m_playerCountCombo = new QComboBox(setupPage);
+        m_playerCountCombo->setObjectName(QStringLiteral("combo_PlayerCount"));
+        m_playerCountCombo->addItem(QStringLiteral("1 Player"), 1);
+        m_playerCountCombo->addItem(QStringLiteral("2 Players"), 2);
+        outer->addWidget(m_playerCountCombo);
+
+        auto* difficultyLabel = new QLabel(QStringLiteral("AI Difficulty"), setupPage);
+        difficultyLabel->setProperty("class", QStringLiteral("arcadeSetupSection"));
+        difficultyLabel->setAlignment(Qt::AlignCenter);
+        outer->addWidget(difficultyLabel);
+
+        m_aiDifficultyCombo = new QComboBox(setupPage);
+        m_aiDifficultyCombo->setObjectName(QStringLiteral("combo_AIDifficulty"));
+        m_aiDifficultyCombo->addItem(QStringLiteral("Easy"), QStringLiteral("easy"));
+        m_aiDifficultyCombo->addItem(QStringLiteral("Medium"), QStringLiteral("medium"));
+        m_aiDifficultyCombo->addItem(QStringLiteral("Hard"), QStringLiteral("hard"));
+        m_aiDifficultyCombo->addItem(QStringLiteral("Adaptive"), QStringLiteral("adaptive"));
+        m_aiDifficultyCombo->setCurrentIndex(1);
+        outer->addWidget(m_aiDifficultyCombo);
+
+        auto* buttonRow = new QHBoxLayout();
+        buttonRow->setContentsMargins(0, 8, 0, 0);
+        buttonRow->setSpacing(14);
+
+        auto* backButton = new QPushButton(QStringLiteral("Back"), setupPage);
+        backButton->setObjectName(QStringLiteral("btn_BackArcadeSetup"));
+        auto* startButton = new QPushButton(QStringLiteral("Start Game"), setupPage);
+        startButton->setObjectName(QStringLiteral("btn_StartArcade"));
+        buttonRow->addWidget(backButton);
+        buttonRow->addWidget(startButton);
+        outer->addLayout(buttonRow);
+        outer->addStretch(1);
+
+        connect(backButton, &QPushButton::clicked, this, [this]() {
+            if (ui->stackedWidget) {
+                ui->stackedWidget->setCurrentIndex(0);
+            }
+        });
+        connect(startButton, &QPushButton::clicked, this, [this]() {
+            if (m_trackSelectCombo) {
+                m_selectedTrackId = m_trackSelectCombo->currentData().toString();
+            }
+            m_twoPlayerMode = selectedPlayerCount() == 2;
+            startBuiltInTrackSession(QStringLiteral("Arcade"));
+        });
+
+        ui->stackedWidget->addWidget(setupPage);
+    }
+
+    if (m_trackSelectCombo) {
+        const int trackIndex = m_trackSelectCombo->findData(m_selectedTrackId);
+        m_trackSelectCombo->setCurrentIndex(trackIndex >= 0 ? trackIndex : 0);
+    }
+    if (m_playerCountCombo) {
+        m_playerCountCombo->setCurrentIndex(m_twoPlayerMode ? 1 : 0);
+    }
+    ui->stackedWidget->setCurrentWidget(setupPage);
+    statusBar()->clearMessage();
+}
+
 void MainWindow::styleMainMenu()
 {
     if (ui->label) {
@@ -872,6 +1004,7 @@ void MainWindow::styleMainMenu()
         m_btnCustomTrackMode,
         ui->btn_History,
         m_btnLoadCustomTrack,
+        m_btnGuide,
         ui->btn_Exit
     };
     for (QPushButton* button : menuButtons) {
@@ -887,6 +1020,16 @@ void MainWindow::styleMainMenu()
         m_aiDifficultyCombo->setMinimumSize(620, 56);
         m_aiDifficultyCombo->setMaximumSize(860, 62);
         m_aiDifficultyCombo->setCursor(Qt::PointingHandCursor);
+    }
+    if (m_trackSelectCombo) {
+        m_trackSelectCombo->setMinimumSize(620, 56);
+        m_trackSelectCombo->setMaximumSize(860, 62);
+        m_trackSelectCombo->setCursor(Qt::PointingHandCursor);
+    }
+    if (m_playerCountCombo) {
+        m_playerCountCombo->setMinimumSize(620, 56);
+        m_playerCountCombo->setMaximumSize(860, 62);
+        m_playerCountCombo->setCursor(Qt::PointingHandCursor);
     }
 }
 
@@ -1163,6 +1306,149 @@ void MainWindow::focusGameViewForDriving()
     m_gameView->raise();
     m_gameView->activateWindow();
     m_gameView->setFocus(Qt::OtherFocusReason);
+}
+
+int MainWindow::selectedPlayerCount() const
+{
+    return m_playerCountCombo ? m_playerCountCombo->currentData().toInt() : 1;
+}
+
+bool MainWindow::isTwoPlayerSelected() const
+{
+    return selectedPlayerCount() == 2;
+}
+
+void MainWindow::preparePlayerReportSystems()
+{
+    if (m_drivingDataCollector) {
+        m_drivingDataCollector->stopCollection();
+        m_drivingDataCollector->clearData();
+        m_drivingDataCollector->setVehicleId(QStringLiteral("player_1"));
+        m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
+        if (m_drivingDataCollector->vehicleSensor()) {
+            m_drivingDataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
+        }
+        m_drivingDataCollector->startCollection();
+    }
+    if (m_scoreManager) {
+        m_scoreManager->startSession(QStringLiteral("player_1"));
+    }
+
+    if (!m_twoPlayerMode) {
+        if (m_player2DataCollector) {
+            m_player2DataCollector->stopCollection();
+            m_player2DataCollector->clearData();
+        }
+        return;
+    }
+
+    if (m_player2DataCollector) {
+        m_player2DataCollector->stopCollection();
+        m_player2DataCollector->clearData();
+        m_player2DataCollector->setVehicleId(QStringLiteral("player_2"));
+        m_player2DataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
+        if (m_player2DataCollector->vehicleSensor()) {
+            m_player2DataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
+        }
+        m_player2DataCollector->startCollection();
+    }
+    if (m_player2ScoreManager) {
+        m_player2ScoreManager->startSession(QStringLiteral("player_2"));
+    }
+}
+
+void MainWindow::applyPlayer2SpawnAtStartLine()
+{
+    if (!m_player2Physics) {
+        return;
+    }
+
+    const QVector2D base = m_playerPosition;
+    const qreal radians = qDegreesToRadians(m_playerRotation);
+    const QVector2D right(qCos(radians), -qSin(radians));
+    const QVector2D back(-qSin(radians), -qCos(radians));
+    const QVector2D candidates[] = {
+        base + right * 52.0,
+        base - right * 52.0,
+        base + back * 64.0,
+        base - back * 64.0
+    };
+
+    QVector2D spawn = base + right * 52.0;
+    for (const QVector2D& candidate : candidates) {
+        if (m_player2Physics->isPositionFree(candidate)) {
+            spawn = candidate;
+            break;
+        }
+    }
+
+    m_player2Physics->setPosition(spawn);
+    m_player2Physics->setRotation(m_playerRotation);
+    m_player2Physics->clearDriveInput();
+    m_player2Position = spawn;
+    m_previousPlayer2Position = spawn;
+    m_player2Rotation = m_playerRotation;
+    m_player2Speed = 0.0;
+    m_player2LapsCompleted = 0;
+    m_player2NextCheckpointIndex = 0;
+    m_player2WasInsideNextGate = false;
+}
+
+void MainWindow::updateTwoPlayerCamera()
+{
+    if (!m_gameView || !m_twoPlayerMode) {
+        return;
+    }
+    const QVector2D midpoint = (m_playerPosition + m_player2Position) * 0.5;
+    const qreal distance = (m_playerPosition - m_player2Position).length();
+    const qreal zoom = qBound<qreal>(0.55, 1.1 - distance / 1600.0, 1.15);
+    m_gameView->setCameraPosition(midpoint);
+    m_gameView->setCameraZoom(zoom);
+}
+
+void MainWindow::showGuideDialog()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("PhantomDrive Guide"));
+    dialog.resize(760, 620);
+    dialog.setStyleSheet(QStringLiteral(
+        "QDialog{background:#06101F;color:#EAFBFF;}"
+        "QTextEdit{background:#0B1830;color:#EAFBFF;border:1px solid #29E6FF;"
+        "font-size:14px;padding:14px;selection-background-color:#FF2D75;}"));
+
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    auto* text = new QTextEdit(&dialog);
+    text->setReadOnly(true);
+    text->setHtml(QStringLiteral(
+        "<h1 style='color:#4DFBFF'>PHANTOMDRIVE GUIDE</h1>"
+        "<h2>Controls</h2>"
+        "<p><b>P1</b>: W accelerate, S brake/reverse, A/D steer.</p>"
+        "<p><b>P2</b>: Arrow Up accelerate, Down brake/reverse, Left/Right steer.</p>"
+        "<h2>Race Goal</h2>"
+        "<p>Pass checkpoints in order, then cross the start/finish gate to complete the route.</p>"
+        "<h2>Powerups</h2>"
+        "<ul>"
+        "<li><b>Boost</b>: short speed burst.</li>"
+        "<li><b>Shield</b>: reduces collision penalty and protects momentum.</li>"
+        "<li><b>Missile</b>: launches at the best target ahead.</li>"
+        "<li><b>Oil Slick</b>: drops a slipping hazard behind the car.</li>"
+        "<li><b>EMP</b>: slows AI opponents in range.</li>"
+        "<li><b>Invisibility</b>: temporary no-collision phase.</li>"
+        "<li><b>Repair</b>: restores stability and speed.</li>"
+        "<li><b>Teleport</b>: jumps forward along the current direction.</li>"
+        "<li><b>Magnet</b>: increases nearby item collection radius.</li>"
+        "<li><b>Random</b>: rolls one of the active powerups.</li>"
+        "</ul>"));
+    layout->addWidget(text);
+
+    QPushButton* closeButton = new QPushButton(QStringLiteral("Close"), &dialog);
+    closeButton->setMinimumHeight(44);
+    closeButton->setStyleSheet(QStringLiteral(
+        "QPushButton{background:#10264A;color:#EAFBFF;border:1px solid #29E6FF;"
+        "border-radius:7px;font-weight:bold;} QPushButton:hover{background:#173B6C;}"));
+    layout->addWidget(closeButton);
+    connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    dialog.exec();
 }
 
 void MainWindow::setupGameView()
@@ -1445,11 +1731,11 @@ void MainWindow::setupEBRuntimeObjects()
         }
 
         connect(box, &PowerupBox::collected,
-                this, [this, id](const QString&, const PowerupType& collectedType) {
+                this, [this, id](const QString& playerId, const PowerupType& collectedType) {
                     if (m_gameView) {
                         m_gameView->removePowerupBox(id);
                     }
-                    handlePowerupCollected(collectedType);
+                    handlePowerupCollectedForPlayer(collectedType, playerId == QStringLiteral("player_2") ? 2 : 1);
                 });
         connect(box, &PowerupBox::respawned,
                 this, [this, id, position, typeName]() {
@@ -1515,16 +1801,28 @@ void MainWindow::setupEBRuntimeObjects()
 void MainWindow::setupVehiclePhysics()
 {
     m_vehiclePhysics = new VehiclePhysics(this);
+    m_player2Physics = new VehiclePhysics(this);
+    m_vehiclePhysics->setControlScheme(VehiclePhysics::ControlScheme::Wasd);
+    m_player2Physics->setControlScheme(VehiclePhysics::ControlScheme::Arrows);
 
     TrackManager* trackMgr = TrackManager::instance(this);
     if (trackMgr) {
         m_vehiclePhysics->initialize(trackMgr);
+        m_player2Physics->initialize(trackMgr);
     }
 
-    connect(m_gameView, &GameViewWidget::keyInputReceived,
-            m_vehiclePhysics, &VehiclePhysics::handleKeyPress);
-    connect(m_gameView, &GameViewWidget::keyReleased,
-            m_vehiclePhysics, &VehiclePhysics::handleKeyRelease);
+    if (m_gameView) {
+        connect(m_gameView, &GameViewWidget::keyInputReceived,
+                m_vehiclePhysics, &VehiclePhysics::handleKeyPress);
+        connect(m_gameView, &GameViewWidget::keyReleased,
+                m_vehiclePhysics, &VehiclePhysics::handleKeyRelease);
+        connect(m_gameView, &GameViewWidget::keyInputReceived,
+                m_player2Physics, &VehiclePhysics::handleKeyPress);
+        connect(m_gameView, &GameViewWidget::keyReleased,
+                m_player2Physics, &VehiclePhysics::handleKeyRelease);
+    } else {
+        qWarning() << "MainWindow: game view is null; keyboard input connections skipped";
+    }
 
     connect(m_vehiclePhysics, &VehiclePhysics::positionUpdated,
             this, [this](const QVector2D& position) {
@@ -1537,8 +1835,21 @@ void MainWindow::setupVehiclePhysics()
                                                      m_vehiclePhysics->isShieldActive(),
                                                      m_vehiclePhysics->isInvisible(),
                                                      m_vehiclePhysics->isMagnetActive());
-                    m_gameView->updatePlayerCar(m_playerPosition, m_playerRotation, displaySpeedKmh());
-                    m_gameView->setCameraPosition(m_playerPosition);
+                    if (m_twoPlayerMode) {
+                        m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                                    m_playerPosition,
+                                                    m_playerRotation,
+                                                    displaySpeedKmh(),
+                                                    QColor(255, 48, 118),
+                                                    m_vehiclePhysics->isSpeedBoostActive(),
+                                                    m_vehiclePhysics->isShieldActive(),
+                                                    m_vehiclePhysics->isInvisible(),
+                                                    m_vehiclePhysics->isMagnetActive());
+                        updateTwoPlayerCamera();
+                    } else {
+                        m_gameView->updatePlayerCar(m_playerPosition, m_playerRotation, displaySpeedKmh());
+                        m_gameView->setCameraPosition(m_playerPosition);
+                    }
                 }
 
                 if (m_drivingDataCollector && m_drivingDataCollector->vehicleSensor()) {
@@ -1553,6 +1864,33 @@ void MainWindow::setupVehiclePhysics()
                 }
             });
 
+    connect(m_player2Physics, &VehiclePhysics::positionUpdated,
+            this, [this](const QVector2D& position) {
+                m_player2Position = position;
+                m_player2Rotation = m_player2Physics->getRotation();
+                m_player2Speed = m_player2Physics->getSpeed();
+
+                if (m_gameView && m_driveActive && m_twoPlayerMode) {
+                    m_gameView->updatePlayerCar(QStringLiteral("P2"),
+                                                m_player2Position,
+                                                m_player2Rotation,
+                                                speedToDisplayKmh(m_player2Speed),
+                                                QColor(40, 220, 255));
+                    updateTwoPlayerCamera();
+                }
+
+                if (m_player2DataCollector && m_player2DataCollector->vehicleSensor()) {
+                    VehicleSensor* sensor = m_player2DataCollector->vehicleSensor();
+                    sensor->updatePosition(m_player2Position);
+                    sensor->updateRotation(m_player2Rotation);
+                    qreal radians = qDegreesToRadians(m_player2Rotation);
+                    const qreal displaySpeed = speedToDisplayKmh(m_player2Speed);
+                    sensor->updateVelocity(QVector2D(qCos(radians) * displaySpeed,
+                                                     qSin(radians) * displaySpeed));
+                    sensor->updateSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
+                }
+            });
+
     connect(m_vehiclePhysics, &VehiclePhysics::collisionOccurred,
             this, [this](const QString& objectType, const QVector2D& position, qreal impactForce) {
                 Q_UNUSED(position);
@@ -1560,6 +1898,21 @@ void MainWindow::setupVehiclePhysics()
                 onCollision();
                 if (m_scoreManager) {
                     m_scoreManager->recordCollision(position.toPointF(), displaySpeedKmh(), objectType);
+                }
+            });
+
+    connect(m_player2Physics, &VehiclePhysics::collisionOccurred,
+            this, [this](const QString& objectType, const QVector2D& position, qreal impactForce) {
+                if (!m_twoPlayerMode) {
+                    return;
+                }
+                Q_UNUSED(impactForce);
+                showInteractiveFeedback(QStringLiteral("P2 Wall Hit!"), PhantomDrive::FeedbackType::Critical);
+                playSound(PhantomDrive::SoundEffect::Collision);
+                if (m_player2ScoreManager) {
+                    m_player2ScoreManager->recordCollision(position.toPointF(),
+                                                           speedToDisplayKmh(m_player2Speed),
+                                                           objectType);
                 }
             });
 
@@ -1669,7 +2022,14 @@ void MainWindow::initializeAIOpponents()
 
 void MainWindow::applyAIDifficultySelection()
 {
-    initializeAIOpponents();
+    if (m_currentMode == QStringLiteral("Arcade") && m_driveActive && !m_twoPlayerMode) {
+        initializeAIOpponents();
+    } else if (m_aiManager) {
+        m_aiManager->destroyAllOpponents();
+        if (m_gameView) {
+            m_gameView->clearAllAICars();
+        }
+    }
 }
 
 void MainWindow::applyPlayerSpawnAtStartLine()
@@ -1770,11 +2130,11 @@ void MainWindow::setupCustomTrackRuntimeObjects(TrackData* track)
         m_gameView->addPowerupBox(id, itemBoxes.at(i), QStringLiteral("Random"));
 
         connect(box, &PowerupBox::collected,
-                this, [this, id](const QString&, const PowerupType& collectedType) {
+                this, [this, id](const QString& playerId, const PowerupType& collectedType) {
                     if (m_gameView) {
                         m_gameView->removePowerupBox(id);
                     }
-                    handlePowerupCollected(collectedType);
+                    handlePowerupCollectedForPlayer(collectedType, playerId == QStringLiteral("player_2") ? 2 : 1);
                 });
         connect(box, &PowerupBox::respawned,
                 this, [this, id, itemBoxes, i]() {
@@ -1803,6 +2163,8 @@ void MainWindow::startCustomTrackSession(TrackData* track)
     }
 
     m_currentMode = QStringLiteral("Custom Track");
+    m_twoPlayerMode = isTwoPlayerSelected();
+    m_twoPlayerFinishHandled = false;
     m_customTrackPlaying = true;
     m_arcadeRaceLogicActive = true;
     m_driveActive = true;
@@ -1814,6 +2176,7 @@ void MainWindow::startCustomTrackSession(TrackData* track)
     m_currentLapStartMs = 0;
     m_bestLapMs = 0;
     m_playerSpeed = 0.0;
+    m_player2Speed = 0.0;
     track->setMaxLaps(1);
 
     if (m_customTrackMode) {
@@ -1905,18 +2268,7 @@ void MainWindow::startCustomTrackSession(TrackData* track)
         trackMgr->setWaypoints(waypoints);
     }
 
-    if (m_drivingDataCollector) {
-        m_drivingDataCollector->stopCollection();
-        m_drivingDataCollector->clearData();
-        m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, QStringLiteral("custom_track"));
-        if (m_drivingDataCollector->vehicleSensor()) {
-            m_drivingDataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
-        }
-        m_drivingDataCollector->startCollection();
-    }
-    if (m_scoreManager) {
-        m_scoreManager->startSession(QStringLiteral("player"));
-    }
+    preparePlayerReportSystems();
     if (m_aiManager) {
         m_aiManager->destroyAllOpponents();
         m_aiManager->setRaceTotalLaps(1);
@@ -1953,6 +2305,17 @@ void MainWindow::startCustomTrackSession(TrackData* track)
         m_vehiclePhysics->setRaceLogicEnabled(false);
     }
     applyPlayerSpawnAtStartLine();
+    if (m_twoPlayerMode) {
+        applyPlayer2SpawnAtStartLine();
+        if (m_gameView) {
+            m_gameView->updatePlayerCar(QStringLiteral("P2"),
+                                        m_player2Position,
+                                        m_player2Rotation,
+                                        speedToDisplayKmh(m_player2Speed),
+                                        QColor(40, 220, 255));
+            updateTwoPlayerCamera();
+        }
+    }
     resetArcadeRaceProgress();
     focusGameViewForDriving();
 
@@ -1994,6 +2357,7 @@ void MainWindow::updateEBRuntime(qreal deltaSeconds)
 {
     const qint64 deltaMs = static_cast<qint64>(deltaSeconds * 1000.0);
     const float collectRadius = (m_vehiclePhysics && m_vehiclePhysics->isMagnetActive()) ? 96.0f : 54.0f;
+    const float player2CollectRadius = (m_player2Physics && m_player2Physics->isMagnetActive()) ? 96.0f : 54.0f;
 
     for (PowerupBox* box : m_powerupBoxes) {
         if (!box) {
@@ -2001,7 +2365,10 @@ void MainWindow::updateEBRuntime(qreal deltaSeconds)
         }
         box->update(static_cast<float>(deltaSeconds));
         if (box->isActive()) {
-            box->tryCollect(m_playerPosition, QStringLiteral("player"), collectRadius);
+            box->tryCollect(m_playerPosition, QStringLiteral("player_1"), collectRadius);
+        }
+        if (m_twoPlayerMode && box->isActive()) {
+            box->tryCollect(m_player2Position, QStringLiteral("player_2"), player2CollectRadius);
         }
     }
 
@@ -2042,6 +2409,11 @@ void MainWindow::updateEBRuntime(qreal deltaSeconds)
 
 void MainWindow::handlePowerupCollected(PhantomDrive::PowerupType type)
 {
+    handlePowerupCollectedForPlayer(type, 1);
+}
+
+void MainWindow::handlePowerupCollectedForPlayer(PhantomDrive::PowerupType type, int playerIndex)
+{
     PowerupType effectiveType = type;
     if (type == PowerupType::Custom) {
         static const PowerupType kCustomPool[] = {
@@ -2057,8 +2429,13 @@ void MainWindow::handlePowerupCollected(PhantomDrive::PowerupType type)
 
     const QString typeName = powerupTypeToString(effectiveType);
     const QString powerupId = QStringLiteral("eb_%1").arg(typeName.toLower().replace(QStringLiteral(" "), QStringLiteral("_")));
+    VehiclePhysics* targetPhysics = (playerIndex == 2) ? m_player2Physics : m_vehiclePhysics;
+    QVector2D* targetPosition = (playerIndex == 2) ? &m_player2Position : &m_playerPosition;
+    qreal* targetRotation = (playerIndex == 2) ? &m_player2Rotation : &m_playerRotation;
+    qreal* targetSpeed = (playerIndex == 2) ? &m_player2Speed : &m_playerSpeed;
+    const QString playerLabel = playerIndex == 2 ? QStringLiteral("P2") : QStringLiteral("P1");
 
-    onPowerupCollected(typeName);
+    onPowerupCollected(playerIndex == 2 ? QStringLiteral("P2 %1").arg(typeName) : typeName);
 
     auto notifyHud = [this](const QString& id, const QString& label, bool active, int durationMs) {
         if (!m_learningHUD) {
@@ -2074,12 +2451,12 @@ void MainWindow::handlePowerupCollected(PhantomDrive::PowerupType type)
         }
     };
 
-    if (effectiveType == PowerupType::Boost && m_vehiclePhysics) {
-        m_vehiclePhysics->activateSpeedBoost(1.35, 4000);
+    if (effectiveType == PowerupType::Boost && targetPhysics) {
+        targetPhysics->activateSpeedBoost(1.35, 4000);
         playSound(SoundEffect::SpeedBoost);
         notifyHud(powerupId, QStringLiteral("Boost"), true, 4000);
-    } else if (effectiveType == PowerupType::Shield && m_vehiclePhysics) {
-        m_vehiclePhysics->activateShield(6000);
+    } else if (effectiveType == PowerupType::Shield && targetPhysics) {
+        targetPhysics->activateShield(6000);
         notifyHud(powerupId, QStringLiteral("Shield"), true, 6000);
     } else if (effectiveType == PowerupType::EMP) {
         QList<QPair<QPointer<AIOpponent>, qreal>> affectedOpponents;
@@ -2094,7 +2471,7 @@ void MainWindow::handlePowerupCollected(PhantomDrive::PowerupType type)
             }
         }
         notifyHud(powerupId, QStringLiteral("EMP"), true, 3000);
-        statusBar()->showMessage(QStringLiteral("EMP Pulse! AI opponents slowed for 3 seconds."), 3000);
+        statusBar()->showMessage(QStringLiteral("%1 EMP Pulse! AI opponents slowed for 3 seconds.").arg(playerLabel), 3000);
         QTimer::singleShot(3000, this, [this, powerupId, affectedOpponents]() {
             for (const auto& entry : affectedOpponents) {
                 if (entry.first) {
@@ -2105,51 +2482,61 @@ void MainWindow::handlePowerupCollected(PhantomDrive::PowerupType type)
                 m_learningHUD->updatePowerupState(powerupId, QStringLiteral("EMP"), false);
             }
         });
-    } else if (effectiveType == PowerupType::Repair && m_vehiclePhysics) {
-        m_vehiclePhysics->activateRepair();
+    } else if (effectiveType == PowerupType::Repair && targetPhysics) {
+        targetPhysics->activateRepair();
         notifyHud(powerupId, QStringLiteral("Repair"), true, 1200);
-        statusBar()->showMessage(QStringLiteral("Repair Kit! Vehicle stability restored."), 2500);
-    } else if (effectiveType == PowerupType::Missile && m_powerupWorld && m_vehiclePhysics) {
+        statusBar()->showMessage(QStringLiteral("%1 Repair Kit! Vehicle stability restored.").arg(playerLabel), 2500);
+    } else if (effectiveType == PowerupType::Missile && m_powerupWorld && targetPhysics) {
         const QString targetId = m_powerupWorld->findBestMissileTarget(
-            m_playerPosition, m_vehiclePhysics->getRotation(), m_aiManager);
+            *targetPosition, targetPhysics->getRotation(), m_aiManager);
         if (targetId.isEmpty()) {
             statusBar()->showMessage(QStringLiteral("Missile launched but no target in range."), 2500);
         } else {
-            const qreal radians = qDegreesToRadians(m_vehiclePhysics->getRotation());
-            const QVector2D launchPos = m_playerPosition
+            const qreal radians = qDegreesToRadians(targetPhysics->getRotation());
+            const QVector2D launchPos = *targetPosition
                 + QVector2D(qSin(radians), qCos(radians)) * 42.0;
             m_powerupWorld->spawnMissile(launchPos, targetId);
             statusBar()->showMessage(QStringLiteral("Missile locked on %1!").arg(targetId), 2500);
         }
         notifyHud(powerupId, QStringLiteral("Missile"), true, 1500);
-    } else if (effectiveType == PowerupType::OilSlick && m_powerupWorld && m_vehiclePhysics) {
-        const qreal radians = qDegreesToRadians(m_vehiclePhysics->getRotation());
-        const QVector2D dropPos = m_playerPosition
+    } else if (effectiveType == PowerupType::OilSlick && m_powerupWorld && targetPhysics) {
+        const qreal radians = qDegreesToRadians(targetPhysics->getRotation());
+        const QVector2D dropPos = *targetPosition
             - QVector2D(qSin(radians), qCos(radians)) * 36.0;
         m_powerupWorld->spawnOilPuddle(dropPos, 72.0, 12000);
         statusBar()->showMessage(QStringLiteral("Oil slick dropped behind your car."), 2500);
         notifyHud(powerupId, QStringLiteral("Oil Slick"), true, 1500);
-    } else if (effectiveType == PowerupType::Invisibility && m_vehiclePhysics) {
-        m_vehiclePhysics->activateInvisibility(8000);
-        statusBar()->showMessage(QStringLiteral("Invisibility active! You can pass through walls and AI."), 3000);
+    } else if (effectiveType == PowerupType::Invisibility && targetPhysics) {
+        targetPhysics->activateInvisibility(8000);
+        statusBar()->showMessage(QStringLiteral("%1 Invisibility active! You can pass through walls and AI.").arg(playerLabel), 3000);
         notifyHud(powerupId, QStringLiteral("Invisibility"), true, 8000);
-    } else if (effectiveType == PowerupType::Teleport && m_vehiclePhysics) {
-        if (m_vehiclePhysics->teleportForward(280.0)) {
-            m_playerPosition = m_vehiclePhysics->getPosition();
-            m_playerRotation = m_vehiclePhysics->getRotation();
-            m_playerSpeed = m_vehiclePhysics->getSpeed();
+    } else if (effectiveType == PowerupType::Teleport && targetPhysics) {
+        if (targetPhysics->teleportForward(280.0)) {
+            *targetPosition = targetPhysics->getPosition();
+            *targetRotation = targetPhysics->getRotation();
+            *targetSpeed = targetPhysics->getSpeed();
             if (m_gameView) {
-                m_gameView->updatePlayerCar(m_playerPosition, m_playerRotation, displaySpeedKmh());
-                m_gameView->setCameraPosition(m_playerPosition);
+                if (playerIndex == 2) {
+                    m_gameView->updatePlayerCar(QStringLiteral("P2"), m_player2Position, m_player2Rotation,
+                                                speedToDisplayKmh(m_player2Speed), QColor(40, 220, 255));
+                    updateTwoPlayerCamera();
+                } else if (m_twoPlayerMode) {
+                    m_gameView->updatePlayerCar(QStringLiteral("P1"), m_playerPosition, m_playerRotation,
+                                                displaySpeedKmh(), QColor(255, 48, 118));
+                    updateTwoPlayerCamera();
+                } else {
+                    m_gameView->updatePlayerCar(m_playerPosition, m_playerRotation, displaySpeedKmh());
+                    m_gameView->setCameraPosition(m_playerPosition);
+                }
             }
-            statusBar()->showMessage(QStringLiteral("Teleport! Jumped forward along the track."), 2500);
+            statusBar()->showMessage(QStringLiteral("%1 Teleport! Jumped forward along the track.").arg(playerLabel), 2500);
         } else {
-            statusBar()->showMessage(QStringLiteral("Teleport blocked - no free space ahead."), 2500);
+            statusBar()->showMessage(QStringLiteral("%1 Teleport blocked - no free space ahead.").arg(playerLabel), 2500);
         }
         notifyHud(powerupId, QStringLiteral("Teleport"), true, 1200);
-    } else if (effectiveType == PowerupType::Magnet && m_vehiclePhysics) {
-        m_vehiclePhysics->activateMagnet(6000);
-        statusBar()->showMessage(QStringLiteral("Magnet active! Nearby powerups are pulled toward you."), 3000);
+    } else if (effectiveType == PowerupType::Magnet && targetPhysics) {
+        targetPhysics->activateMagnet(6000);
+        statusBar()->showMessage(QStringLiteral("%1 Magnet active! Nearby powerups are pulled toward you.").arg(playerLabel), 3000);
         notifyHud(powerupId, QStringLiteral("Magnet"), true, 6000);
     }
 }
@@ -2169,6 +2556,22 @@ void MainWindow::handleTrafficViolation(const PhantomDrive::ViolationEvent& viol
 
 void MainWindow::updateRaceHud()
 {
+    if (m_aiManager && m_driveActive && !m_countdownActive) {
+        const int totalCheckpoints = qMax(1, m_raceCheckpointTotal);
+        const int checkpointIndex = qBound(0, m_nextCheckpointIndex, totalCheckpoints);
+        const qreal progressPercent = qBound(0.0,
+                                             (static_cast<qreal>(checkpointIndex) / totalCheckpoints) * 100.0,
+                                             100.0);
+        const int lap = m_customTrackPlaying
+            ? (m_arcadeRaceFinished ? 1 : 0)
+            : m_lapsCompleted;
+        m_aiManager->setPlayerRaceProgress(lap,
+                                           checkpointIndex,
+                                           progressPercent,
+                                           m_arcadeRaceFinished,
+                                           m_sessionElapsedMs / 1000.0);
+    }
+
     if (m_learningHUD) {
         m_learningHUD->updateLapInfo(m_lapsCompleted + 1, m_totalLaps);
     }
@@ -2194,11 +2597,9 @@ void MainWindow::updateRaceHud()
         m_arcadeHUD->updateBestLapTime(formatRaceTime(m_bestLapMs));
     }
 
-    if (!m_customTrackPlaying) {
-        const int totalRacers = m_aiManager ? (m_aiManager->getOpponentCount() + 1) : 1;
-        const int playerPosition = m_aiManager ? m_aiManager->getPlayerRacePosition() : 1;
-        m_arcadeHUD->updatePosition(playerPosition, totalRacers);
-    }
+    const int totalRacers = m_aiManager ? (m_aiManager->getOpponentCount() + 1) : 1;
+    const int playerPosition = m_aiManager ? m_aiManager->getPlayerRacePosition() : 1;
+    m_arcadeHUD->updatePosition(playerPosition, totalRacers);
 
     // Sync traffic light state to ArcadeHUD so the signal-dot and red-blink work.
     m_arcadeHUD->updateTrafficLight(m_currentTrafficLightState);
@@ -2345,6 +2746,10 @@ void MainWindow::finishCustomTrackRoute()
     if (m_arcadeRaceFinished) {
         return;
     }
+    if (m_twoPlayerMode) {
+        finishTwoPlayerRace(1);
+        return;
+    }
 
     m_arcadeRaceFinished = true;
     m_lapsCompleted = 1;
@@ -2369,6 +2774,88 @@ void MainWindow::finishCustomTrackRoute()
     statusBar()->showMessage(QStringLiteral("Custom Track Finished"), 4000);
 
     // Wait 2 s so the player can see the finish banner, then show report.
+    QTimer::singleShot(2000, this, [this]() {
+        if (m_driveActive) {
+            onGameFinished();
+        }
+    });
+}
+
+void MainWindow::updatePlayer2RaceProgress(const QVector2D& positionBefore)
+{
+    if (!m_twoPlayerMode || !m_arcadeRaceLogicActive || !m_driveActive || m_countdownActive
+        || m_arcadeRaceFinished || m_twoPlayerFinishHandled) {
+        return;
+    }
+
+    TrackData* track = m_gameView ? m_gameView->trackData() : nullptr;
+    if (!track) {
+        return;
+    }
+
+    const QList<Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    const int total = checkpoints.size();
+    if (total <= 0) {
+        return;
+    }
+
+    const QVector2D pos = m_player2Position;
+    if (m_player2NextCheckpointIndex < total) {
+        Checkpoint* nextCp = checkpoints.at(m_player2NextCheckpointIndex);
+        const bool insideNext = nextCp && nextCp->containsPoint(pos);
+        const bool enteredNext = insideNext && !m_player2WasInsideNextGate;
+        const bool crossedNext = crossedCheckpointGate(nextCp, positionBefore, pos);
+        if (enteredNext || crossedNext) {
+            if (m_arcadeHUD) {
+                m_arcadeHUD->showRaceBanner(
+                    QStringLiteral("P2 CP %1/%2 passed")
+                        .arg(m_player2NextCheckpointIndex + 1)
+                        .arg(total));
+            }
+            playSound(PhantomDrive::SoundEffect::Checkpoint);
+            ++m_player2NextCheckpointIndex;
+            m_player2WasInsideNextGate = false;
+        }
+    }
+
+    if (m_player2NextCheckpointIndex >= total && tileAtIsStartFinish(track, pos)) {
+        if (m_customTrackPlaying) {
+            finishTwoPlayerRace(2);
+            return;
+        }
+        ++m_player2LapsCompleted;
+        if (m_player2LapsCompleted >= m_totalLaps) {
+            finishTwoPlayerRace(2);
+            return;
+        }
+        m_player2NextCheckpointIndex = 0;
+    }
+
+    if (m_player2NextCheckpointIndex < checkpoints.size()) {
+        Checkpoint* nextCp = checkpoints.at(m_player2NextCheckpointIndex);
+        m_player2WasInsideNextGate = nextCp && nextCp->containsPoint(pos);
+    } else {
+        m_player2WasInsideNextGate = false;
+    }
+}
+
+void MainWindow::finishTwoPlayerRace(int winnerIndex)
+{
+    if (m_twoPlayerFinishHandled) {
+        return;
+    }
+    m_twoPlayerFinishHandled = true;
+    m_arcadeRaceFinished = true;
+
+    const QString winner = winnerIndex == 2 ? QStringLiteral("Player 2") : QStringLiteral("Player 1");
+    if (m_arcadeHUD) {
+        m_arcadeHUD->showRaceBanner(QStringLiteral("%1 Wins").arg(winner));
+        m_arcadeHUD->showRaceFinished(winnerIndex, formatRaceTime(m_sessionElapsedMs));
+    }
+    showInteractiveFeedback(QStringLiteral("%1 Wins!").arg(winner), FeedbackType::Milestone);
+    playSound(PhantomDrive::SoundEffect::RaceFinish);
+    statusBar()->showMessage(QStringLiteral("%1 wins. Generating both reports...").arg(winner), 4000);
+
     QTimer::singleShot(2000, this, [this]() {
         if (m_driveActive) {
             onGameFinished();
@@ -2460,16 +2947,24 @@ void MainWindow::simulateGameLoop()
         m_sessionElapsedMs += 50;
 
         const QVector2D positionBeforeUpdate = m_playerPosition;
+        const QVector2D player2PositionBeforeUpdate = m_player2Position;
 
         if (m_vehiclePhysics) {
             m_vehiclePhysics->update(50);
         }
+        if (m_twoPlayerMode && m_player2Physics) {
+            m_player2Physics->update(50);
+        }
 
         if (m_arcadeRaceLogicActive) {
             updateArcadeRaceProgress(positionBeforeUpdate);
+            if (m_twoPlayerMode) {
+                updatePlayer2RaceProgress(player2PositionBeforeUpdate);
+            }
         }
 
         m_previousPlayerPosition = m_playerPosition;
+        m_previousPlayer2Position = m_player2Position;
 
         updateEBRuntime(0.05);
         updateTrafficAndHud(m_simTick);
@@ -2506,6 +3001,18 @@ void MainWindow::simulateGameLoop()
             sensor->updateAcceleratorState(displaySpeed >= m_drivingDataCollector->getCurrentData().speed);
             sensor->updateBrakeState(displaySpeed < m_drivingDataCollector->getCurrentData().speed);
         }
+        if (m_twoPlayerMode && m_player2DataCollector && m_player2DataCollector->vehicleSensor()) {
+            VehicleSensor* sensor = m_player2DataCollector->vehicleSensor();
+            sensor->updatePosition(m_player2Position);
+            qreal rad = m_player2Rotation * 3.14159265 / 180.0;
+            const qreal displaySpeed = speedToDisplayKmh(m_player2Speed);
+            QVector2D velocity(std::cos(rad) * displaySpeed, std::sin(rad) * displaySpeed);
+            sensor->updateVelocity(velocity);
+            sensor->updateRotation(m_player2Rotation);
+            sensor->updateSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
+            sensor->updateAcceleratorState(displaySpeed >= m_player2DataCollector->getCurrentData().speed);
+            sensor->updateBrakeState(displaySpeed < m_player2DataCollector->getCurrentData().speed);
+        }
 
         if (m_reportWidget && m_reportWidget->isVisible()) {
             m_reportWidget->addSpeedData(displaySpeedKmh(), m_simTick);
@@ -2535,6 +3042,8 @@ void MainWindow::startDrivingSession(const QString& mode)
     }
 
     m_currentMode = mode;
+    m_twoPlayerMode = (mode == QStringLiteral("Arcade")) && isTwoPlayerSelected();
+    m_twoPlayerFinishHandled = false;
     m_arcadeRaceLogicActive = (mode == QStringLiteral("Arcade"));
     m_customTrackPlaying = false;
     m_driveActive = true;
@@ -2546,23 +3055,16 @@ void MainWindow::startDrivingSession(const QString& mode)
     m_currentLapStartMs = 0;
     m_bestLapMs = 0;
     m_playerSpeed = 0.0;
+    m_player2Speed = 0.0;
+    m_player2LapsCompleted = 0;
+    m_player2NextCheckpointIndex = 0;
+    m_player2WasInsideNextGate = false;
 
     if (m_gameView) {
         m_gameView->clearAllAICars();
     }
 
-    if (m_drivingDataCollector) {
-        m_drivingDataCollector->stopCollection();
-        m_drivingDataCollector->clearData();
-        m_drivingDataCollector->setCurrentSpeedLimit(m_currentSpeedLimit, "main_route_speed_zone");
-        if (m_drivingDataCollector->vehicleSensor()) {
-            m_drivingDataCollector->vehicleSensor()->setSpeedLimitViolationEnabled(false);
-        }
-        m_drivingDataCollector->startCollection();
-    }
-    if (m_scoreManager) {
-        m_scoreManager->startSession(QStringLiteral("player"));
-    }
+    preparePlayerReportSystems();
 
     ui->stackedWidget->setCurrentIndex(1);
     if (m_customTrackEditor) {
@@ -2627,7 +3129,23 @@ void MainWindow::startDrivingSession(const QString& mode)
         m_vehiclePhysics->resetRaceProgress();
         m_vehiclePhysics->setRaceLogicEnabled(false);
     }
+    if (m_player2Physics) {
+        m_player2Physics->reset();
+        m_player2Physics->resetRaceProgress();
+        m_player2Physics->setRaceLogicEnabled(false);
+    }
     applyPlayerSpawnAtStartLine();
+    if (m_twoPlayerMode) {
+        applyPlayer2SpawnAtStartLine();
+        if (m_gameView) {
+            m_gameView->updatePlayerCar(QStringLiteral("P2"),
+                                        m_player2Position,
+                                        m_player2Rotation,
+                                        speedToDisplayKmh(m_player2Speed),
+                                        QColor(40, 220, 255));
+            updateTwoPlayerCamera();
+        }
+    }
     resetArcadeRaceProgress();
 
     initializeAIOpponents();
@@ -2657,6 +3175,27 @@ void MainWindow::startDrivingSession(const QString& mode)
     statusBar()->showMessage(QStringLiteral("%1 mode running").arg(m_currentMode));
 }
 
+void MainWindow::startBuiltInTrackSession(const QString& mode)
+{
+    const QString trackId = m_trackSelectCombo
+        ? m_trackSelectCombo->currentData().toString()
+        : m_selectedTrackId;
+    m_selectedTrackId = trackId.isEmpty() ? QStringLiteral("neon_loop") : trackId;
+
+    if (m_selectedBuiltInTrack) {
+        m_selectedBuiltInTrack->deleteLater();
+        m_selectedBuiltInTrack = nullptr;
+    }
+    m_selectedBuiltInTrack = BuiltInTrackFactory::createTrack(m_selectedTrackId, this);
+    m_defaultRaceTrack = m_selectedBuiltInTrack;
+    TrackManager* trackMgr = TrackManager::instance(this);
+    if (trackMgr && m_defaultRaceTrack) {
+        trackMgr->setCurrentTrack(m_defaultRaceTrack);
+    }
+
+    startDrivingSession(mode);
+}
+
 void MainWindow::onGameFinished()
 {
     if (!m_driveActive || !m_scoreManager || !m_drivingDataCollector) {
@@ -2673,6 +3212,9 @@ void MainWindow::onGameFinished()
     }
 
     m_drivingDataCollector->stopCollection();
+    if (m_player2DataCollector) {
+        m_player2DataCollector->stopCollection();
+    }
     if (m_btnFinishDrive) {
         m_btnFinishDrive->setEnabled(false);
     }
@@ -2696,6 +3238,12 @@ void MainWindow::onGameFinished()
     // Grab all data synchronously before anything can mutate the collector.
     const QList<DrivingData> speedSamples = m_drivingDataCollector->getCollectedData();
     const ScoreReport report = m_scoreManager->finishSession(m_drivingDataCollector);
+    QList<DrivingData> player2SpeedSamples;
+    ScoreReport player2Report;
+    if (m_twoPlayerMode && m_player2DataCollector && m_player2ScoreManager) {
+        player2SpeedSamples = m_player2DataCollector->getCollectedData();
+        player2Report = m_player2ScoreManager->finishSession(m_player2DataCollector);
+    }
 
     qDebug() << "[onGameFinished] score=" << report.totalScore
              << "grade=" << report.grade
@@ -2706,6 +3254,9 @@ void MainWindow::onGameFinished()
 
     qDebug() << "[onGameFinished] step 1 saveReport";
     SaveLoadManager::instance().saveReport(report);
+    if (m_twoPlayerMode && !player2Report.sessionId.isEmpty()) {
+        SaveLoadManager::instance().saveReport(player2Report);
+    }
 
     // Populate the report widget and switch to the report page.
     if (!m_reportWidget || !m_reportPage) {
@@ -2729,11 +3280,17 @@ void MainWindow::onGameFinished()
     qDebug() << "[onGameFinished] step 3 loadHistory";
     m_reportWidget->loadHistoryFromSaveLoadManager();
 
-    qDebug() << "[onGameFinished] step 4 setSpeedSamples count=" << speedSamples.size();
-    m_reportWidget->setSessionSpeedSamples(speedSamples);
+    if (m_twoPlayerMode && !player2Report.sessionId.isEmpty()) {
+        qDebug() << "[onGameFinished] step 4 setPlayerReports p1=" << speedSamples.size()
+                 << "p2=" << player2SpeedSamples.size();
+        m_reportWidget->setPlayerReports(report, speedSamples, player2Report, player2SpeedSamples);
+    } else {
+        qDebug() << "[onGameFinished] step 4 setSpeedSamples count=" << speedSamples.size();
+        m_reportWidget->setSessionSpeedSamples(speedSamples);
 
-    qDebug() << "[onGameFinished] step 5 setCurrentReport";
-    m_reportWidget->setCurrentReport(report);
+        qDebug() << "[onGameFinished] step 5 setCurrentReport";
+        m_reportWidget->setCurrentReport(report);
+    }
 
     qDebug() << "[onGameFinished] step 6 switch to report page";
     ui->stackedWidget->setCurrentWidget(m_reportPage);
@@ -2798,6 +3355,9 @@ void MainWindow::silentFinishSession()
     setGameHeaderVisible(false);
     if (m_scoreManager && m_drivingDataCollector) {
         m_scoreManager->finishSession(m_drivingDataCollector);
+    }
+    if (m_twoPlayerMode && m_player2ScoreManager && m_player2DataCollector) {
+        m_player2ScoreManager->finishSession(m_player2DataCollector);
     }
 }
 
@@ -3086,6 +3646,11 @@ void MainWindow::onLapCompleted(int lapNumber)
         3000);
 
     if (lapNumber < m_totalLaps) {
+        return;
+    }
+
+    if (m_twoPlayerMode) {
+        finishTwoPlayerRace(1);
         return;
     }
 

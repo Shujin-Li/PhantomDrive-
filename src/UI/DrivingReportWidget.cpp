@@ -27,6 +27,9 @@ DrivingReportWidget::DrivingReportWidget(QWidget *parent)
     , m_loadingLabel(nullptr)
     , m_loadingDotTimer(nullptr)
     , m_loadingDotCount(0)
+    , m_playerSwitchWidget(nullptr)
+    , m_player1Button(nullptr)
+    , m_player2Button(nullptr)
     , m_avgSpeedLabel(nullptr)
     , m_maxSpeedLabel(nullptr)
     , m_currentSpeedLabel(nullptr)
@@ -64,6 +67,9 @@ DrivingReportWidget::DrivingReportWidget(QWidget *parent)
     , m_speedDataCount(0)
     , m_maxRecordedSpeed(0.0)
     , m_useMockData(true)
+    , m_hasPlayerReports(false)
+    , m_activePlayerIndex(1)
+    , m_applyingPlayerReport(false)
 {
     setupUI();
     setStyleSheet(ThemeManager::reportPanelQss());
@@ -220,6 +226,58 @@ void DrivingReportWidget::setupHeaderBar(QVBoxLayout* rootLayout)
                        "font-family: 'Consolas', monospace; letter-spacing: 1px;"));
     barLayout->addWidget(titleLabel);
     barLayout->addStretch();
+
+    m_playerSwitchWidget = new QWidget(bar);
+    m_playerSwitchWidget->setObjectName(QStringLiteral("playerSwitchWidget"));
+    m_playerSwitchWidget->setStyleSheet(
+        QStringLiteral("QWidget#playerSwitchWidget {"
+                       "  background-color: rgba(8,14,32,190);"
+                       "  border: 1px solid rgba(0,180,255,80);"
+                       "  border-radius: 6px;"
+                       "}"
+                       "QPushButton {"
+                       "  background-color: transparent;"
+                       "  color: #8FB5D8;"
+                       "  border: none;"
+                       "  border-radius: 4px;"
+                       "  padding: 0 14px;"
+                       "  font-size: 12px;"
+                       "  font-weight: bold;"
+                       "  font-family: 'Consolas', monospace;"
+                       "}"
+                       "QPushButton:checked {"
+                       "  background-color: rgba(0,255,170,45);"
+                       "  color: #00FFAA;"
+                       "}"
+                       "QPushButton:hover {"
+                       "  color: #E8F4FF;"
+                       "}"));
+
+    QHBoxLayout* switchLayout = new QHBoxLayout(m_playerSwitchWidget);
+    switchLayout->setContentsMargins(3, 3, 3, 3);
+    switchLayout->setSpacing(2);
+
+    m_player1Button = new QPushButton(QStringLiteral("Player 1"), m_playerSwitchWidget);
+    m_player1Button->setCheckable(true);
+    m_player1Button->setFixedHeight(30);
+    m_player1Button->setCursor(Qt::PointingHandCursor);
+    switchLayout->addWidget(m_player1Button);
+
+    m_player2Button = new QPushButton(QStringLiteral("Player 2"), m_playerSwitchWidget);
+    m_player2Button->setCheckable(true);
+    m_player2Button->setFixedHeight(30);
+    m_player2Button->setCursor(Qt::PointingHandCursor);
+    switchLayout->addWidget(m_player2Button);
+
+    connect(m_player1Button, &QPushButton::clicked, this, [this]() {
+        applyPlayerReport(1);
+    });
+    connect(m_player2Button, &QPushButton::clicked, this, [this]() {
+        applyPlayerReport(2);
+    });
+
+    m_playerSwitchWidget->hide();
+    barLayout->addWidget(m_playerSwitchWidget);
 
     // "New Drive" button
     QPushButton* btnNew = new QPushButton(QStringLiteral("▶  New Drive"), bar);
@@ -573,6 +631,10 @@ void DrivingReportWidget::addSpeedData(qreal speed, qint64 timestamp)
 
 void DrivingReportWidget::setCurrentReport(const ScoreReport& report)
 {
+    if (!m_applyingPlayerReport && m_hasPlayerReports) {
+        clearPlayerReports();
+    }
+
     m_currentReport = report;
     setMockDataEnabled(false);
 
@@ -587,6 +649,38 @@ void DrivingReportWidget::setCurrentReport(const ScoreReport& report)
 void DrivingReportWidget::setReport(const ScoreReport& report)
 {
     setCurrentReport(report);
+}
+
+void DrivingReportWidget::setPlayerReports(const ScoreReport& p1Report,
+                                           const QList<DrivingData>& p1Samples,
+                                           const ScoreReport& p2Report,
+                                           const QList<DrivingData>& p2Samples)
+{
+    m_player1Report = p1Report;
+    m_player1Samples = p1Samples;
+    m_player2Report = p2Report;
+    m_player2Samples = p2Samples;
+    m_hasPlayerReports = true;
+    m_activePlayerIndex = 1;
+
+    updatePlayerSwitchState();
+    applyPlayerReport(m_activePlayerIndex);
+}
+
+void DrivingReportWidget::clearPlayerReports()
+{
+    if (m_applyingPlayerReport) {
+        return;
+    }
+
+    m_hasPlayerReports = false;
+    m_activePlayerIndex = 1;
+    m_player1Report = ScoreReport();
+    m_player2Report = ScoreReport();
+    m_player1Samples.clear();
+    m_player2Samples.clear();
+
+    updatePlayerSwitchState();
 }
 
 void DrivingReportWidget::setCoachReportMarkdown(const QString& markdown)
@@ -652,6 +746,8 @@ void DrivingReportWidget::addViolationEvent(const ViolationEvent& violation)
 
 void DrivingReportWidget::clearData()
 {
+    clearPlayerReports();
+
     if (m_speedSeries) m_speedSeries->clear();
     m_violations.clear();
     m_historyReports.clear();
@@ -673,6 +769,43 @@ void DrivingReportWidget::clearData()
     updateCoachAdvice();
     updateHistoryChart();
     updateLiveChartPlaceholder();
+}
+
+void DrivingReportWidget::applyPlayerReport(int playerIndex)
+{
+    if (!m_hasPlayerReports || m_applyingPlayerReport) {
+        updatePlayerSwitchState();
+        return;
+    }
+
+    const int normalizedPlayerIndex = (playerIndex == 2) ? 2 : 1;
+    m_activePlayerIndex = normalizedPlayerIndex;
+    updatePlayerSwitchState();
+
+    const ScoreReport& report = (normalizedPlayerIndex == 1) ? m_player1Report : m_player2Report;
+    const QList<DrivingData>& samples = (normalizedPlayerIndex == 1) ? m_player1Samples : m_player2Samples;
+
+    m_applyingPlayerReport = true;
+    setSessionSpeedSamples(samples);
+    setCurrentReport(report);
+    m_applyingPlayerReport = false;
+    updatePlayerSwitchState();
+}
+
+void DrivingReportWidget::updatePlayerSwitchState()
+{
+    if (m_playerSwitchWidget) {
+        m_playerSwitchWidget->setVisible(m_hasPlayerReports);
+    }
+
+    if (m_player1Button) {
+        const bool isActive = m_hasPlayerReports && m_activePlayerIndex == 1;
+        m_player1Button->setChecked(isActive);
+    }
+    if (m_player2Button) {
+        const bool isActive = m_hasPlayerReports && m_activePlayerIndex == 2;
+        m_player2Button->setChecked(isActive);
+    }
 }
 
 void DrivingReportWidget::updateBreakdownBars()

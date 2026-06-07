@@ -33,7 +33,7 @@ InteractiveFeedback::InteractiveFeedback(QWidget* parent)
     , m_maxVisibleMessages(MAX_ACTIVE_MESSAGES)
     , m_messageSpacing(10)
     , m_isPaused(false)
-    , m_centerMode(true)
+    , m_centerMode(false)
 {
     setupUI();
 
@@ -108,9 +108,9 @@ void InteractiveFeedback::updatePosition()
             const int y = gvGlobal.y() + (gvRect.height() - height()) / 2;
             move(x, y);
         } else {
-            setFixedSize(400, qMax(240, gvRect.height() - 200));
+            setFixedSize(360, qMin(260, qMax(160, gvRect.height() / 3)));
             move(gvGlobal.x() + gvRect.width() - width() - 20,
-                 gvGlobal.y() + 100);
+                 gvGlobal.y() + 72);
         }
         if (m_containerWidget) {
             m_containerWidget->setGeometry(rect());
@@ -143,12 +143,12 @@ void InteractiveFeedback::updatePosition()
         const int y = anchorTopLeft.y() + (anchorRect.height() - height()) / 2;
         move(x, y);
     } else {
-        setFixedSize(400, qMax(240, anchorRect.height() - 200));
+        setFixedSize(360, qMin(260, qMax(160, anchorRect.height() / 3)));
         // Side mode: keep in the map area, not over the HUD
         const int hudWidth = 320;
         const int mapWidth = qMax(200, anchorRect.width() - hudWidth);
         move(anchorTopLeft.x() + mapWidth - width() - 20,
-             anchorTopLeft.y() + 100);
+             anchorTopLeft.y() + 72);
     }
     if (m_containerWidget) {
         m_containerWidget->setGeometry(rect());
@@ -306,7 +306,7 @@ void InteractiveFeedback::relayoutActiveLabels()
         }
     }
     totalHeight = qMax(0, totalHeight - m_messageSpacing);
-    const int baseY = qMax(0, (height() - totalHeight) / 2);
+    const int baseY = m_centerMode ? qMax(0, (height() - totalHeight) / 2) : 0;
     int y = baseY;
 
     for (int i = 0; i < count; ++i) {

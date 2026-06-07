@@ -16,6 +16,12 @@ class PHANTOMDRIVE_EXPORT VehiclePhysics : public QObject
     Q_OBJECT
 
 public:
+    enum class ControlScheme {
+        Combined,
+        Wasd,
+        Arrows
+    };
+
     explicit VehiclePhysics(QObject* parent = nullptr);
     ~VehiclePhysics() override;
 
@@ -26,6 +32,8 @@ public:
 
     void handleKeyPress(QKeyEvent* event);
     void handleKeyRelease(QKeyEvent* event);
+    void setControlScheme(ControlScheme scheme) { m_controlScheme = scheme; }
+    ControlScheme controlScheme() const { return m_controlScheme; }
     void handleCollision(const QVector2D& normal, qreal impactForce);
     void activateSpeedBoost(qreal multiplier, qint64 durationMs);
     void activateShield(qint64 durationMs);
@@ -84,8 +92,10 @@ private:
     bool isOnStartFinishTile() const;
     bool isInNorthGate() const;
     bool crossedCheckpointGate(const Checkpoint* cp, const QVector2D& from, const QVector2D& to) const;
+    bool acceptsKey(int key) const;
 
     TrackManager* m_trackManager;
+    ControlScheme m_controlScheme;
 
     QVector2D m_position;
     QVector2D m_previousPosition;
