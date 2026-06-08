@@ -10,6 +10,7 @@
 #include <QAbstractItemView>
 #include <QResizeEvent>
 #include <QPushButton>
+#include <QSignalBlocker>
 
 namespace PhantomDrive {
 
@@ -51,6 +52,7 @@ DrivingReportWidget::DrivingReportWidget(QWidget *parent)
     , m_speedAxisY(nullptr)
     , m_coachAdviceWidget(nullptr)
     , m_aiReportLabel(nullptr)
+    , m_historyList(nullptr)
     , m_historyScoreSeries(nullptr)
     , m_historySafetySeries(nullptr)
     , m_historyRuleSeries(nullptr)
@@ -70,6 +72,7 @@ DrivingReportWidget::DrivingReportWidget(QWidget *parent)
     , m_hasPlayerReports(false)
     , m_activePlayerIndex(1)
     , m_applyingPlayerReport(false)
+    , m_syncingHistorySelection(false)
 {
     setupUI();
     setStyleSheet(ThemeManager::reportPanelQss());
@@ -438,14 +441,49 @@ void DrivingReportWidget::setupBottomSection(QVBoxLayout* rootLayout)
     historyLayout->setContentsMargins(0, 0, 0, 0);
     historyLayout->setSpacing(8);
 
+    m_historyList = new QListWidget(historyContainer);
+    m_historyList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_historyList->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_historyList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    m_historyList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_historyList->setMinimumHeight(150);
+    m_historyList->setStyleSheet(QStringLiteral(
+        "QListWidget {"
+        " background-color: rgba(8,14,32,140);"
+        " border: 1px solid rgba(0,180,255,50);"
+        " border-radius: 10px;"
+        " color: #E8F4FF;"
+        " font-size: 12px;"
+        " outline: none;"
+        "}"
+        "QListWidget::item {"
+        " padding: 8px 10px;"
+        " border-bottom: 1px solid rgba(255,255,255,18);"
+        "}"
+        "QListWidget::item:selected {"
+        " background-color: rgba(0,180,255,55);"
+        " color: #FFFFFF;"
+        "}"
+        "QListWidget::item:hover {"
+        " background-color: rgba(255,255,255,18);"
+        "}"));
+    historyLayout->addWidget(m_historyList);
+
     historyLayout->addWidget(m_historyChartView, 1);
 
-    m_historyPlaceholderLabel = new QLabel(QStringLiteral("完成更多驾驶以生成趋势 / Complete more driving to unlock trend"), historyContainer);
+    m_historyPlaceholderLabel = new QLabel(QStringLiteral("No history records yet"), historyContainer);
     m_historyPlaceholderLabel->setObjectName(QStringLiteral("placeholder"));
     m_historyPlaceholderLabel->setAlignment(Qt::AlignCenter);
     historyLayout->addWidget(m_historyPlaceholderLabel);
 
     bottom->addWidget(createCard(QStringLiteral("历史评分趋势 / History Score Trend"), historyContainer), 1);
+
+    connect(m_historyList, &QListWidget::currentRowChanged, this, [this](int row) {
+        if (m_syncingHistorySelection || row < 0 || row >= m_historyReports.size()) {
+            return;
+        }
+        setCurrentReport(m_historyReports.at(row));
+    });
 
     rootLayout->addLayout(bottom);
 
@@ -642,6 +680,7 @@ void DrivingReportWidget::setCurrentReport(const ScoreReport& report)
     updateBreakdownBars();
     updateViolationTable();
     updateCoachAdvice();
+    syncHistorySelection();
 
     emit reportUpdated(report);
 }
@@ -751,6 +790,7 @@ void DrivingReportWidget::clearData()
     if (m_speedSeries) m_speedSeries->clear();
     m_violations.clear();
     m_historyReports.clear();
+    if (m_historyList) m_historyList->clear();
     if (m_historyScoreSeries) m_historyScoreSeries->clear();
     if (m_historySafetySeries) m_historySafetySeries->clear();
     if (m_historyRuleSeries) m_historyRuleSeries->clear();
@@ -769,6 +809,7 @@ void DrivingReportWidget::clearData()
     updateCoachAdvice();
     updateHistoryChart();
     updateLiveChartPlaceholder();
+    syncHistorySelection();
 }
 
 void DrivingReportWidget::applyPlayerReport(int playerIndex)
@@ -934,12 +975,29 @@ void DrivingReportWidget::updateHistoryChart()
     updateHistoryPlaceholder();
 }
 
+void DrivingReportWidget::updateHistoryList()
+{
+    if (!m_historyList) {
+        return;
+    }
+
+    QSignalBlocker blocker(m_historyList);
+    m_historyList->clear();
+
+    for (const ScoreReport& report : m_historyReports) {
+        m_historyList->addItem(historyRecordLabel(report));
+    }
+}
+
 void DrivingReportWidget::updateHistoryPlaceholder()
 {
     if (!m_historyPlaceholderLabel) {
         return;
     }
     m_historyPlaceholderLabel->setVisible(m_historyReports.isEmpty());
+    if (m_historyList) {
+        m_historyList->setVisible(!m_historyReports.isEmpty());
+    }
 }
 
 void DrivingReportWidget::updateLiveChartPlaceholder()
@@ -1021,7 +1079,54 @@ void DrivingReportWidget::loadHistoryFromSaveLoadManager()
 void DrivingReportWidget::loadHistoryReports(const QList<ScoreReport>& reports)
 {
     m_historyReports = reports;
+    updateHistoryList();
     updateHistoryChart();
+    syncHistorySelection();
+}
+
+void DrivingReportWidget::syncHistorySelection()
+{
+    if (!m_historyList) {
+        return;
+    }
+
+    QSignalBlocker blocker(m_historyList);
+    m_syncingHistorySelection = true;
+
+    int matchingRow = -1;
+    if (!m_currentReport.sessionId.isEmpty()) {
+        for (int i = 0; i < m_historyReports.size(); ++i) {
+            if (m_historyReports.at(i).sessionId == m_currentReport.sessionId) {
+                matchingRow = i;
+                break;
+            }
+        }
+    }
+
+    m_historyList->setCurrentRow(matchingRow);
+    if (matchingRow >= 0) {
+        m_historyList->scrollToItem(m_historyList->item(matchingRow));
+    }
+
+    m_syncingHistorySelection = false;
+}
+
+QString DrivingReportWidget::historyRecordLabel(const ScoreReport& report) const
+{
+    QString title;
+    if (report.generatedAt.isValid()) {
+        title = report.generatedAt.toLocalTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss"));
+    } else if (!report.sessionId.isEmpty()) {
+        title = report.sessionId;
+    } else {
+        title = QStringLiteral("Unknown session");
+    }
+
+    return QStringLiteral("%1 | Score %2 | Grade %3 | Violations %4")
+        .arg(title,
+             QString::number(report.totalScore, 'f', 1),
+             report.grade.isEmpty() ? QStringLiteral("--") : report.grade,
+             QString::number(report.violations.size()));
 }
 
 void DrivingReportWidget::showLoading()

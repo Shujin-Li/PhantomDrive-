@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QFrame>
 #include <QProgressBar>
+#include <QListWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -89,10 +90,13 @@ private:
     void updateViolationTable();
     void updateCoachAdvice();
     void updateHistoryChart();
+    void updateHistoryList();
     void updateHistoryPlaceholder();
     void updateLiveChartPlaceholder();
     void applyPlayerReport(int playerIndex);
     void updatePlayerSwitchState();
+    void syncHistorySelection();
+    QString historyRecordLabel(const ScoreReport& report) const;
 
     void resizeEvent(QResizeEvent* event) override;
 
@@ -147,7 +151,8 @@ private:
     QWidget* m_coachAdviceWidget;
     QLabel*  m_aiReportLabel;
 
-    // ---- history chart ----
+    // ---- history chart / list ----
+    QListWidget* m_historyList;
     QLineSeries* m_historyScoreSeries;
     QLineSeries* m_historySafetySeries;
     QLineSeries* m_historyRuleSeries;
@@ -178,6 +183,7 @@ private:
     bool               m_hasPlayerReports;
     int                m_activePlayerIndex;
     bool               m_applyingPlayerReport;
+    bool               m_syncingHistorySelection;
 };
 
 } // namespace PhantomDrive
