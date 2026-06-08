@@ -11,6 +11,31 @@
 
 using namespace PhantomDrive;
 
+namespace {
+
+QColor speedStateColor(qreal speed, qreal speedLimit)
+{
+    if (speedLimit > 0.0) {
+        if (speed <= speedLimit * 0.75) {
+            return QColor(QStringLiteral("#2EF27A"));
+        }
+        if (speed <= speedLimit) {
+            return QColor(QStringLiteral("#F6C343"));
+        }
+        return QColor(QStringLiteral("#FF3366"));
+    }
+
+    if (speed < 60.0) {
+        return QColor(QStringLiteral("#2EF27A"));
+    }
+    if (speed < 100.0) {
+        return QColor(QStringLiteral("#F6C343"));
+    }
+    return QColor(QStringLiteral("#FF3366"));
+}
+
+} // namespace
+
 // ============================================================
 //  SpeedometerWidget — cyberpunk neon ring gauge (200px)
 // ============================================================
@@ -58,13 +83,12 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
     const qreal startDeg = 225.0;
     const qreal spanDeg  = 270.0;
 
-    // Determine if currently speeding
-    const bool speeding = (m_speedLimit > 0.0 && m_speed > m_speedLimit);
-    const bool red = m_redLight || speeding;
+    const QColor stateColor = speedStateColor(m_speed, m_speedLimit);
 
     // ---- Outer neon glow ----
     {
-        const QColor glowCol = red ? QColor(230, 50, 50, 40) : QColor(0, 190, 255, 30);
+        QColor glowCol = stateColor;
+        glowCol.setAlpha(42);
         QPen glowPen(glowCol, 18, Qt::SolidLine, Qt::RoundCap);
         p.setPen(glowPen);
         p.setBrush(Qt::NoBrush);
@@ -85,17 +109,7 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
     // ---- Speed fill arc ----
     const qreal fraction = m_speed / m_maxSpeed;
     {
-        QColor arcCol;
-        if (red) {
-            arcCol = QColor(255, 50, 50);
-        } else if (fraction > 0.83) {
-            arcCol = QColor(255, 60, 60);
-        } else if (fraction > 0.58) {
-            arcCol = QColor(255, 170, 0);
-        } else {
-            arcCol = QColor(0, 240, 160);
-        }
-        QPen arcPen(arcCol, 8, Qt::SolidLine, Qt::RoundCap);
+        QPen arcPen(stateColor, 8, Qt::SolidLine, Qt::RoundCap);
         p.setPen(arcPen);
         QRectF ar(centre.x() - radius, centre.y() - radius, radius * 2, radius * 2);
         p.drawArc(ar, static_cast<int>((180.0 - startDeg) * 16),
@@ -157,7 +171,7 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
         p.setPen(shadowPen);
         p.drawLine(base + QPointF(2, 2), tip + QPointF(2, 2));
 
-        QColor nCol = red ? QColor(255, 50, 50) : Qt::white;
+        QColor nCol = stateColor;
         QPen needlePen(nCol, 2.5, Qt::SolidLine, Qt::RoundCap);
         p.setPen(needlePen);
         p.drawLine(base, tip);
@@ -175,8 +189,7 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
         const int sfSize = qMax(10, static_cast<int>(radius * 0.30));
         QFont sf("Segoe UI", sfSize, QFont::Bold);
         p.setFont(sf);
-        QColor txtCol = red ? QColor(255, 60, 60) : QColor(0, 255, 160);
-        p.setPen(txtCol);
+        p.setPen(stateColor);
         QRectF tr(centre.x() - radius * 0.4, centre.y() + radius * 0.08,
                   radius * 0.8, radius * 0.38);
         p.drawText(tr, Qt::AlignCenter, QString::number(static_cast<int>(m_speed)));
@@ -627,17 +640,7 @@ void ArcadeHUD::resizeEvent(QResizeEvent* event)
 // ---------------------------------------------------------------------------
 void ArcadeHUD::updateSpeedDisplay()
 {
-    const bool red = (m_trafficState == "red");
-    QString color;
-    if (red && m_blinkOn) {
-        color = "#FF0033";
-    } else if (m_currentSpeed > 200) {
-        color = "#FF0033";
-    } else if (m_currentSpeed > 140) {
-        color = "#FFAA00";
-    } else {
-        color = "#00FFA0";
-    }
+    const QString color = speedStateColor(m_currentSpeed, m_currentSpeedLimit).name();
     if (m_speedBigLabel) {
         m_speedBigLabel->setStyleSheet(
             QString("QLabel{color:%1;font-size:36px;font-weight:bold;"
@@ -645,7 +648,7 @@ void ArcadeHUD::updateSpeedDisplay()
     }
     if (m_speedo) {
         m_speedo->setSpeed(m_currentSpeed);
-        m_speedo->setRedLight(red && m_blinkOn);
+        m_speedo->setRedLight(false);
     }
 }
 
@@ -713,12 +716,14 @@ void ArcadeHUD::updateAISpeed(const QString& aiId, qreal speed)
 
 void ArcadeHUD::updateSpeedLimit(qreal limitKmh)
 {
+    m_currentSpeedLimit = qMax(0.0, limitKmh);
     if (m_speedLimitLabel) {
         m_speedLimitLabel->setText(limitKmh > 0 ? QString::number(static_cast<int>(limitKmh)) : "--");
     }
     if (m_speedo) {
-        m_speedo->setSpeedLimit(limitKmh);
+        m_speedo->setSpeedLimit(m_currentSpeedLimit);
     }
+    updateSpeedDisplay();
 }
 
 void ArcadeHUD::updateTrafficLight(const QString& state)
@@ -836,6 +841,7 @@ void ArcadeHUD::reset()
     m_currentLap    = 1;
     m_totalLaps     = 3;
     m_currentSpeed  = 0;
+    m_currentSpeedLimit = 0.0;
     m_boostPercent = 0;
     m_countdownValue = COUNTDOWN_START;
     m_trafficState  = "green";

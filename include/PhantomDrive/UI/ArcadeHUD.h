@@ -123,6 +123,7 @@ private:
     int     m_currentLap       = 1;
     int     m_totalLaps        = 3;
     qreal   m_currentSpeed     = 0.0;
+    qreal   m_currentSpeedLimit = 0.0;
     qreal   m_boostPercent    = 0.0;
     QString m_trafficState     = "green";
     bool    m_blinkOn          = false;
