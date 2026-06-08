@@ -560,9 +560,11 @@ bool AIOpponentManager::areAllOpponentsFinished() const
 void AIOpponentManager::onPlayerCollision(const QString& opponentId, const QVector2D& point)
 {
     AIOpponent* opponent = getOpponent(opponentId);
-    if (opponent) {
-        opponent->onCollision(QStringLiteral("player"), point);
+    if (!opponent || opponent->hasFinished()) {
+        return;
     }
+
+    opponent->onCollision(QStringLiteral("player"), point);
 }
 
 void AIOpponentManager::notifyPowerupCollected(const QString& opponentId, int powerupType)

@@ -35,6 +35,7 @@
 #include <QDialog>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLayoutItem>
@@ -60,6 +61,7 @@ namespace {
 constexpr qreal kVehicleSeparationDistance = 48.0;
 constexpr qreal kVehicleImpactDistance = 34.0;
 constexpr qreal kVehicleContactReleaseDistance = 52.0;
+constexpr qint64 kFinishedAiContactCooldownMs = 1000;
 
 bool isDrivableSurface(TileType type)
 {
@@ -2879,13 +2881,61 @@ void MainWindow::resolvePlayerAiVehicleContact(AIOpponent* ai)
         return;
     }
 
+    const QString aiId = ai->getId();
+
     if (m_vehiclePhysics->isInvisible()) {
-        m_playerVehicleContacts.remove(ai->getId());
+        m_playerVehicleContacts.remove(aiId);
+        return;
+    }
+
+    if (ai->hasFinished()) {
+        static QHash<QString, qint64> lastFinishedAiContactFeedbackMs;
+
+        QVector2D playerPos = m_vehiclePhysics->getPosition();
+        const QVector2D aiPos = ai->getPosition();
+        QVector2D delta = playerPos - aiPos;
+        qreal dist = delta.length();
+
+        if (dist >= kVehicleContactReleaseDistance) {
+            m_playerVehicleContacts.remove(aiId);
+            return;
+        }
+
+        QVector2D normal = dist > 0.001 ? delta / dist : QVector2D(1.0, 0.0);
+        if (dist < kVehicleSeparationDistance) {
+            const qreal overlap = kVehicleSeparationDistance - dist;
+            const QVector2D playerNew = playerPos + normal * qMin<qreal>(overlap, 12.0);
+            if (m_vehiclePhysics->isPositionFree(playerNew)) {
+                m_vehiclePhysics->setPosition(playerNew);
+                m_playerPosition = playerNew;
+                playerPos = playerNew;
+                delta = playerPos - aiPos;
+                dist = delta.length();
+                normal = dist > 0.001 ? delta / dist : normal;
+            }
+        }
+
+        const bool wasInContact = m_playerVehicleContacts.contains(aiId);
+        const bool inContact = dist < kVehicleImpactDistance;
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        const qint64 lastFeedbackMs = lastFinishedAiContactFeedbackMs.value(aiId, -kFinishedAiContactCooldownMs);
+
+        if (inContact) {
+            m_playerVehicleContacts.insert(aiId);
+        }
+
+        if (inContact
+            && !wasInContact
+            && nowMs - lastFeedbackMs >= kFinishedAiContactCooldownMs
+            && !m_vehiclePhysics->isColliding()) {
+            const qreal impactForce = qMax<qreal>(5.0, qAbs(m_playerSpeed - ai->getSpeed()) * 0.25);
+            m_vehiclePhysics->handleCollision(normal, impactForce);
+            lastFinishedAiContactFeedbackMs.insert(aiId, nowMs);
+        }
         return;
     }
 
     auto* simpleAi = qobject_cast<SimpleAIOpponent*>(ai);
-    const QString aiId = ai->getId();
 
     QVector2D playerPos = m_vehiclePhysics->getPosition();
     QVector2D aiPos = ai->getPosition();
