@@ -14,6 +14,59 @@ QMutex SoundManager::s_mutex;
 
 SoundManager* SoundManager::s_instance = nullptr;
 
+namespace {
+
+qreal effectVolumeMultiplier(SoundEffect effect)
+{
+    switch (effect) {
+    case SoundEffect::CountdownBeep:
+        return 0.9;
+    case SoundEffect::CountdownGo:
+    case SoundEffect::Collision:
+    case SoundEffect::Checkpoint:
+    case SoundEffect::LapComplete:
+    case SoundEffect::RaceFinish:
+        return 1.0;
+    case SoundEffect::SpeedBoost:
+    case SoundEffect::Violation:
+    case SoundEffect::PowerupCollect:
+        return 0.85;
+    case SoundEffect::Engine:
+        return 0.22;
+    case SoundEffect::Brake:
+        return 0.35;
+    }
+
+    return 0.8;
+}
+
+qreal outputVolumeForEffect(SoundEffect effect, bool muted, int volume, qreal masterVolume)
+{
+    if (muted) {
+        return 0.0;
+    }
+
+    const qreal baseVolume = (volume / 100.0) * masterVolume;
+    return qBound(0.0, baseVolume * effectVolumeMultiplier(effect), 1.0);
+}
+
+bool useSynthesizedSound(SoundEffect effect)
+{
+    switch (effect) {
+    case SoundEffect::CountdownBeep:
+    case SoundEffect::CountdownGo:
+    case SoundEffect::Collision:
+    case SoundEffect::Checkpoint:
+    case SoundEffect::LapComplete:
+    case SoundEffect::RaceFinish:
+        return true;
+    default:
+        return false;
+    }
+}
+
+} // namespace
+
 SoundManager& SoundManager::instance(QObject* parent)
 {
     QMutexLocker locker(&s_mutex);
@@ -51,6 +104,7 @@ void SoundManager::initializeSoundPaths()
         { SoundEffect::Violation, assetsPath + "violation.wav" },
         { SoundEffect::Checkpoint, assetsPath + "checkpoint.wav" },
         { SoundEffect::LapComplete, assetsPath + "lap_complete.wav" },
+        { SoundEffect::RaceFinish, assetsPath + "race_finish.wav" },
         { SoundEffect::PowerupCollect, assetsPath + "powerup_collect.wav" },
         { SoundEffect::Engine, assetsPath + "engine.wav" },
         { SoundEffect::Brake, assetsPath + "brake.wav" }
@@ -72,7 +126,7 @@ void SoundManager::ensurePlayerForEffect(SoundEffect effect)
 
     player->setAudioOutput(audioOutput);
 
-    qreal volumeLevel = m_muted ? 0.0 : (m_volume / 100.0) * m_masterVolume;
+    qreal volumeLevel = outputVolumeForEffect(effect, m_muted, m_volume, m_masterVolume);
     audioOutput->setVolume(volumeLevel);
 
     m_players[effect] = player;
@@ -95,6 +149,11 @@ void SoundManager::play(SoundEffect effect)
     if (!player) return;
 
     QString soundPath = m_soundPaths.value(effect, "");
+
+    if (useSynthesizedSound(effect)) {
+        useGeneratedSound(effect);
+        return;
+    }
 
     if (!soundPath.isEmpty() && QFileInfo::exists(soundPath)) {
         player->setSource(QUrl::fromLocalFile(soundPath));
@@ -159,7 +218,7 @@ void SoundManager::play(const QString& customSoundPath)
     QAudioOutput* audioOutput = new QAudioOutput(this);
 
     player->setAudioOutput(audioOutput);
-    audioOutput->setVolume(m_muted ? 0.0 : (m_volume / 100.0) * m_masterVolume);
+    audioOutput->setVolume(outputVolumeForEffect(SoundEffect::PowerupCollect, m_muted, m_volume, m_masterVolume));
 
     if (QFileInfo::exists(customSoundPath)) {
         player->setSource(QUrl::fromLocalFile(customSoundPath));
@@ -178,11 +237,10 @@ void SoundManager::setVolume(int volume)
 {
     m_volume = qBound(0, volume, 100);
 
-    qreal volumeLevel = m_muted ? 0.0 : (m_volume / 100.0) * m_masterVolume;
-
-    for (auto player : m_players) {
+    for (auto it = m_players.begin(); it != m_players.end(); ++it) {
+        QMediaPlayer* player = it.value();
         if (player && player->audioOutput()) {
-            player->audioOutput()->setVolume(volumeLevel);
+            player->audioOutput()->setVolume(outputVolumeForEffect(it.key(), m_muted, m_volume, m_masterVolume));
         }
     }
 
@@ -200,11 +258,10 @@ void SoundManager::setMuted(bool muted)
 
     m_muted = muted;
 
-    qreal volumeLevel = m_muted ? 0.0 : (m_volume / 100.0) * m_masterVolume;
-
-    for (auto player : m_players) {
+    for (auto it = m_players.begin(); it != m_players.end(); ++it) {
+        QMediaPlayer* player = it.value();
         if (player && player->audioOutput()) {
-            player->audioOutput()->setVolume(volumeLevel);
+            player->audioOutput()->setVolume(outputVolumeForEffect(it.key(), m_muted, m_volume, m_masterVolume));
         }
     }
 
@@ -268,11 +325,10 @@ void SoundManager::setMasterVolume(qreal volume)
 {
     m_masterVolume = qBound(0.0, volume, 1.0);
 
-    qreal volumeLevel = m_muted ? 0.0 : (m_volume / 100.0) * m_masterVolume;
-
-    for (auto player : m_players) {
+    for (auto it = m_players.begin(); it != m_players.end(); ++it) {
+        QMediaPlayer* player = it.value();
         if (player && player->audioOutput()) {
-            player->audioOutput()->setVolume(volumeLevel);
+            player->audioOutput()->setVolume(outputVolumeForEffect(it.key(), m_muted, m_volume, m_masterVolume));
         }
     }
 }

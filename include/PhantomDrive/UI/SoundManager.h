@@ -72,7 +72,7 @@ private:
     bool m_preloaded;
 
     static constexpr int DEFAULT_VOLUME = 70;
-    static constexpr qreal DEFAULT_MASTER_VOLUME = 0.8;
+    static constexpr qreal DEFAULT_MASTER_VOLUME = 0.65;
 };
 
 } // namespace PhantomDrive

@@ -90,7 +90,7 @@ QByteArray SoundGenerator::createBeepWav(int frequency, int durationMs, int samp
     QByteArray audioData;
     audioData.reserve(numSamples * sizeof(quint16));
 
-    const double amplitude = 0.5;
+    const double amplitude = 0.7;
     const double pi = 3.14159265358979323846;
 
     for (int i = 0; i < numSamples; ++i) {
@@ -104,7 +104,11 @@ QByteArray SoundGenerator::createBeepWav(int frequency, int durationMs, int samp
             envelope = (durationMs / 1000.0 - t) / fadeTime;
         }
 
-        double sample = amplitude * envelope * std::sin(2.0 * pi * frequency * t);
+        envelope = qBound(0.0, envelope, 1.0);
+
+        const double fundamental = std::sin(2.0 * pi * frequency * t);
+        const double harmonic = std::sin(2.0 * pi * frequency * 2.0 * t);
+        double sample = amplitude * envelope * (0.82 * fundamental + 0.18 * harmonic);
         qint16 sampleInt = static_cast<qint16>(sample * 32767.0);
 
         writeInt16LittleEndian(audioData, static_cast<quint16>(sampleInt));
@@ -128,7 +132,9 @@ QByteArray SoundGenerator::createNoiseWav(int durationMs, int sampleRate)
     QByteArray audioData;
     audioData.reserve(numSamples * sizeof(quint16));
 
-    const double amplitude = 0.3;
+    const double amplitude = 0.75;
+    const double pi = 3.14159265358979323846;
+    const double totalSeconds = qMax(0.001, durationMs / 1000.0);
 
     for (int i = 0; i < numSamples; ++i) {
         double t = static_cast<double>(i) / sampleRate;
@@ -141,8 +147,13 @@ QByteArray SoundGenerator::createNoiseWav(int durationMs, int sampleRate)
             envelope = (durationMs / 1000.0 - t) / fadeTime;
         }
 
-        double noise = (static_cast<double>(QRandomGenerator::global()->bounded(RAND_MAX)) / RAND_MAX) * 2.0 - 1.0;
-        double sample = amplitude * envelope * noise;
+        envelope = qBound(0.0, envelope, 1.0);
+
+        const double decay = std::exp(-7.5 * t / totalSeconds);
+        const double lowThump = std::sin(2.0 * pi * 80.0 * t) * 0.55
+            + std::sin(2.0 * pi * 145.0 * t) * 0.25;
+        const double noise = (static_cast<double>(QRandomGenerator::global()->bounded(RAND_MAX)) / RAND_MAX) * 2.0 - 1.0;
+        double sample = amplitude * envelope * decay * (lowThump + 0.25 * noise);
 
         qint16 sampleInt = static_cast<qint16>(sample * 32767.0);
         writeInt16LittleEndian(audioData, static_cast<quint16>(sampleInt));
@@ -161,19 +172,21 @@ QByteArray SoundGenerator::generateWavFile(SoundEffect effect, int durationMs) c
 {
     switch (effect) {
     case SoundEffect::CountdownBeep:
-        return createBeepWav(880, durationMs);
+        return createBeepWav(880, qMax(durationMs, 160));
     case SoundEffect::CountdownGo:
-        return createBeepWav(1760, durationMs * 2);
+        return createBeepWav(1320, qMax(durationMs, 260));
     case SoundEffect::Collision:
-        return createNoiseWav(durationMs);
+        return createNoiseWav(qMax(durationMs, 180));
     case SoundEffect::SpeedBoost:
         return createBeepWav(1200, durationMs);
     case SoundEffect::Violation:
         return createBeepWav(300, durationMs * 2);
     case SoundEffect::Checkpoint:
-        return createBeepWav(1000, durationMs);
+        return createBeepWav(1175, qMax(durationMs, 220));
     case SoundEffect::LapComplete:
-        return createBeepWav(1500, durationMs * 2);
+        return createBeepWav(1480, qMax(durationMs * 2, 420));
+    case SoundEffect::RaceFinish:
+        return createBeepWav(1760, qMax(durationMs * 3, 650));
     case SoundEffect::PowerupCollect:
         return createBeepWav(2000, durationMs);
     default:
@@ -192,6 +205,7 @@ QString SoundGenerator::getSoundFilePath(SoundEffect effect) const
     case SoundEffect::Violation: fileName = "violation.wav"; break;
     case SoundEffect::Checkpoint: fileName = "checkpoint.wav"; break;
     case SoundEffect::LapComplete: fileName = "lap_complete.wav"; break;
+    case SoundEffect::RaceFinish: fileName = "race_finish.wav"; break;
     case SoundEffect::PowerupCollect: fileName = "powerup_collect.wav"; break;
     default: fileName = "default.wav"; break;
     }
@@ -210,6 +224,7 @@ void SoundGenerator::generateAllSounds() const
         { SoundEffect::Violation, 400 },
         { SoundEffect::Checkpoint, 200 },
         { SoundEffect::LapComplete, 500 },
+        { SoundEffect::RaceFinish, 700 },
         { SoundEffect::PowerupCollect, 200 }
     };
 
