@@ -2781,7 +2781,6 @@ void MainWindow::finishCustomTrackRoute()
         m_arcadeHUD->showRaceFinished(1, formatRaceTime(m_sessionElapsedMs));
     }
 
-    showInteractiveFeedback(QStringLiteral("Custom Track Finished!"), FeedbackType::Milestone);
     playSound(PhantomDrive::SoundEffect::RaceFinish);
     statusBar()->showMessage(QStringLiteral("Custom Track Finished"), 4000);
 
@@ -2864,7 +2863,6 @@ void MainWindow::finishTwoPlayerRace(int winnerIndex)
         m_arcadeHUD->showRaceBanner(QStringLiteral("%1 Wins").arg(winner));
         m_arcadeHUD->showRaceFinished(winnerIndex, formatRaceTime(m_sessionElapsedMs));
     }
-    showInteractiveFeedback(QStringLiteral("%1 Wins!").arg(winner), FeedbackType::Milestone);
     playSound(PhantomDrive::SoundEffect::RaceFinish);
     statusBar()->showMessage(QStringLiteral("%1 wins. Generating both reports...").arg(winner), 4000);
 
@@ -3608,11 +3606,6 @@ void MainWindow::playSound(PhantomDrive::SoundEffect effect)
 
 void MainWindow::showCountdown()
 {
-    PhantomDrive::InteractiveFeedback& feedback = PhantomDrive::InteractiveFeedback::instance(this);
-    feedback.show();
-    feedback.raise();
-    feedback.showCountdown(3);
-
     // Show ArcadeHUD in ALL modes during countdown
     if (m_arcadeHUD) {
         m_arcadeHUD->show();
@@ -3653,7 +3646,6 @@ void MainWindow::onRaceStart()
             6000);
     }
 
-    PhantomDrive::InteractiveFeedback::instance(this).showGo();
     playSound(PhantomDrive::SoundEffect::CountdownGo);
     QTimer::singleShot(0, this, [this]() {
         focusGameViewForDriving();
@@ -3695,10 +3687,6 @@ void MainWindow::onLapCompleted(int lapNumber)
         m_arcadeHUD->showLapCompleted(lapNumber);
     }
 
-    PhantomDrive::InteractiveFeedback& feedback = PhantomDrive::InteractiveFeedback::instance(this);
-    feedback.show();
-    feedback.raise();
-    feedback.showLapCompleted(lapNumber);
     playSound(PhantomDrive::SoundEffect::LapComplete);
 
     statusBar()->showMessage(
@@ -3725,7 +3713,6 @@ void MainWindow::onLapCompleted(int lapNumber)
                                       formatRaceTime(m_sessionElapsedMs));
     }
 
-    showInteractiveFeedback(QStringLiteral("Race Finished!"), FeedbackType::Milestone);
     playSound(PhantomDrive::SoundEffect::RaceFinish);
 
     // Wait 2 s so the player can see the "Race Finished" banner, then show report.
@@ -3752,10 +3739,6 @@ void MainWindow::onCheckpointReached(int checkpointNumber)
                     .arg(totalGates)
                     .arg(nextTarget));
         }
-        PhantomDrive::InteractiveFeedback& feedback = PhantomDrive::InteractiveFeedback::instance(this);
-        feedback.show();
-        feedback.raise();
-        feedback.showCheckpoint(displayIndex);
         playSound(PhantomDrive::SoundEffect::Checkpoint);
         statusBar()->showMessage(
             QStringLiteral("Checkpoint %1/%2 passed. Next: %3")
@@ -3771,10 +3754,6 @@ void MainWindow::onCheckpointReached(int checkpointNumber)
             QStringLiteral("检查点 %1/%2 已通过").arg(displayIndex).arg(totalGates));
     }
 
-    PhantomDrive::InteractiveFeedback& feedback = PhantomDrive::InteractiveFeedback::instance(this);
-    feedback.show();
-    feedback.raise();
-    feedback.showCheckpoint(displayIndex);
     playSound(PhantomDrive::SoundEffect::Checkpoint);
 
     statusBar()->showMessage(
@@ -3784,7 +3763,6 @@ void MainWindow::onCheckpointReached(int checkpointNumber)
 
 void MainWindow::onCollision()
 {
-    showInteractiveFeedback(QStringLiteral("Wall Hit!"), PhantomDrive::FeedbackType::Critical);
     playSound(PhantomDrive::SoundEffect::Collision);
 }
 
