@@ -400,8 +400,14 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
             const TileType tileType = tile ? tile->getType() : TileType::Unknown;
             QLinearGradient tileFill(cell.topLeft(), cell.bottomRight());
             const QColor baseTileColor = tileColor(tileType);
-            if (tileType == TileType::Grass) {
-                painter.fillRect(cell, QColor(QStringLiteral("#6BBF59")));
+            const bool isRoadTile = tileType == TileType::Road || tileType == TileType::Asphalt;
+            const bool isGrassTile = tileType == TileType::Grass;
+            if (isGrassTile) {
+                painter.save();
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(QColor(QStringLiteral("#6BBF59")));
+                painter.drawRect(cell.adjusted(0.5, 0.5, -0.5, -0.5));
+                painter.restore();
             } else if (tileType == TileType::Wall) {
                 tileFill.setColorAt(0.0, QColor(QStringLiteral("#CBD5E0")));
                 tileFill.setColorAt(0.52, baseTileColor);
@@ -412,8 +418,12 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
                 tileFill.setColorAt(0.52, baseTileColor);
                 tileFill.setColorAt(1.0, QColor(QStringLiteral("#A66A18")));
                 painter.fillRect(cell, tileFill);
-            } else if (tileType == TileType::Road || tileType == TileType::Asphalt) {
-                painter.fillRect(cell, QColor(QStringLiteral("#46566B")));
+            } else if (isRoadTile) {
+                painter.save();
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(QColor(QStringLiteral("#46566B")));
+                painter.drawRect(cell.adjusted(0.5, 0.5, -0.5, -0.5));
+                painter.restore();
             } else if (tileType == TileType::StartLine) {
                 tileFill.setColorAt(0.0, QColor(QStringLiteral("#7DD3FC")));
                 tileFill.setColorAt(0.55, baseTileColor);
@@ -428,22 +438,7 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
                 painter.fillRect(cell, baseTileColor);
             }
 
-            if (tileType == TileType::Road || tileType == TileType::Asphalt) {
-                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(QStringLiteral("#46566B")));
-                painter.fillRect(cell.adjusted(cell.width() * 0.46, 0, -cell.width() * 0.46, 0),
-                                 QColor(226, 232, 240, 34));
-                painter.setPen(QPen(QColor(26, 32, 44, 72), 1));
-                painter.drawLine(QPointF(cell.left(), cell.top() + cell.height() * 0.18),
-                                 QPointF(cell.right(), cell.top() + cell.height() * 0.18));
-                painter.drawLine(QPointF(cell.left(), cell.bottom() - cell.height() * 0.16),
-                                 QPointF(cell.right(), cell.bottom() - cell.height() * 0.16));
-                painter.setPen(QPen(QColor(203, 213, 224, 54), 1));
-                for (int i = 0; i < 3; ++i) {
-                    const int seed = row * 31 + col * 47 + i * 13;
-                    painter.drawPoint(QPointF(cell.left() + ((seed % 78) + 11) / 100.0 * cell.width(),
-                                              cell.top() + (((seed * 3) % 72) + 14) / 100.0 * cell.height()));
-                }
-            } else if (tileType == TileType::Wall) {
+            if (tileType == TileType::Wall) {
                 painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(226, 232, 240, 74));
                 painter.setPen(QPen(QColor(45, 55, 72, 145), 1));
                 const qreal blockH = cell.height() / 3.0;
@@ -467,24 +462,14 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
                 }
                 painter.setPen(QPen(QColor(255, 244, 214, 110), 1));
                 painter.drawLine(cell.topLeft() + QPointF(3, 3), cell.topRight() + QPointF(-3, 3));
-            } else if (tileType == TileType::Grass) {
-                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(QStringLiteral("#6BBF59")));
-                painter.setPen(QPen(QColor(58, 125, 58, 70), 1));
-                for (int i = 0; i < 5; ++i) {
-                    const int seed = row * 37 + col * 41 + i * 11;
-                    const qreal x = cell.left() + ((seed % 72) + 14) / 100.0 * cell.width();
-                    const qreal y = cell.top() + (((seed * 5) % 68) + 16) / 100.0 * cell.height();
-                    const qreal blade = cell.height() * (0.08 + (i % 2) * 0.03);
-                    painter.drawLine(QPointF(x, y + blade), QPointF(x + ((i % 2) ? -blade * 0.34 : blade * 0.30), y - blade));
-                }
-                painter.setPen(QPen(QColor(167, 243, 160, 82), 1));
-                painter.drawArc(cell.adjusted(cell.width() * 0.18, cell.height() * 0.24,
-                                              -cell.width() * 0.48, -cell.height() * 0.48),
-                                15 * 16, 130 * 16);
             }
-            painter.setPen(QPen(QColor(QStringLiteral("#2D3748")), 1));
+            const bool solidDrivingTile = isRoadTile || isGrassTile;
+            painter.setPen(QPen(solidDrivingTile
+                                ? QColor(45, 55, 72, 70)
+                                : QColor(QStringLiteral("#2D3748")),
+                            1));
             painter.drawRect(cell);
-            painter.setPen(QPen(tileBorderColor(tileType), 1));
+            painter.setPen(QPen(tileBorderColor(tileType), solidDrivingTile ? 2 : 1));
             painter.drawRect(cell.adjusted(1.5, 1.5, -1.5, -1.5));
 
             if (hasStartAt(row, col)) {
