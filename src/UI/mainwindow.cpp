@@ -163,6 +163,36 @@ bool tileAtIsStartFinish(PhantomDrive::TrackData* track, const QVector2D& positi
     return type == PhantomDrive::TileType::StartLine || type == PhantomDrive::TileType::FinishLine;
 }
 
+bool positionNearStartFinish(PhantomDrive::TrackData* track, const QVector2D& position, qreal maxDistance = 40.0)
+{
+    if (!track) {
+        return false;
+    }
+
+    const qreal maxDistanceSq = maxDistance * maxDistance;
+    for (int row = 0; row < track->getRowCount(); ++row) {
+        for (int col = 0; col < track->getColCount(); ++col) {
+            PhantomDrive::TrackTile* tile = track->getTileAt(row, col);
+            if (!tile) {
+                continue;
+            }
+
+            const auto type = tile->getType();
+            if (type != PhantomDrive::TileType::StartLine && type != PhantomDrive::TileType::FinishLine) {
+                continue;
+            }
+
+            const QVector2D center = PhantomDrive::TrackData::tileToWorldCenter(row, col);
+            const QVector2D delta = position - center;
+            if (delta.lengthSquared() <= maxDistanceSq) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool positionInNorthGate(PhantomDrive::TrackData* track, const QVector2D& position)
 {
     if (!track) {
@@ -2731,6 +2761,7 @@ void MainWindow::updateArcadeRaceProgress(const QVector2D& positionBefore)
 
     const QVector2D& pos = m_playerPosition;
     const bool onStartLine = tileAtIsStartFinish(track, pos);
+    const bool nearStartFinish = m_customTrackPlaying && positionNearStartFinish(track, pos);
     const bool inNorthGate = !m_customTrackPlaying && positionInNorthGate(track, pos);
     const bool inNorthSector = m_customTrackPlaying ? onStartLine : (onStartLine || inNorthGate);
     const bool wasInNorthSector = m_customTrackPlaying ? m_wasOnStartLine : (m_wasOnStartLine || m_wasInNorthGate);
@@ -2745,7 +2776,8 @@ void MainWindow::updateArcadeRaceProgress(const QVector2D& positionBefore)
     if (allCheckpointsCollected && m_hasLeftNorthSector) {
         const bool enteredStartLine = onStartLine && !m_wasOnStartLine;
         const bool enteredNorthGate = !m_customTrackPlaying && inNorthGate && !m_wasInNorthGate;
-        if (enteredStartLine || enteredNorthGate) {
+        const bool reachedCustomTrackFinish = m_customTrackPlaying && (onStartLine || nearStartFinish);
+        if (enteredStartLine || enteredNorthGate || reachedCustomTrackFinish) {
             if (m_customTrackPlaying) {
                 finishCustomTrackRoute();
             } else {
