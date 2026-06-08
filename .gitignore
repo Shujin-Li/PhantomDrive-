@@ -36,3 +36,5 @@ Thumbs.db
 # Qt Creator
 .qtc/
 .qtc_clangd/
+
+build-*/
