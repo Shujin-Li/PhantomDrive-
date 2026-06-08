@@ -579,6 +579,22 @@ MainWindow::MainWindow(QWidget *parent)
             &AIOpponentManager::onQLearningFeedbackReady);
 
     connect(m_scoreManager,
+            &ScoreManager::reportJsonReady,
+            this,
+            [](const QJsonObject& reportJson) {
+                SaveLoadManager::instance().saveReportJson(reportJson);
+            });
+
+    if (m_player2ScoreManager) {
+        connect(m_player2ScoreManager,
+                &ScoreManager::reportJsonReady,
+                this,
+                [](const QJsonObject& reportJson) {
+                    SaveLoadManager::instance().saveReportJson(reportJson);
+                });
+    }
+
+    connect(m_scoreManager,
             &ScoreManager::qLearningFeedbackReady,
             this,
             [this](const PhantomDrive::QLearningFeedback& feedback) {
@@ -656,6 +672,15 @@ MainWindow::MainWindow(QWidget *parent)
         m_reportWidget->setMockDataEnabled(false);
         pageReport->layout()->addWidget(m_reportWidget);
         m_reportPage = pageReport;   // cache for use in onGameFinished()
+
+        connect(&SaveLoadManager::instance(),
+                &SaveLoadManager::historyChanged,
+                this,
+                [this]() {
+                    if (m_reportWidget) {
+                        m_reportWidget->loadHistoryFromSaveLoadManager();
+                    }
+                });
 
         qDebug() << "[setup] stackedWidget count=" << ui->stackedWidget->count()
                  << "pageReport=" << pageReport
@@ -3347,12 +3372,6 @@ void MainWindow::onGameFinished()
              << "violations=" << report.violations.size()
              << "sessionId=" << report.sessionId
              << "stackedWidget count=" << ui->stackedWidget->count();
-
-    qDebug() << "[onGameFinished] step 1 saveReport";
-    SaveLoadManager::instance().saveReport(report);
-    if (m_twoPlayerMode && !player2Report.sessionId.isEmpty()) {
-        SaveLoadManager::instance().saveReport(player2Report);
-    }
 
     // Populate the report widget and switch to the report page.
     if (!m_reportWidget || !m_reportPage) {
