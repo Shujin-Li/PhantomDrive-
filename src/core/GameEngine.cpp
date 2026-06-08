@@ -4,7 +4,6 @@
 
 #include <QDateTime>
 #include <QtMath>
-#include <QDebug>
 
 namespace PhantomDrive {
 
@@ -529,7 +528,6 @@ void GameEngine::registerHUD(LearningHUD* hud)
         hud->showPenaltyMessage(QString("-%1 pts").arg(points), points);
     });
 
-    qDebug() << "HUD registered with GameEngine";
 }
 
 void GameEngine::registerReportWidget(DrivingReportWidget* widget)
@@ -552,7 +550,6 @@ void GameEngine::registerReportWidget(DrivingReportWidget* widget)
     });
     connect(this, &GameEngine::scoreReady, widget, &DrivingReportWidget::setCurrentReport);
 
-    qDebug() << "DrivingReportWidget registered with GameEngine";
 }
 
 }

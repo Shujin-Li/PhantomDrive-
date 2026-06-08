@@ -393,7 +393,6 @@ bool SaveLoadManager::deleteReport(int index)
     if (ok) {
         emit reportDeleted(index);
         emit historyChanged();
-        qDebug() << "Delete successful, remaining records:" << reports.size();
     }
 
     return ok;
@@ -414,7 +413,6 @@ bool SaveLoadManager::updateReport(int index, const PhantomDrive::ScoreReport& n
     if (ok) {
         emit reportUpdated(index, newReport);
         emit historyChanged();
-        qDebug() << "Update successful, index" << index;
     }
 
     return ok;
@@ -435,7 +433,6 @@ bool SaveLoadManager::exportReport(const PhantomDrive::ScoreReport& report, cons
     QJsonDocument doc(root);
     file.write(doc.toJson(QJsonDocument::Indented));
     file.close();
-    qDebug() << "Report exported to:" << filePath;
     return true;
 }
 
@@ -466,6 +463,5 @@ bool SaveLoadManager::importReport(const QString& filePath, PhantomDrive::ScoreR
         outReport = jsonToReport(root);
     }
 
-    qDebug() << "Report imported from:" << filePath;
     return true;
 }

@@ -1,7 +1,6 @@
 ﻿#include "UI/learninghud.h"
 
 #include <QApplication>
-#include <QDebug>
 #include <QScreen>
 #include <QTimer>
 #include <QFrame>
@@ -282,7 +281,6 @@ void LearningHUD::onRedLightBlink()
 void LearningHUD::showPenaltyMessage(const QString& message, int points)
 {
     emit penaltyMessageRequested(message, points);
-    qDebug() << "LearningHUD penalty (signal):" << message << points;
 }
 
 void LearningHUD::showViolationWarning(const QString& violationType)
