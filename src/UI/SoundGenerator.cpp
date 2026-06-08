@@ -241,11 +241,8 @@ void SoundGenerator::generateAllSounds() const
         if (file.open(QIODevice::WriteOnly)) {
             file.write(wavData);
             file.close();
-            qDebug() << "Generated:" << filePath;
         } else {
             qWarning() << "Failed to create:" << filePath;
         }
     }
-
-    qDebug() << "Sound generation complete!";
 }

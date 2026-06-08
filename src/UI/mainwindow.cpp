@@ -230,84 +230,8 @@ bool crossedCheckpointGate(const PhantomDrive::Checkpoint* cp,
 
 void dumpCustomTrackLayoutForDebug(PhantomDrive::TrackData* track, const QString& label)
 {
-    if (!track) {
-        qDebug() << "[CustomTrackDebug]" << label << "track=null";
-        return;
-    }
-
-    int roadCount = 0;
-    int grassCount = 0;
-    int wallCount = 0;
-    QPoint finishTile(-1, -1);
-    for (int row = 0; row < track->getRowCount(); ++row) {
-        for (int col = 0; col < track->getColCount(); ++col) {
-            const PhantomDrive::TrackTile* tile = track->getTileAt(row, col);
-            if (!tile) {
-                continue;
-            }
-            switch (tile->getType()) {
-            case PhantomDrive::TileType::Road:
-            case PhantomDrive::TileType::Asphalt:
-                ++roadCount;
-                break;
-            case PhantomDrive::TileType::Grass:
-                ++grassCount;
-                break;
-            case PhantomDrive::TileType::Wall:
-            case PhantomDrive::TileType::Barrier:
-                ++wallCount;
-                break;
-            case PhantomDrive::TileType::FinishLine:
-            case PhantomDrive::TileType::StartLine:
-                finishTile = QPoint(col, row);
-                ++roadCount;
-                break;
-            default:
-                break;
-            }
-        }
-    }
-
-    const QList<QVector2D> starts = track->getStartPositions();
-    const QPoint startTile = starts.isEmpty() ? QPoint(-1, -1) : PhantomDrive::TrackData::worldToTile(starts.first());
-    qDebug().noquote()
-        << QStringLiteral("[CustomTrackDebug] %1 rows=%2 cols=%3 start(row=%4,col=%5) finish(row=%6,col=%7) road=%8 grass=%9 wall=%10")
-               .arg(label)
-               .arg(track->getRowCount())
-               .arg(track->getColCount())
-               .arg(startTile.y())
-               .arg(startTile.x())
-               .arg(finishTile.y())
-               .arg(finishTile.x())
-               .arg(roadCount)
-               .arg(grassCount)
-               .arg(wallCount);
-
-    const QList<PhantomDrive::Checkpoint*> checkpoints = track->getCheckpointsInOrder();
-    for (int i = 0; i < checkpoints.size(); ++i) {
-        const PhantomDrive::Checkpoint* cp = checkpoints.at(i);
-        if (!cp) {
-            continue;
-        }
-        const QPoint cpTile = PhantomDrive::TrackData::worldToTile(cp->getPosition());
-        qDebug().noquote()
-            << QStringLiteral("[CustomTrackDebug] %1 CP%2 row=%3 col=%4")
-                   .arg(label)
-                   .arg(i + 1)
-                   .arg(cpTile.y())
-                   .arg(cpTile.x());
-    }
-
-    const QList<QVector2D> items = track->getItemBoxPositions();
-    for (int i = 0; i < items.size(); ++i) {
-        const QPoint itemTile = PhantomDrive::TrackData::worldToTile(items.at(i));
-        qDebug().noquote()
-            << QStringLiteral("[CustomTrackDebug] %1 Item%2 row=%3 col=%4")
-                   .arg(label)
-                   .arg(i + 1)
-                   .arg(itemTile.y())
-                   .arg(itemTile.x());
-    }
+    Q_UNUSED(track);
+    Q_UNUSED(label);
 }
 
 PhantomDrive::TrackData* cloneCustomTrackSnapshot(PhantomDrive::TrackData* source, QObject* parent)
@@ -637,18 +561,6 @@ MainWindow::MainWindow(QWidget *parent)
                         .arg(scoreText, riskText, complianceText),
                     5000);
 
-                qDebug().noquote()
-                    << QStringLiteral("[Adaptive AI] reward=%1 normalizedScore=%2 safetyRisk=%3 ruleCompliance=%4 speedPenalty=%5 smoothnessPenalty=%6 terminalPenalty=%7 hint=%8")
-                           .arg(QString::number(feedback.reward, 'f', 2))
-                           .arg(QString::number(feedback.normalizedScore, 'f', 2))
-                           .arg(QString::number(feedback.safetyRisk, 'f', 2))
-                           .arg(QString::number(feedback.ruleCompliance, 'f', 2))
-                           .arg(QString::number(feedback.speedPenalty, 'f', 2))
-                           .arg(QString::number(feedback.smoothnessPenalty, 'f', 2))
-                           .arg(QString::number(feedback.terminalPenalty, 'f', 2))
-                           .arg(feedback.recommendedActionHint.isEmpty()
-                                    ? QStringLiteral("(none)")
-                                    : feedback.recommendedActionHint);
             });
 
     connect(m_scoreManager, &ScoreManager::feedbackReady,
@@ -671,8 +583,6 @@ MainWindow::MainWindow(QWidget *parent)
                 showInteractiveFeedback(QString("%1 Finished Rank #%2").arg(opponentId).arg(finalPosition),
                                         FeedbackType::Milestone);
             });
-
-    qDebug() << "=== QLearning Connected ===";
 
     qApp->setStyleSheet(ThemeManager::getStyleSheet("dark") + ThemeManager::mainMenuNeonQss());
 
@@ -712,9 +622,6 @@ MainWindow::MainWindow(QWidget *parent)
                     }
                 });
 
-        qDebug() << "[setup] stackedWidget count=" << ui->stackedWidget->count()
-                 << "pageReport=" << pageReport
-                 << "m_reportWidget=" << m_reportWidget;
     }
 
     connect(m_reportWidget, &DrivingReportWidget::backToMenuRequested,
@@ -2016,7 +1923,6 @@ void MainWindow::setupVehiclePhysics()
                     3500);
             });
 
-    qDebug() << "VehiclePhysics initialized and connected to keyboard input";
 }
 
 void MainWindow::initializeAIOpponents()
@@ -2151,13 +2057,6 @@ void MainWindow::applyPlayerSpawnAtStartLine()
         spawnRotation = track->getStartRotation();
     }
     const QPoint spawnTile = TrackData::worldToTile(spawnPos);
-    qDebug().noquote()
-        << QStringLiteral("[CustomTrackDebug] applyPlayerSpawnAtStartLine row=%1 col=%2 world=(%3,%4)")
-               .arg(spawnTile.y())
-               .arg(spawnTile.x())
-               .arg(spawnPos.x())
-               .arg(spawnPos.y());
-
     m_playerPosition = spawnPos;
     m_playerRotation = spawnRotation;
     m_playerSpeed = 0.0;
@@ -2321,8 +2220,6 @@ void MainWindow::startCustomTrackSession(TrackData* track)
                     QVector2D finishPos =
                         TrackData::tileToWorldCenter(row, col);
 
-                    qDebug() << "FINISH =" << finishPos;
-
                     waypoints.append(finishPos);
                 }
             }
@@ -2356,12 +2253,7 @@ void MainWindow::startCustomTrackSession(TrackData* track)
         {
             waypoints.append(finishPos);
 
-            qDebug()
-                << "FINISH ="
-                << finishPos;
         }
-
-        qDebug() << "WAYPOINT COUNT =" << waypoints.size();
 
         trackMgr->setWaypoints(waypoints);
     }
@@ -3504,13 +3396,6 @@ void MainWindow::onGameFinished()
         player2Report = m_player2ScoreManager->finishSession(m_player2DataCollector);
     }
 
-    qDebug() << "[onGameFinished] score=" << report.totalScore
-             << "grade=" << report.grade
-             << "samples=" << speedSamples.size()
-             << "violations=" << report.violations.size()
-             << "sessionId=" << report.sessionId
-             << "stackedWidget count=" << ui->stackedWidget->count();
-
     // Populate the report widget and switch to the report page.
     if (!m_reportWidget || !m_reportPage) {
         qWarning() << "[onGameFinished] m_reportWidget or m_reportPage is null – report page not set up"
@@ -3527,33 +3412,23 @@ void MainWindow::onGameFinished()
         return;
     }
 
-    qDebug() << "[onGameFinished] step 2 hideLoading";
     m_reportWidget->hideLoading();
 
-    qDebug() << "[onGameFinished] step 3 loadHistory";
     m_reportWidget->loadHistoryFromSaveLoadManager();
 
     if (m_twoPlayerMode && !player2Report.sessionId.isEmpty()) {
-        qDebug() << "[onGameFinished] step 4 setPlayerReports p1=" << speedSamples.size()
-                 << "p2=" << player2SpeedSamples.size();
         m_reportWidget->setPlayerReports(report, speedSamples, player2Report, player2SpeedSamples);
     } else {
-        qDebug() << "[onGameFinished] step 4 setSpeedSamples count=" << speedSamples.size();
         m_reportWidget->setSessionSpeedSamples(speedSamples);
-
-        qDebug() << "[onGameFinished] step 5 setCurrentReport";
         m_reportWidget->setCurrentReport(report);
     }
 
-    qDebug() << "[onGameFinished] step 6 switch to report page";
     ui->stackedWidget->setCurrentWidget(m_reportPage);
     m_reportPage->show();
     m_reportPage->raise();
     m_reportWidget->show();
     m_reportWidget->raise();
     ui->stackedWidget->update();
-    qDebug() << "[onGameFinished] step 7 done – report page visible";
-
     // Re-enable btn_Back so the user can return to menu from the report page.
     if (ui->btn_Back) {
         ui->btn_Back->setEnabled(true);

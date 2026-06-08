@@ -134,8 +134,8 @@ void SoundManager::ensurePlayerForEffect(SoundEffect effect)
     connect(player, &QMediaPlayer::errorOccurred,
             this, [this, effect](QMediaPlayer::Error error, const QString& errorString) {
         Q_UNUSED(error);
-        qDebug() << "SoundManager: Failed to play effect" << static_cast<int>(effect)
-                 << "Error:" << errorString;
+        qWarning() << "SoundManager: Failed to play effect" << static_cast<int>(effect)
+                   << "Error:" << errorString;
     });
 }
 
@@ -158,7 +158,6 @@ void SoundManager::play(SoundEffect effect)
     if (!soundPath.isEmpty() && QFileInfo::exists(soundPath)) {
         player->setSource(QUrl::fromLocalFile(soundPath));
     } else {
-        qDebug() << "SoundManager: Sound file not found, using generated sound";
         useGeneratedSound(effect);
         return;
     }
@@ -306,7 +305,6 @@ void SoundManager::preloadSounds()
     }
 
     m_preloaded = true;
-    qDebug() << "SoundManager: Sounds preloaded";
 }
 
 void SoundManager::unloadSounds()

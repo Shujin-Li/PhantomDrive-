@@ -48,84 +48,8 @@ constexpr int kMaxCollisionImpacts = 5;
 
 void dumpTrackLayoutForDebug(const TrackData* track, const QString& label)
 {
-    if (!track) {
-        qDebug() << "[CustomTrackDebug]" << label << "track=null";
-        return;
-    }
-
-    int roadCount = 0;
-    int grassCount = 0;
-    int wallCount = 0;
-    QPoint finishTile(-1, -1);
-    for (int row = 0; row < track->getRowCount(); ++row) {
-        for (int col = 0; col < track->getColCount(); ++col) {
-            const TrackTile* tile = track->getTileAt(row, col);
-            if (!tile) {
-                continue;
-            }
-            switch (tile->getType()) {
-            case TileType::Road:
-            case TileType::Asphalt:
-                ++roadCount;
-                break;
-            case TileType::Grass:
-                ++grassCount;
-                break;
-            case TileType::Wall:
-            case TileType::Barrier:
-                ++wallCount;
-                break;
-            case TileType::FinishLine:
-            case TileType::StartLine:
-                finishTile = QPoint(col, row);
-                ++roadCount;
-                break;
-            default:
-                break;
-            }
-        }
-    }
-
-    const QList<QVector2D> starts = track->getStartPositions();
-    const QPoint startTile = starts.isEmpty() ? QPoint(-1, -1) : TrackData::worldToTile(starts.first());
-    qDebug().noquote()
-        << QStringLiteral("[CustomTrackDebug] %1 rows=%2 cols=%3 start(row=%4,col=%5) finish(row=%6,col=%7) road=%8 grass=%9 wall=%10")
-               .arg(label)
-               .arg(track->getRowCount())
-               .arg(track->getColCount())
-               .arg(startTile.y())
-               .arg(startTile.x())
-               .arg(finishTile.y())
-               .arg(finishTile.x())
-               .arg(roadCount)
-               .arg(grassCount)
-               .arg(wallCount);
-
-    const QList<Checkpoint*> checkpoints = track->getCheckpointsInOrder();
-    for (int i = 0; i < checkpoints.size(); ++i) {
-        const Checkpoint* cp = checkpoints.at(i);
-        if (!cp) {
-            continue;
-        }
-        const QPoint cpTile = TrackData::worldToTile(cp->getPosition());
-        qDebug().noquote()
-            << QStringLiteral("[CustomTrackDebug] %1 CP%2 row=%3 col=%4")
-                   .arg(label)
-                   .arg(i + 1)
-                   .arg(cpTile.y())
-                   .arg(cpTile.x());
-    }
-
-    const QList<QVector2D> items = track->getItemBoxPositions();
-    for (int i = 0; i < items.size(); ++i) {
-        const QPoint itemTile = TrackData::worldToTile(items.at(i));
-        qDebug().noquote()
-            << QStringLiteral("[CustomTrackDebug] %1 Item%2 row=%3 col=%4")
-                   .arg(label)
-                   .arg(i + 1)
-                   .arg(itemTile.y())
-                   .arg(itemTile.x());
-    }
+    Q_UNUSED(track);
+    Q_UNUSED(label);
 }
 
 } // namespace
@@ -1287,13 +1211,11 @@ void GameViewWidget::keyReleaseEvent(QKeyEvent* event)
 void GameViewWidget::focusInEvent(QFocusEvent* event)
 {
     QWidget::focusInEvent(event);
-    qDebug() << "GameViewWidget gained focus - keyboard control enabled";
 }
 
 void GameViewWidget::focusOutEvent(QFocusEvent* event)
 {
     QWidget::focusOutEvent(event);
-    qDebug() << "GameViewWidget lost focus - keyboard control disabled";
 }
 
 }
