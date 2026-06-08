@@ -3126,6 +3126,108 @@ void MainWindow::simulateGameLoop()
         updateEBRuntime(0.05);
         updateTrafficAndHud(m_simTick);
 
+        if (m_twoPlayerMode && m_vehiclePhysics && m_player2Physics) {
+            static bool playersInContact = false;
+            static qint64 lastTwoPlayerImpactMs = -kVehicleImpactVisualCooldownMs;
+
+            if (m_vehiclePhysics->isInvisible() || m_player2Physics->isInvisible()) {
+                playersInContact = false;
+            } else {
+                QVector2D player1Pos = m_vehiclePhysics->getPosition();
+                QVector2D player2Pos = m_player2Physics->getPosition();
+                QVector2D delta = player1Pos - player2Pos;
+                qreal dist = delta.length();
+                const bool wasInContactBeforeSeparation = playersInContact;
+                const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+                if (dist >= kVehicleContactReleaseDistance) {
+                    playersInContact = false;
+                }
+
+                bool positionsAdjusted = false;
+                if (dist < kVehicleSeparationDistance) {
+                    const QVector2D dir = dist > 0.001 ? delta / dist : QVector2D(1.0, 0.0);
+                    const qreal overlap = kVehicleSeparationDistance - dist;
+                    const QVector2D player1New = player1Pos + dir * (overlap * 0.5);
+                    const QVector2D player2New = player2Pos - dir * (overlap * 0.5);
+
+                    const bool player1Free = m_vehiclePhysics->isPositionFree(player1New);
+                    const bool player2Free = m_player2Physics->isPositionFree(player2New);
+
+                    if (player1Free && player2Free) {
+                        m_vehiclePhysics->setPosition(player1New);
+                        m_player2Physics->setPosition(player2New);
+                        positionsAdjusted = true;
+                    } else if (player1Free) {
+                        const QVector2D pushedPlayer1 = player1Pos + dir * overlap;
+                        if (m_vehiclePhysics->isPositionFree(pushedPlayer1)) {
+                            m_vehiclePhysics->setPosition(pushedPlayer1);
+                            positionsAdjusted = true;
+                        }
+                    } else if (player2Free) {
+                        const QVector2D pushedPlayer2 = player2Pos - dir * overlap;
+                        if (m_player2Physics->isPositionFree(pushedPlayer2)) {
+                            m_player2Physics->setPosition(pushedPlayer2);
+                            positionsAdjusted = true;
+                        }
+                    }
+                }
+
+                player1Pos = m_vehiclePhysics->getPosition();
+                player2Pos = m_player2Physics->getPosition();
+                delta = player1Pos - player2Pos;
+                dist = delta.length();
+
+                const bool inContact = dist < kVehicleImpactDistance;
+                if (inContact
+                    && !wasInContactBeforeSeparation
+                    && dist > 0.001) {
+                    const QVector2D normal = delta / dist;
+                    const qreal impactForce = qAbs(m_playerSpeed - m_player2Speed);
+
+                    if (m_gameView && nowMs - lastTwoPlayerImpactMs >= kVehicleImpactVisualCooldownMs) {
+                        m_gameView->showCollisionImpact((player1Pos + player2Pos) * 0.5,
+                                                        qBound<qreal>(0.6, impactForce / 80.0, 1.8));
+                    }
+                    if (!m_vehiclePhysics->isColliding()) {
+                        m_vehiclePhysics->handleCollision(normal, impactForce);
+                    }
+                    if (!m_player2Physics->isColliding()) {
+                        m_player2Physics->handleCollision(-normal, impactForce);
+                    }
+                    lastTwoPlayerImpactMs = nowMs;
+                    playersInContact = true;
+                } else if (inContact) {
+                    playersInContact = true;
+                }
+
+                m_playerPosition = m_vehiclePhysics->getPosition();
+                m_player2Position = m_player2Physics->getPosition();
+                m_playerRotation = m_vehiclePhysics->getRotation();
+                m_player2Rotation = m_player2Physics->getRotation();
+                m_playerSpeed = m_vehiclePhysics->getSpeed();
+                m_player2Speed = m_player2Physics->getSpeed();
+
+                if ((positionsAdjusted || inContact) && m_gameView) {
+                    m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                                m_playerPosition,
+                                                m_playerRotation,
+                                                displaySpeedKmh(),
+                                                QColor(255, 48, 118),
+                                                m_vehiclePhysics->isSpeedBoostActive(),
+                                                m_vehiclePhysics->isShieldActive(),
+                                                m_vehiclePhysics->isInvisible(),
+                                                m_vehiclePhysics->isMagnetActive());
+                    m_gameView->updatePlayerCar(QStringLiteral("P2"),
+                                                m_player2Position,
+                                                m_player2Rotation,
+                                                speedToDisplayKmh(m_player2Speed),
+                                                QColor(40, 220, 255));
+                    updateTwoPlayerCamera();
+                }
+            }
+        }
+
         if (m_aiManager && m_driveActive) {
             m_aiManager->setPlayerPosition(m_playerPosition);
             m_aiManager->update(50);
