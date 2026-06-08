@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(PhantomDrive VERSION 1.0.0 LANGUAGES CXX)
 
+option(PHANTOMDRIVE_BUILD_TESTS "Build test, demo, and experimental targets" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -372,79 +374,80 @@ install(TARGETS PhantomDriveApp
     RUNTIME DESTINATION bin
 )
 
-add_executable(test_main_window
-    tests/test_main_window.cpp
-)
+if(PHANTOMDRIVE_BUILD_TESTS)
+    add_executable(test_main_window
+        tests/test_main_window.cpp
+    )
 
-target_include_directories(test_main_window PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
+    target_include_directories(test_main_window PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
+        ${CMAKE_CURRENT_BINARY_DIR}
+    )
 
-target_link_libraries(test_main_window PRIVATE
-    PhantomDrive
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    Qt6::Charts
-)
+    target_link_libraries(test_main_window PRIVATE
+        PhantomDrive
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Charts
+    )
 
-set_target_properties(test_main_window PROPERTIES
-    AUTOMOC ON
-    AUTOUIC ON
-    AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/assets"
-    OUTPUT_NAME "test_main_window"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
+    set_target_properties(test_main_window PROPERTIES
+        AUTOMOC ON
+        AUTOUIC ON
+        AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+        OUTPUT_NAME "test_main_window"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
 
-add_executable(test_visualization
-    tests/test_visualization_simple.cpp
-)
+    add_executable(test_visualization
+        tests/test_visualization_simple.cpp
+    )
 
-target_include_directories(test_visualization PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/UI
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/track
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
+    target_include_directories(test_visualization PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/UI
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/track
+        ${CMAKE_CURRENT_BINARY_DIR}
+    )
 
-target_link_libraries(test_visualization PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-)
+    target_link_libraries(test_visualization PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
 
-set_target_properties(test_visualization PROPERTIES
-    AUTOMOC ON
-    OUTPUT_NAME "test_visualization"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
+    set_target_properties(test_visualization PROPERTIES
+        AUTOMOC ON
+        OUTPUT_NAME "test_visualization"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
 
-add_executable(test_keyboard_input
-    tests/test_keyboard_input.cpp
-)
+    add_executable(test_keyboard_input
+        tests/test_keyboard_input.cpp
+    )
 
-target_include_directories(test_keyboard_input PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/UI
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/core
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
+    target_include_directories(test_keyboard_input PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/UI
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/PhantomDrive/core
+        ${CMAKE_CURRENT_BINARY_DIR}
+    )
 
-target_link_libraries(test_keyboard_input PRIVATE
-    PhantomDrive
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-)
+    target_link_libraries(test_keyboard_input PRIVATE
+        PhantomDrive
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
 
-set_target_properties(test_keyboard_input PROPERTIES
-    AUTOMOC ON
-    OUTPUT_NAME "test_keyboard_input"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
-
+    set_target_properties(test_keyboard_input PROPERTIES
+        AUTOMOC ON
+        OUTPUT_NAME "test_keyboard_input"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+endif()
 
