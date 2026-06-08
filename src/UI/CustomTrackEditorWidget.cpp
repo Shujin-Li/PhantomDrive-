@@ -53,6 +53,26 @@ bool isPaintBrush(CustomTrackBrush brush)
         || brush == CustomTrackBrush::Erase;
 }
 
+QColor tileBorderColor(TileType type)
+{
+    switch (type) {
+    case TileType::Wall:
+        return QColor(QStringLiteral("#E2E8F0"));
+    case TileType::Barrier:
+        return QColor(QStringLiteral("#FBD38D"));
+    case TileType::StartLine:
+    case TileType::FinishLine:
+        return QColor(255, 255, 255, 220);
+    case TileType::Road:
+    case TileType::Asphalt:
+        return QColor(QStringLiteral("#7A8CA5"));
+    case TileType::Grass:
+        return QColor(QStringLiteral("#A7F3A0"));
+    default:
+        return QColor(QStringLiteral("#2D3748"));
+    }
+}
+
 } // namespace
 
 CustomTrackEditorWidget::CustomTrackEditorWidget(QWidget* parent)
@@ -368,7 +388,7 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
         return;
     }
 
-    painter.fillRect(grid, QColor(25, 104, 45));
+    painter.fillRect(grid, QColor(QStringLiteral("#1A202C")));
 
     for (int row = 0; row < EditorRows; ++row) {
         for (int col = 0; col < EditorCols; ++col) {
@@ -380,44 +400,52 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
             const TileType tileType = tile ? tile->getType() : TileType::Unknown;
             QLinearGradient tileFill(cell.topLeft(), cell.bottomRight());
             const QColor baseTileColor = tileColor(tileType);
-            if (tileType == TileType::Grass || tileType == TileType::Unknown) {
-                const int variant = qAbs((row * 17 + col * 23) % 5);
-                tileFill.setColorAt(0.0, QColor(54 + variant * 4, 128 + variant * 5, 48));
-                tileFill.setColorAt(0.55, baseTileColor);
-                tileFill.setColorAt(1.0, QColor(18, 72 + variant * 5, 34));
-                painter.fillRect(cell, tileFill);
-            } else if (tileType == TileType::Wall || tileType == TileType::Barrier) {
-                tileFill.setColorAt(0.0, QColor(157, 160, 158));
+            if (tileType == TileType::Grass) {
+                painter.fillRect(cell, QColor(QStringLiteral("#6BBF59")));
+            } else if (tileType == TileType::Wall) {
+                tileFill.setColorAt(0.0, QColor(QStringLiteral("#CBD5E0")));
                 tileFill.setColorAt(0.52, baseTileColor);
-                tileFill.setColorAt(1.0, QColor(78, 80, 82));
+                tileFill.setColorAt(1.0, QColor(QStringLiteral("#718096")));
+                painter.fillRect(cell, tileFill);
+            } else if (tileType == TileType::Barrier) {
+                tileFill.setColorAt(0.0, QColor(QStringLiteral("#F6C453")));
+                tileFill.setColorAt(0.52, baseTileColor);
+                tileFill.setColorAt(1.0, QColor(QStringLiteral("#A66A18")));
                 painter.fillRect(cell, tileFill);
             } else if (tileType == TileType::Road || tileType == TileType::Asphalt) {
-                tileFill.setColorAt(0.0, QColor(54, 56, 58));
+                painter.fillRect(cell, QColor(QStringLiteral("#46566B")));
+            } else if (tileType == TileType::StartLine) {
+                tileFill.setColorAt(0.0, QColor(QStringLiteral("#7DD3FC")));
                 tileFill.setColorAt(0.55, baseTileColor);
-                tileFill.setColorAt(1.0, QColor(24, 25, 27));
+                tileFill.setColorAt(1.0, QColor(QStringLiteral("#0284C7")));
+                painter.fillRect(cell, tileFill);
+            } else if (tileType == TileType::FinishLine) {
+                tileFill.setColorAt(0.0, QColor(QStringLiteral("#FB7185")));
+                tileFill.setColorAt(0.55, baseTileColor);
+                tileFill.setColorAt(1.0, QColor(QStringLiteral("#BE123C")));
                 painter.fillRect(cell, tileFill);
             } else {
                 painter.fillRect(cell, baseTileColor);
             }
 
             if (tileType == TileType::Road || tileType == TileType::Asphalt) {
-                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(39, 42, 44, 210));
+                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(QStringLiteral("#46566B")));
                 painter.fillRect(cell.adjusted(cell.width() * 0.46, 0, -cell.width() * 0.46, 0),
-                                 QColor(216, 214, 194, 30));
-                painter.setPen(QPen(QColor(10, 11, 12, 58), 1));
+                                 QColor(226, 232, 240, 34));
+                painter.setPen(QPen(QColor(26, 32, 44, 72), 1));
                 painter.drawLine(QPointF(cell.left(), cell.top() + cell.height() * 0.18),
                                  QPointF(cell.right(), cell.top() + cell.height() * 0.18));
                 painter.drawLine(QPointF(cell.left(), cell.bottom() - cell.height() * 0.16),
                                  QPointF(cell.right(), cell.bottom() - cell.height() * 0.16));
-                painter.setPen(QPen(QColor(188, 190, 178, 54), 1));
+                painter.setPen(QPen(QColor(203, 213, 224, 54), 1));
                 for (int i = 0; i < 3; ++i) {
                     const int seed = row * 31 + col * 47 + i * 13;
                     painter.drawPoint(QPointF(cell.left() + ((seed % 78) + 11) / 100.0 * cell.width(),
                                               cell.top() + (((seed * 3) % 72) + 14) / 100.0 * cell.height()));
                 }
-            } else if (tileType == TileType::Wall || tileType == TileType::Barrier) {
-                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(172, 174, 170, 84));
-                painter.setPen(QPen(QColor(47, 50, 52, 130), 1));
+            } else if (tileType == TileType::Wall) {
+                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(226, 232, 240, 74));
+                painter.setPen(QPen(QColor(45, 55, 72, 145), 1));
                 const qreal blockH = cell.height() / 3.0;
                 painter.drawLine(QPointF(cell.left(), cell.top() + blockH), QPointF(cell.right(), cell.top() + blockH));
                 painter.drawLine(QPointF(cell.left(), cell.top() + blockH * 2.0), QPointF(cell.right(), cell.top() + blockH * 2.0));
@@ -426,13 +454,22 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
                                  QPointF(cell.left() + cell.width() * 0.34, cell.top() + blockH * 2.0));
                 painter.drawLine(QPointF(cell.left() + cell.width() * 0.66, cell.top() + blockH * 2.0),
                                  QPointF(cell.left() + cell.width() * 0.66, cell.bottom()));
-                painter.setPen(QPen(QColor(238, 233, 205, 78), 1));
+                painter.setPen(QPen(QColor(247, 250, 252, 115), 1));
                 painter.drawLine(cell.topLeft() + QPointF(3, 3), cell.topRight() + QPointF(-3, 3));
-                painter.setPen(QPen(QColor(33, 35, 36, 125), 1));
+                painter.setPen(QPen(QColor(45, 55, 72, 125), 1));
                 painter.drawLine(QPointF(cell.left() + cell.width() * 0.22, cell.top() + cell.height() * 0.30),
                                  QPointF(cell.left() + cell.width() * 0.38, cell.top() + cell.height() * 0.48));
-            } else if (tileType == TileType::Grass || tileType == TileType::Unknown) {
-                painter.setPen(QPen(QColor(20, 74, 30, 92), 1));
+            } else if (tileType == TileType::Barrier) {
+                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(251, 211, 141, 78));
+                painter.setPen(QPen(QColor(86, 52, 13, 150), 2));
+                for (qreal x = cell.left() - cell.height(); x < cell.right(); x += cell.width() * 0.42) {
+                    painter.drawLine(QPointF(x, cell.bottom()), QPointF(x + cell.height(), cell.top()));
+                }
+                painter.setPen(QPen(QColor(255, 244, 214, 110), 1));
+                painter.drawLine(cell.topLeft() + QPointF(3, 3), cell.topRight() + QPointF(-3, 3));
+            } else if (tileType == TileType::Grass) {
+                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(QStringLiteral("#6BBF59")));
+                painter.setPen(QPen(QColor(58, 125, 58, 70), 1));
                 for (int i = 0; i < 5; ++i) {
                     const int seed = row * 37 + col * 41 + i * 11;
                     const qreal x = cell.left() + ((seed % 72) + 14) / 100.0 * cell.width();
@@ -440,13 +477,15 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
                     const qreal blade = cell.height() * (0.08 + (i % 2) * 0.03);
                     painter.drawLine(QPointF(x, y + blade), QPointF(x + ((i % 2) ? -blade * 0.34 : blade * 0.30), y - blade));
                 }
-                painter.setPen(QPen(QColor(154, 190, 83, 82), 1));
+                painter.setPen(QPen(QColor(167, 243, 160, 82), 1));
                 painter.drawArc(cell.adjusted(cell.width() * 0.18, cell.height() * 0.24,
                                               -cell.width() * 0.48, -cell.height() * 0.48),
                                 15 * 16, 130 * 16);
             }
-            painter.setPen(QPen(QColor(50, 205, 220, 42), 1));
+            painter.setPen(QPen(QColor(QStringLiteral("#2D3748")), 1));
             painter.drawRect(cell);
+            painter.setPen(QPen(tileBorderColor(tileType), 1));
+            painter.drawRect(cell.adjusted(1.5, 1.5, -1.5, -1.5));
 
             if (hasStartAt(row, col)) {
                 painter.save();
@@ -455,8 +494,8 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
                                     cell.center().y() - radius,
                                     radius * 2.0,
                                     radius * 2.0);
-                painter.setBrush(QColor(0, 210, 255, 225));
-                painter.setPen(QPen(QColor(226, 255, 255), 2));
+                painter.setBrush(QColor(QStringLiteral("#38BDF8")));
+                painter.setPen(QPen(QColor(255, 255, 255, 220), 2));
                 painter.drawEllipse(marker);
                 painter.setPen(Qt::white);
                 painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
@@ -470,10 +509,10 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
                                                     cell.height() * 0.18,
                                                     -cell.width() * 0.18,
                                                     -cell.height() * 0.18);
-                painter.setBrush(QColor(255, 255, 255, 235));
-                painter.setPen(QPen(QColor(255, 77, 109), 2));
+                painter.setBrush(QColor(QStringLiteral("#F43F5E")));
+                painter.setPen(QPen(QColor(255, 255, 255, 220), 2));
                 painter.drawRoundedRect(marker, 4, 4);
-                painter.setPen(QColor(255, 60, 90));
+                painter.setPen(Qt::white);
                 painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
                 painter.drawText(marker, Qt::AlignCenter, QStringLiteral("FIN"));
                 painter.restore();
@@ -745,22 +784,23 @@ QColor CustomTrackEditorWidget::tileColor(TileType type) const
 {
     switch (type) {
     case TileType::Road:
-        return QColor(37, 39, 42);
+        return QColor(QStringLiteral("#46566B"));
     case TileType::Grass:
-        return QColor(39, 121, 51);
+        return QColor(QStringLiteral("#6BBF59"));
     case TileType::Sand:
         return QColor(217, 167, 63);
     case TileType::Asphalt:
-        return QColor(34, 37, 40);
+        return QColor(QStringLiteral("#46566B"));
     case TileType::StartLine:
-        return QColor(0, 204, 255);
+        return QColor(QStringLiteral("#38BDF8"));
     case TileType::FinishLine:
-        return QColor(255, 242, 250);
+        return QColor(QStringLiteral("#F43F5E"));
     case TileType::Wall:
+        return QColor(QStringLiteral("#A0AEC0"));
     case TileType::Barrier:
-        return QColor(120, 123, 124);
+        return QColor(QStringLiteral("#D69E2E"));
     default:
-        return QColor(32, 107, 47);
+        return QColor(QStringLiteral("#1A202C"));
     }
 }
 
