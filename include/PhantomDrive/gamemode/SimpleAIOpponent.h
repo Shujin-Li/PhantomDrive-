@@ -114,6 +114,8 @@ protected:
     int findNextRelevantWaypoint() const override;
 
     void syncFromPhysics();
+    qreal waypointReachRadius() const;
+    bool hasPassedCurrentWaypoint(const Waypoint& waypoint) const;
 
     VehiclePhysics* m_physics;
     QString m_name;
@@ -129,6 +131,7 @@ protected:
 
     AIState m_state;
     qreal m_stateDuration;
+    qint64 m_stuckTimerMs;
 
     int m_currentLap;
     qreal m_lapTime;

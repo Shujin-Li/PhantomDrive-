@@ -21,6 +21,7 @@ SimpleAIOpponent::SimpleAIOpponent(const QString& id, QObject* parent)
     , m_steeringAngle(0)
     , m_state(AIState::Idle)
     , m_stateDuration(0)
+    , m_stuckTimerMs(0)
     , m_currentLap(0)
     , m_lapTime(0)
     , m_bestLapTime(0)
@@ -193,6 +194,38 @@ qreal SimpleAIOpponent::getProgressPercentage() const
     return qBound(0.0, waypointProgress, 100.0);
 }
 
+qreal SimpleAIOpponent::waypointReachRadius() const
+{
+    return m_state == AIState::Recovering ? 80.0 : 62.0;
+}
+
+bool SimpleAIOpponent::hasPassedCurrentWaypoint(const Waypoint& waypoint) const
+{
+    if (m_waypoints.size() < 2
+        || m_currentWaypointIndex < 0
+        || m_currentWaypointIndex >= m_waypoints.size()) {
+        return false;
+    }
+
+    const int previousIndex = (m_currentWaypointIndex - 1 + m_waypoints.size()) % m_waypoints.size();
+    const QVector2D segment = waypoint.position - m_waypoints.at(previousIndex).position;
+    const qreal segmentLength = segment.length();
+    if (segmentLength < 1.0) {
+        return false;
+    }
+
+    const QVector2D routeDirection = segment / segmentLength;
+    const QVector2D waypointToVehicle = m_position - waypoint.position;
+    const qreal forwardDistance = QVector2D::dotProduct(waypointToVehicle, routeDirection);
+    if (forwardDistance <= 0.0) {
+        return false;
+    }
+
+    const qreal lateralDistance = qAbs(routeDirection.x() * waypointToVehicle.y()
+                                       - routeDirection.y() * waypointToVehicle.x());
+    return lateralDistance <= waypointReachRadius() * 1.25;
+}
+
 void SimpleAIOpponent::setState(AIState state)
 {
     AIState oldState = m_state;
@@ -242,10 +275,12 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
 
     if (m_speed < 20.0)
     {
+        m_stuckTimerMs += elapsedMs;
         setState(AIState::Recovering);
     }
     else if (getDistanceToPlayer() < 120.0)
     {
+        m_stuckTimerMs = 0;
         if (style == AIStyle::Aggressive)
         {
             setState(AIState::Overtaking);
@@ -261,6 +296,7 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
     }
     else
     {
+        m_stuckTimerMs = 0;
         setState(AIState::Racing);
     }
 
@@ -276,8 +312,8 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
         }
 
         if (m_state == AIState::Recovering) {
-            throttle *= 0.5;
-            brake += 0.3;
+            throttle = qMax<qreal>(throttle, 0.85);
+            brake = 0.0;
         }
 
         if (m_state == AIState::Defending) {
@@ -308,7 +344,7 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
 
         Waypoint currentWP = getCurrentWaypoint();
         qreal distToWP = (currentWP.position - m_position).length();
-        if (distToWP < 100.0) {
+        if (distToWP <= waypointReachRadius() || hasPassedCurrentWaypoint(currentWP)) {
             const int reachedIndex = m_currentWaypointIndex;
             m_checkpointsPassed = qMax(m_checkpointsPassed, reachedIndex + 1);
             m_currentWaypointIndex++;
