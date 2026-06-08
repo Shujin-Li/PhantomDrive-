@@ -2691,13 +2691,17 @@ void MainWindow::updateRaceHud()
     }
     m_arcadeHUD->updateTotalTime(formatRaceTime(m_sessionElapsedMs));
     m_arcadeHUD->updateLapTime(formatRaceTime(qMax<qint64>(0, m_sessionElapsedMs - m_currentLapStartMs)));
-    if (m_bestLapMs > 0) {
-        m_arcadeHUD->updateBestLapTime(formatRaceTime(m_bestLapMs));
-    }
 
     const int totalRacers = m_aiManager ? (m_aiManager->getOpponentCount() + 1) : 1;
     const int playerPosition = m_aiManager ? m_aiManager->getPlayerRacePosition() : 1;
     m_arcadeHUD->updatePosition(playerPosition, totalRacers);
+
+    const AIOpponent* ai1 = m_aiManager ? m_aiManager->getOpponent(QStringLiteral("ai_1")) : nullptr;
+    const AIOpponent* ai2 = m_aiManager ? m_aiManager->getOpponent(QStringLiteral("ai_2")) : nullptr;
+    const bool ai1Visible = ai1 && ai1->isActive() && !ai1->hasFinished();
+    const bool ai2Visible = ai2 && ai2->isActive() && !ai2->hasFinished();
+    m_arcadeHUD->updateAISpeed1(ai1Visible ? speedToDisplayKmh(ai1->getSpeed()) : 0.0, ai1Visible);
+    m_arcadeHUD->updateAISpeed2(ai2Visible ? speedToDisplayKmh(ai2->getSpeed()) : 0.0, ai2Visible);
 
     // Sync traffic light state to ArcadeHUD so the signal-dot and red-blink work.
     m_arcadeHUD->updateTrafficLight(m_currentTrafficLightState);

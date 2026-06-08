@@ -50,10 +50,10 @@ public:
     void updateLapTime(const QString& time);
     void updateTotalTime(const QString& time);
     void updatePosition(int position, int totalRacers);
-    void updateBestLapTime(const QString& time);
     void updateBoost(qreal boostPercent);
     void updateTrafficLight(const QString& state);
-    void updateAISpeed(const QString& aiId, qreal speed);
+    void updateAISpeed1(qreal speedKmh, bool available);
+    void updateAISpeed2(qreal speedKmh, bool available);
     void updateSpeedLimit(qreal limitKmh);
     void setCustomTrackVisualMode(bool enabled);
 
@@ -106,8 +106,8 @@ private:
     QLabel*      m_lapTimeLabel;
     QLabel*      m_totalTimeLabel;
     QLabel*      m_positionLabel;
-    QLabel*      m_bestLapLabel;
-    QLabel*      m_aiSpeedLabel;
+    QLabel*      m_ai1SpeedLabel;
+    QLabel*      m_ai2SpeedLabel;
     QProgressBar* m_boostBar;
 
     // ---- Overlays ----

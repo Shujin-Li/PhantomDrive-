@@ -221,8 +221,8 @@ ArcadeHUD::ArcadeHUD(QWidget* parent)
     , m_lapTimeLabel(nullptr)
     , m_totalTimeLabel(nullptr)
     , m_positionLabel(nullptr)
-    , m_bestLapLabel(nullptr)
-    , m_aiSpeedLabel(nullptr)
+    , m_ai1SpeedLabel(nullptr)
+    , m_ai2SpeedLabel(nullptr)
     , m_boostBar(nullptr)
     , m_countdownLabel(nullptr)
     , m_stopLabel(nullptr)
@@ -511,39 +511,39 @@ void ArcadeHUD::setupUI()
         root->addWidget(card);
     }
 
-    // ---- AI SPEED ----
+    // ---- AI 1 SPEED ----
     {
         QWidget* card = makeCard(this);
         QHBoxLayout* cl = new QHBoxLayout(card);
         cl->setContentsMargins(12, 8, 12, 8);
         cl->setSpacing(8);
-        QLabel* t = new QLabel("AI SPEED", card);
+        QLabel* t = new QLabel("AI 1 SPEED", card);
         t->setStyleSheet("QLabel{color:rgba(255,140,0,180);font-size:8px;font-weight:bold;letter-spacing:2px;}");
         cl->addWidget(t);
-        m_aiSpeedLabel = new QLabel("--", card);
-        m_aiSpeedLabel->setStyleSheet(
+        m_ai1SpeedLabel = new QLabel("--", card);
+        m_ai1SpeedLabel->setStyleSheet(
             "QLabel{color:#FF8800;font-size:13px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}");
-        m_aiSpeedLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        cl->addWidget(m_aiSpeedLabel);
+        m_ai1SpeedLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        cl->addWidget(m_ai1SpeedLabel);
         root->addWidget(card);
     }
 
-    // ---- BEST LAP ----
+    // ---- AI 2 SPEED ----
     {
         QWidget* card = makeCard(this);
         QHBoxLayout* cl = new QHBoxLayout(card);
         cl->setContentsMargins(12, 8, 12, 8);
         cl->setSpacing(8);
-        QLabel* t = new QLabel("BEST LAP", card);
+        QLabel* t = new QLabel("AI 2 SPEED", card);
         t->setStyleSheet("QLabel{color:rgba(255,100,200,180);font-size:8px;font-weight:bold;letter-spacing:2px;}");
         cl->addWidget(t);
-        m_bestLapLabel = new QLabel("--:--.---", card);
-        m_bestLapLabel->setStyleSheet(
+        m_ai2SpeedLabel = new QLabel("--", card);
+        m_ai2SpeedLabel->setStyleSheet(
             "QLabel{color:#FF66CC;font-size:13px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}");
-        m_bestLapLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        cl->addWidget(m_bestLapLabel);
+        m_ai2SpeedLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        cl->addWidget(m_ai2SpeedLabel);
         root->addWidget(card);
     }
 
@@ -697,21 +697,28 @@ void ArcadeHUD::updatePosition(int position, int /*totalRacers*/)
     if (m_positionLabel) m_positionLabel->setText(posText);
 }
 
-void ArcadeHUD::updateBestLapTime(const QString& time)
-{
-    if (m_bestLapLabel) m_bestLapLabel->setText(time);
-}
-
 void ArcadeHUD::updateBoost(qreal boostPercent)
 {
     m_boostPercent = qBound(0.0, boostPercent, 100.0);
     if (m_boostBar) m_boostBar->setValue(static_cast<int>(m_boostPercent));
 }
 
-void ArcadeHUD::updateAISpeed(const QString& aiId, qreal speed)
+void ArcadeHUD::updateAISpeed1(qreal speedKmh, bool available)
 {
-    if (m_aiSpeedLabel)
-        m_aiSpeedLabel->setText(aiId.isEmpty() ? "--" : QString("%1 %2").arg(aiId).arg(static_cast<int>(speed)));
+    if (m_ai1SpeedLabel) {
+        m_ai1SpeedLabel->setText(available
+                                     ? QStringLiteral("%1 km/h").arg(static_cast<int>(speedKmh))
+                                     : QStringLiteral("--"));
+    }
+}
+
+void ArcadeHUD::updateAISpeed2(qreal speedKmh, bool available)
+{
+    if (m_ai2SpeedLabel) {
+        m_ai2SpeedLabel->setText(available
+                                     ? QStringLiteral("%1 km/h").arg(static_cast<int>(speedKmh))
+                                     : QStringLiteral("--"));
+    }
 }
 
 void ArcadeHUD::updateSpeedLimit(qreal limitKmh)
@@ -853,8 +860,8 @@ void ArcadeHUD::reset()
     if (m_lapTimeLabel)    m_lapTimeLabel->setText("00:00.000");
     if (m_totalTimeLabel)  m_totalTimeLabel->setText("00:00.000");
     if (m_positionLabel)   m_positionLabel->setText("1ST");
-    if (m_bestLapLabel)    m_bestLapLabel->setText("--:--.---");
-    if (m_aiSpeedLabel)   m_aiSpeedLabel->setText("--");
+    if (m_ai1SpeedLabel)   m_ai1SpeedLabel->setText("--");
+    if (m_ai2SpeedLabel)   m_ai2SpeedLabel->setText("--");
     if (m_boostBar)       m_boostBar->setValue(0);
     if (m_speedLimitLabel) m_speedLimitLabel->setText("--");
     if (m_countdownLabel) { m_countdownLabel->setText(""); m_countdownLabel->setVisible(false); }
