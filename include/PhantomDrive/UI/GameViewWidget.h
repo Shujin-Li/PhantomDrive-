@@ -10,6 +10,8 @@
 #include <QList>
 #include <QColor>
 
+class QTimer;
+
 namespace PhantomDrive {
 
 class PHANTOMDRIVE_EXPORT GameViewWidget : public QWidget
@@ -54,6 +56,7 @@ public:
     void setCameraPosition(const QVector2D& pos);
     void setCameraZoom(qreal zoom);
     void resetCamera();
+    void showCollisionImpact(const QVector2D& worldPosition, qreal intensity = 1.0);
 
 public slots:
     void clearAll();
@@ -85,6 +88,7 @@ private:
     void drawSpeedLimitSign(QPainter& painter, const GameRenderObject& sign);
     void drawPedestrianCrossing(QPainter& painter, const GameRenderObject& crossing);
     void drawWorldEffects(QPainter& painter);
+    void drawCollisionImpacts(QPainter& painter);
     void drawCheckpoints(QPainter& painter);
     void drawStartFinishMarkers(QPainter& painter);
     QPointF worldToScreen(const QVector2D& worldPos) const;
@@ -101,6 +105,18 @@ private:
     bool m_playerShieldActive;
     bool m_playerInvisibleActive;
     bool m_playerMagnetActive;
+
+    struct CollisionImpactEffect {
+        QVector2D worldPosition;
+        qint64 startMs = 0;
+        int durationMs = 320;
+        qreal intensity = 1.0;
+    };
+
+    QList<CollisionImpactEffect> m_collisionImpactEffects;
+    QTimer* m_collisionImpactTimer;
+    qint64 m_lastCollisionImpactMs;
+
     QList<QVector2D> m_oilPuddlePositions;
     QList<qreal> m_oilPuddleRadii;
     QList<QVector2D> m_missilePositions;

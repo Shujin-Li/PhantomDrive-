@@ -5,12 +5,15 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPaintEvent>
+#include <QDateTime>
 #include <QResizeEvent>
 #include <QMouseEvent>
 #include <QPen>
 #include <QBrush>
 #include <QFont>
 #include <QFontMetrics>
+#include <QRadialGradient>
+#include <QTimer>
 #include <QtMath>
 #include <QDebug>
 
@@ -38,6 +41,10 @@ QString normalizedPlayerId(const QString& playerId)
     const QString trimmed = playerId.trimmed();
     return trimmed.isEmpty() ? QStringLiteral("P1") : trimmed;
 }
+
+constexpr int kCollisionImpactDurationMs = 320;
+constexpr int kCollisionImpactCooldownMs = 200;
+constexpr int kMaxCollisionImpacts = 5;
 
 void dumpTrackLayoutForDebug(const TrackData* track, const QString& label)
 {
@@ -133,6 +140,8 @@ GameViewWidget::GameViewWidget(QWidget* parent)
     , m_playerShieldActive(false)
     , m_playerInvisibleActive(false)
     , m_playerMagnetActive(false)
+    , m_collisionImpactTimer(new QTimer(this))
+    , m_lastCollisionImpactMs(-kCollisionImpactCooldownMs)
 {
     setMinimumSize(400, 300);
     setMouseTracking(true);
@@ -141,6 +150,22 @@ GameViewWidget::GameViewWidget(QWidget* parent)
     setFocusPolicy(Qt::StrongFocus);
     setFocus();
     setAttribute(Qt::WA_InputMethodEnabled, true);
+
+    m_collisionImpactTimer->setInterval(16);
+    connect(m_collisionImpactTimer, &QTimer::timeout, this, [this]() {
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        for (int i = m_collisionImpactEffects.size() - 1; i >= 0; --i) {
+            const CollisionImpactEffect& effect = m_collisionImpactEffects.at(i);
+            if (nowMs - effect.startMs >= effect.durationMs) {
+                m_collisionImpactEffects.removeAt(i);
+            }
+        }
+
+        if (m_collisionImpactEffects.isEmpty()) {
+            m_collisionImpactTimer->stop();
+        }
+        update();
+    });
 }
 
 GameViewWidget::~GameViewWidget()
@@ -468,10 +493,38 @@ void GameViewWidget::resetCamera()
     update();
 }
 
+void GameViewWidget::showCollisionImpact(const QVector2D& worldPosition, qreal intensity)
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (nowMs - m_lastCollisionImpactMs < kCollisionImpactCooldownMs) {
+        return;
+    }
+
+    CollisionImpactEffect effect;
+    effect.worldPosition = worldPosition;
+    effect.startMs = nowMs;
+    effect.durationMs = kCollisionImpactDurationMs;
+    effect.intensity = qBound<qreal>(0.4, intensity, 1.8);
+
+    while (m_collisionImpactEffects.size() >= kMaxCollisionImpacts) {
+        m_collisionImpactEffects.removeFirst();
+    }
+
+    m_collisionImpactEffects.append(effect);
+    m_lastCollisionImpactMs = nowMs;
+
+    if (!m_collisionImpactTimer->isActive()) {
+        m_collisionImpactTimer->start();
+    }
+    update();
+}
+
 void GameViewWidget::clearAll()
 {
     m_renderState.clear();
     m_currentTrack = nullptr;
+    m_collisionImpactEffects.clear();
+    m_collisionImpactTimer->stop();
     update();
 }
 
@@ -519,6 +572,8 @@ void GameViewWidget::paintEvent(QPaintEvent* event)
     for (const auto& car : m_renderState.playerCars) {
         drawPlayerCar(painter, car);
     }
+
+    drawCollisionImpacts(painter);
 }
 
 void GameViewWidget::resizeEvent(QResizeEvent* event)
@@ -1017,6 +1072,53 @@ void GameViewWidget::drawWorldEffects(QPainter& painter)
         painter.setBrush(QColor(255, 180, 60, 180));
         painter.setPen(Qt::NoPen);
         painter.drawEllipse(center, radius * 1.8, radius * 1.2);
+    }
+
+    painter.restore();
+}
+
+void GameViewWidget::drawCollisionImpacts(QPainter& painter)
+{
+    if (m_collisionImpactEffects.isEmpty()) {
+        return;
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const qreal zoomScale = qBound<qreal>(0.85, m_renderState.cameraZoom, 1.4);
+
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    for (int i = 0; i < m_collisionImpactEffects.size(); ++i) {
+        const CollisionImpactEffect& effect = m_collisionImpactEffects.at(i);
+        const qreal elapsedMs = qMax<qreal>(0.0, nowMs - effect.startMs);
+        const qreal progress = qBound<qreal>(0.0, elapsedMs / qMax<qreal>(1.0, effect.durationMs), 1.0);
+        const qreal fade = 1.0 - progress;
+        const QPointF center = worldToScreen(effect.worldPosition);
+        const qreal intensityScale = 0.85 + effect.intensity * 0.15;
+        const qreal radius = (24.0 + 36.0 * progress) * zoomScale * intensityScale;
+        const qreal innerRadius = radius * (0.32 + 0.2 * progress);
+
+        QColor outerColor(QStringLiteral("#FF6A2A"));
+        outerColor.setAlphaF(qBound<qreal>(0.0, 0.82 * fade, 0.82));
+        QColor innerColor(QStringLiteral("#FF3366"));
+        innerColor.setAlphaF(qBound<qreal>(0.0, 0.34 * fade, 0.34));
+
+        QRadialGradient flash(center, radius);
+        flash.setColorAt(0.0, innerColor);
+        flash.setColorAt(0.35, QColor(255, 106, 42, qRound(52 * fade)));
+        flash.setColorAt(1.0, QColor(255, 106, 42, 0));
+        painter.setBrush(flash);
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(center, radius, radius);
+
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(outerColor, qMax<qreal>(2.0, 4.0 * fade * zoomScale)));
+        painter.drawEllipse(center, radius, radius);
+
+        innerColor.setAlphaF(qBound<qreal>(0.0, 0.62 * fade, 0.62));
+        painter.setPen(QPen(innerColor, qMax<qreal>(1.5, 2.4 * fade * zoomScale)));
+        painter.drawEllipse(center, innerRadius, innerRadius);
     }
 
     painter.restore();
