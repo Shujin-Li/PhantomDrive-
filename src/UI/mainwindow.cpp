@@ -63,6 +63,17 @@ constexpr qreal kVehicleImpactDistance = 34.0;
 constexpr qreal kVehicleContactReleaseDistance = 52.0;
 constexpr qint64 kFinishedAiContactCooldownMs = 1000;
 constexpr qint64 kVehicleImpactVisualCooldownMs = 350;
+constexpr qint64 kRaceStartCollisionImpactGuardMs = 1000;
+
+bool shouldSuppressStartupCollisionImpact(bool driveActive,
+                                          bool countdownActive,
+                                          qint64 sessionElapsedMs)
+{
+    return countdownActive
+           || (driveActive
+               && sessionElapsedMs >= 0
+               && sessionElapsedMs < kRaceStartCollisionImpactGuardMs);
+}
 
 bool isDrivableSurface(TileType type)
 {
@@ -1885,7 +1896,10 @@ void MainWindow::setupVehiclePhysics()
 
     connect(m_vehiclePhysics, &VehiclePhysics::collisionOccurred,
             this, [this](const QString& objectType, const QVector2D& position, qreal impactForce) {
-                if (m_gameView) {
+                if (m_gameView
+                    && !shouldSuppressStartupCollisionImpact(m_driveActive,
+                                                             m_countdownActive,
+                                                             m_sessionElapsedMs)) {
                     m_gameView->showCollisionImpact(position, qBound<qreal>(0.5, impactForce / 90.0, 1.8));
                 }
                 onCollision();
@@ -1899,7 +1913,10 @@ void MainWindow::setupVehiclePhysics()
                 if (!m_twoPlayerMode) {
                     return;
                 }
-                if (m_gameView) {
+                if (m_gameView
+                    && !shouldSuppressStartupCollisionImpact(m_driveActive,
+                                                             m_countdownActive,
+                                                             m_sessionElapsedMs)) {
                     m_gameView->showCollisionImpact(position, qBound<qreal>(0.5, impactForce / 90.0, 1.8));
                 }
                 showInteractiveFeedback(QStringLiteral("P2 Wall Hit!"), PhantomDrive::FeedbackType::Critical);
@@ -2896,7 +2913,10 @@ void MainWindow::resolvePlayerAiVehicleContact(AIOpponent* ai)
             && !wasInContact
             && nowMs - lastFeedbackMs >= kFinishedAiContactCooldownMs) {
             const qreal impactForce = qMax<qreal>(5.0, qAbs(m_playerSpeed - ai->getSpeed()) * 0.25);
-            if (m_gameView) {
+            if (m_gameView
+                && !shouldSuppressStartupCollisionImpact(m_driveActive,
+                                                         m_countdownActive,
+                                                         m_sessionElapsedMs)) {
                 m_gameView->showCollisionImpact((playerPos + aiPos) * 0.5,
                                                 qBound<qreal>(0.5, impactForce / 90.0, 1.8));
             }
@@ -2924,7 +2944,10 @@ void MainWindow::resolvePlayerAiVehicleContact(AIOpponent* ai)
         && !wasInContactBeforeSeparation
         && nowMs - lastImpactMs >= kVehicleImpactVisualCooldownMs) {
         const qreal visualImpactForce = qAbs(m_playerSpeed - ai->getSpeed());
-        if (m_gameView) {
+        if (m_gameView
+            && !shouldSuppressStartupCollisionImpact(m_driveActive,
+                                                     m_countdownActive,
+                                                     m_sessionElapsedMs)) {
             m_gameView->showCollisionImpact((playerPos + aiPos) * 0.5,
                                             qBound<qreal>(0.6, visualImpactForce / 80.0, 1.8));
         }
@@ -2968,7 +2991,10 @@ void MainWindow::resolvePlayerAiVehicleContact(AIOpponent* ai)
         const QVector2D normal = delta / dist;
         const qreal impactForce = qAbs(m_playerSpeed - ai->getSpeed());
 
-        if (m_gameView) {
+        if (m_gameView
+            && !shouldSuppressStartupCollisionImpact(m_driveActive,
+                                                     m_countdownActive,
+                                                     m_sessionElapsedMs)) {
             m_gameView->showCollisionImpact((playerPos + aiPos) * 0.5,
                                             qBound<qreal>(0.5, impactForce / 90.0, 1.8));
         }
@@ -3077,7 +3103,11 @@ void MainWindow::simulateGameLoop()
                     const QVector2D normal = delta / dist;
                     const qreal impactForce = qAbs(m_playerSpeed - m_player2Speed);
 
-                    if (m_gameView && nowMs - lastTwoPlayerImpactMs >= kVehicleImpactVisualCooldownMs) {
+                    if (m_gameView
+                        && nowMs - lastTwoPlayerImpactMs >= kVehicleImpactVisualCooldownMs
+                        && !shouldSuppressStartupCollisionImpact(m_driveActive,
+                                                                 m_countdownActive,
+                                                                 m_sessionElapsedMs)) {
                         m_gameView->showCollisionImpact((player1Pos + player2Pos) * 0.5,
                                                         qBound<qreal>(0.6, impactForce / 80.0, 1.8));
                     }
