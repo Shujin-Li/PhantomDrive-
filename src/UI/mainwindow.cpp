@@ -578,6 +578,33 @@ MainWindow::MainWindow(QWidget *parent)
             m_aiManager,
             &AIOpponentManager::onQLearningFeedbackReady);
 
+    connect(m_scoreManager,
+            &ScoreManager::qLearningFeedbackReady,
+            this,
+            [this](const PhantomDrive::QLearningFeedback& feedback) {
+                const QString scoreText = QString::number(feedback.normalizedScore * 100.0, 'f', 0);
+                const QString riskText = QString::number(feedback.safetyRisk, 'f', 2);
+                const QString complianceText = QString::number(feedback.ruleCompliance, 'f', 2);
+
+                statusBar()->showMessage(
+                    QStringLiteral("Adaptive AI updated: score %1, risk %2, compliance %3")
+                        .arg(scoreText, riskText, complianceText),
+                    5000);
+
+                qDebug().noquote()
+                    << QStringLiteral("[Adaptive AI] reward=%1 normalizedScore=%2 safetyRisk=%3 ruleCompliance=%4 speedPenalty=%5 smoothnessPenalty=%6 terminalPenalty=%7 hint=%8")
+                           .arg(QString::number(feedback.reward, 'f', 2))
+                           .arg(QString::number(feedback.normalizedScore, 'f', 2))
+                           .arg(QString::number(feedback.safetyRisk, 'f', 2))
+                           .arg(QString::number(feedback.ruleCompliance, 'f', 2))
+                           .arg(QString::number(feedback.speedPenalty, 'f', 2))
+                           .arg(QString::number(feedback.smoothnessPenalty, 'f', 2))
+                           .arg(QString::number(feedback.terminalPenalty, 'f', 2))
+                           .arg(feedback.recommendedActionHint.isEmpty()
+                                    ? QStringLiteral("(none)")
+                                    : feedback.recommendedActionHint);
+            });
+
     connect(m_scoreManager, &ScoreManager::feedbackReady,
             this, [this](const QString& text, int, const QString& severity) {
                 const FeedbackType type = severity == QStringLiteral("positive")
