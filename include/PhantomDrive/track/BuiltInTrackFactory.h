@@ -5,6 +5,7 @@
 #include <QString>
 #include <QList>
 #include <QStringList>
+#include <QVector2D>
 
 class QObject;
 
@@ -27,6 +28,7 @@ public:
     static QString trackName(const QString& id);
     static bool isBuiltInTrackId(const QString& id);
     static TrackData* createTrack(const QString& id, QObject* parent = nullptr);
+    static QList<QVector2D> getAIDrivingWaypoints(const QString& id);
 };
 
 } // namespace PhantomDrive

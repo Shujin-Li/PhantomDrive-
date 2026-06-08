@@ -1953,7 +1953,17 @@ void MainWindow::initializeAIOpponents()
     }
 
     QList<Waypoint> aiWaypoints;
-    const QList<QVector2D> trackWaypoints = trackMgr ? trackMgr->getWaypoints() : QList<QVector2D>();
+    QList<QVector2D> trackWaypoints;
+    if (trackMgr && trackMgr->hasCurrentTrack()) {
+        const QString trackId = trackMgr->getCurrentTrack()->getId();
+        if (BuiltInTrackFactory::isBuiltInTrackId(trackId)) {
+            trackWaypoints = BuiltInTrackFactory::getAIDrivingWaypoints(trackId);
+        }
+    }
+    if (trackWaypoints.isEmpty() && trackMgr) {
+        trackWaypoints = trackMgr->getWaypoints();
+    }
+
     for (int i = 0; i < trackWaypoints.size(); ++i) {
         aiWaypoints.append(Waypoint(trackWaypoints.at(i), 110.0, false, 0, i));
     }

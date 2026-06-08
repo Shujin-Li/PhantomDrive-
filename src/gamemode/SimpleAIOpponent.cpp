@@ -454,7 +454,13 @@ qreal SimpleAIOpponent::calculateThrottle()
         }
     }
 
-    if (distToWP < 100.0) {
+    qreal slowdownDistance = 100.0;
+    if (m_waypoints.size() >= 2) {
+        const qreal routeSpacing = (getNextWaypoint().position - currentWP.position).length();
+        slowdownDistance = qBound<qreal>(40.0, routeSpacing * 0.7, 100.0);
+    }
+
+    if (distToWP < slowdownDistance) {
         return 0.5;
     }
 

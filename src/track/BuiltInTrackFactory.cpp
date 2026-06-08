@@ -19,6 +19,57 @@ struct TileCoord {
     int col;
 };
 
+QVector<TileCoord> builtInAIDrivingRoute(const QString& id)
+{
+    if (id == QStringLiteral("neon_loop")) {
+        return {
+            {4, 11},
+            {4, 19},
+            {13, 19},
+            {13, 4},
+            {4, 4}
+        };
+    }
+    if (id == QStringLiteral("blade_s")) {
+        return {
+            {3, 5},
+            {3, 19},
+            {8, 19},
+            {8, 4},
+            {15, 4},
+            {15, 19},
+            {3, 19}
+        };
+    }
+    if (id == QStringLiteral("overdrive_sprint")) {
+        return {
+            {12, 12},
+            {12, 3},
+            {5, 3},
+            {5, 20},
+            {12, 20}
+        };
+    }
+    if (id == QStringLiteral("circuit_breaker")) {
+        return {
+            {14, 6},
+            {14, 9},
+            {10, 9},
+            {10, 15},
+            {14, 15},
+            {14, 20},
+            {4, 20},
+            {4, 13},
+            {7, 13},
+            {7, 7},
+            {4, 7},
+            {4, 4},
+            {14, 4}
+        };
+    }
+    return {};
+}
+
 enum class GateAxis {
     Horizontal,
     Vertical
@@ -182,6 +233,51 @@ void addItemBoxes(TrackData* track, const QVector<TileCoord>& tiles)
     for (const TileCoord& tile : tiles) {
         track->addItemBoxPosition(tileCenter(tile.row, tile.col));
     }
+}
+
+QList<QVector2D> denseWaypointsFromRoute(const QVector<TileCoord>& route, qreal spacingPx = 64.0)
+{
+    QList<QVector2D> waypoints;
+    if (route.isEmpty()) {
+        return waypoints;
+    }
+
+    auto appendUnique = [&waypoints](const QVector2D& point) {
+        if (waypoints.isEmpty() || (waypoints.last() - point).lengthSquared() > 0.5) {
+            waypoints.append(point);
+        }
+    };
+
+    const QVector2D first = tileCenter(route.first().row, route.first().col);
+    appendUnique(first);
+
+    auto sampleSegment = [&](const QVector2D& from, const QVector2D& to, bool appendEnd) {
+        const QVector2D delta = to - from;
+        const qreal length = delta.length();
+        if (length < 1.0) {
+            if (appendEnd) {
+                appendUnique(to);
+            }
+            return;
+        }
+
+        for (qreal distance = spacingPx; distance < length; distance += spacingPx) {
+            appendUnique(from + delta * (distance / length));
+        }
+
+        if (appendEnd) {
+            appendUnique(to);
+        }
+    };
+
+    for (int i = 1; i < route.size(); ++i) {
+        sampleSegment(tileCenter(route.at(i - 1).row, route.at(i - 1).col),
+                      tileCenter(route.at(i).row, route.at(i).col),
+                      true);
+    }
+
+    sampleSegment(tileCenter(route.last().row, route.last().col), first, false);
+    return waypoints;
 }
 
 TrackData* createBaseTrack(const BuiltInTrackInfo& info, QObject* parent)
@@ -353,6 +449,11 @@ TrackData* BuiltInTrackFactory::createTrack(const QString& id, QObject* parent)
         return createCircuitBreaker(parent);
     }
     return nullptr;
+}
+
+QList<QVector2D> BuiltInTrackFactory::getAIDrivingWaypoints(const QString& id)
+{
+    return denseWaypointsFromRoute(builtInAIDrivingRoute(id));
 }
 
 } // namespace PhantomDrive
