@@ -37,4 +37,7 @@ Thumbs.db
 .qtc/
 .qtc_clangd/
 
+build/
 build-*/
+build-clean-check/
+cmake-build-*/
