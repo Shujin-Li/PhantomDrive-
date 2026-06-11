@@ -7,6 +7,7 @@
 #include <QPainter>
 #include <QPen>
 #include <QLinearGradient>
+#include <QFontMetrics>
 #include <QSizePolicy>
 #include <QUuid>
 
@@ -57,20 +58,46 @@ QColor tileBorderColor(TileType type)
 {
     switch (type) {
     case TileType::Wall:
-        return QColor(QStringLiteral("#E2E8F0"));
+        return QColor(255, 238, 88, 255);
     case TileType::Barrier:
-        return QColor(QStringLiteral("#FBD38D"));
+        return QColor(255, 202, 40, 255);
     case TileType::StartLine:
+        return QColor(QStringLiteral("#BFFFFF"));
     case TileType::FinishLine:
-        return QColor(255, 255, 255, 220);
+        return QColor(QStringLiteral("#FFE4E6"));
     case TileType::Road:
     case TileType::Asphalt:
-        return QColor(QStringLiteral("#7A8CA5"));
+        return QColor(0, 229, 255, 255);
     case TileType::Grass:
-        return QColor(QStringLiteral("#A7F3A0"));
+        return QColor(126, 236, 164, 150);
     default:
-        return QColor(QStringLiteral("#2D3748"));
+        return QColor(QStringLiteral("#31506B"));
     }
+}
+
+void drawTileLabel(QPainter& painter, const QRectF& rect, const QString& text, int maxPointSize)
+{
+    int pointSize = maxPointSize;
+    QFont font(QStringLiteral("Arial"), pointSize, QFont::Black);
+    while (pointSize > 7) {
+        font.setPointSize(pointSize);
+        const QFontMetrics metrics(font);
+        if (metrics.horizontalAdvance(text) <= rect.width() - 6.0
+            && metrics.height() <= rect.height() - 4.0) {
+            break;
+        }
+        --pointSize;
+    }
+
+    painter.setFont(font);
+    const QColor shadow(0, 0, 0, 245);
+    painter.setPen(shadow);
+    painter.drawText(rect.translated(-1, 0), Qt::AlignCenter, text);
+    painter.drawText(rect.translated(1, 0), Qt::AlignCenter, text);
+    painter.drawText(rect.translated(0, -1), Qt::AlignCenter, text);
+    painter.drawText(rect.translated(0, 1), Qt::AlignCenter, text);
+    painter.setPen(QColor(255, 255, 255, 255));
+    painter.drawText(rect, Qt::AlignCenter, text);
 }
 
 } // namespace
@@ -390,7 +417,8 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
         return;
     }
 
-    painter.fillRect(grid, QColor(QStringLiteral("#1A202C")));
+    painter.fillRect(grid, QColor(5, 12, 24, 255));
+    painter.setOpacity(1.0);
 
     for (int row = 0; row < EditorRows; ++row) {
         for (int col = 0; col < EditorCols; ++col) {
@@ -400,130 +428,55 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
                               m_tileSize);
             const TrackTile* tile = m_track->getTileAt(row, col);
             const TileType tileType = tile ? tile->getType() : TileType::Unknown;
-            QLinearGradient tileFill(cell.topLeft(), cell.bottomRight());
             const QColor baseTileColor = tileColor(tileType);
-            const bool isRoadTile = tileType == TileType::Road || tileType == TileType::Asphalt;
-            const bool isGrassTile = tileType == TileType::Grass;
-            if (isGrassTile) {
-                painter.save();
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(QColor(QStringLiteral("#6BBF59")));
-                painter.drawRect(cell.adjusted(0.5, 0.5, -0.5, -0.5));
-                painter.restore();
-            } else if (tileType == TileType::Wall) {
-                tileFill.setColorAt(0.0, QColor(QStringLiteral("#CBD5E0")));
-                tileFill.setColorAt(0.52, baseTileColor);
-                tileFill.setColorAt(1.0, QColor(QStringLiteral("#718096")));
-                painter.fillRect(cell, tileFill);
-            } else if (tileType == TileType::Barrier) {
-                tileFill.setColorAt(0.0, QColor(QStringLiteral("#F6C453")));
-                tileFill.setColorAt(0.52, baseTileColor);
-                tileFill.setColorAt(1.0, QColor(QStringLiteral("#A66A18")));
-                painter.fillRect(cell, tileFill);
-            } else if (isRoadTile) {
-                painter.save();
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(QColor(QStringLiteral("#46566B")));
-                painter.drawRect(cell.adjusted(0.5, 0.5, -0.5, -0.5));
-                painter.restore();
-            } else if (tileType == TileType::StartLine) {
-                tileFill.setColorAt(0.0, QColor(QStringLiteral("#7DD3FC")));
-                tileFill.setColorAt(0.55, baseTileColor);
-                tileFill.setColorAt(1.0, QColor(QStringLiteral("#0284C7")));
-                painter.fillRect(cell, tileFill);
-            } else if (tileType == TileType::FinishLine) {
-                tileFill.setColorAt(0.0, QColor(QStringLiteral("#FB7185")));
-                tileFill.setColorAt(0.55, baseTileColor);
-                tileFill.setColorAt(1.0, QColor(QStringLiteral("#BE123C")));
-                painter.fillRect(cell, tileFill);
-            } else {
-                painter.fillRect(cell, baseTileColor);
+            const QRectF solidCell = cell.adjusted(0.0, 0.0, -0.6, -0.6);
+            painter.fillRect(solidCell, baseTileColor);
+            painter.setPen(QPen(QColor(7, 24, 31, 230), 1.0));
+            painter.drawRect(solidCell);
+            if (tileType == TileType::Grass) {
+                painter.setPen(QPen(tileBorderColor(tileType), 1.0));
+                painter.drawRect(solidCell.adjusted(1.2, 1.2, -1.2, -1.2));
             }
-
-            if (tileType == TileType::Wall) {
-                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(226, 232, 240, 74));
-                painter.setPen(QPen(QColor(45, 55, 72, 145), 1));
-                const qreal blockH = cell.height() / 3.0;
-                painter.drawLine(QPointF(cell.left(), cell.top() + blockH), QPointF(cell.right(), cell.top() + blockH));
-                painter.drawLine(QPointF(cell.left(), cell.top() + blockH * 2.0), QPointF(cell.right(), cell.top() + blockH * 2.0));
-                painter.drawLine(QPointF(cell.center().x(), cell.top()), QPointF(cell.center().x(), cell.top() + blockH));
-                painter.drawLine(QPointF(cell.left() + cell.width() * 0.34, cell.top() + blockH),
-                                 QPointF(cell.left() + cell.width() * 0.34, cell.top() + blockH * 2.0));
-                painter.drawLine(QPointF(cell.left() + cell.width() * 0.66, cell.top() + blockH * 2.0),
-                                 QPointF(cell.left() + cell.width() * 0.66, cell.bottom()));
-                painter.setPen(QPen(QColor(247, 250, 252, 115), 1));
-                painter.drawLine(cell.topLeft() + QPointF(3, 3), cell.topRight() + QPointF(-3, 3));
-                painter.setPen(QPen(QColor(45, 55, 72, 125), 1));
-                painter.drawLine(QPointF(cell.left() + cell.width() * 0.22, cell.top() + cell.height() * 0.30),
-                                 QPointF(cell.left() + cell.width() * 0.38, cell.top() + cell.height() * 0.48));
-            } else if (tileType == TileType::Barrier) {
-                painter.fillRect(cell.adjusted(2, 2, -2, -2), QColor(251, 211, 141, 78));
-                painter.setPen(QPen(QColor(86, 52, 13, 150), 2));
-                for (qreal x = cell.left() - cell.height(); x < cell.right(); x += cell.width() * 0.42) {
-                    painter.drawLine(QPointF(x, cell.bottom()), QPointF(x + cell.height(), cell.top()));
-                }
-                painter.setPen(QPen(QColor(255, 244, 214, 110), 1));
-                painter.drawLine(cell.topLeft() + QPointF(3, 3), cell.topRight() + QPointF(-3, 3));
+            if (tileType == TileType::Road || tileType == TileType::Asphalt
+                || tileType == TileType::Wall || tileType == TileType::Barrier) {
+                painter.setPen(QPen(tileBorderColor(tileType), 2.0));
+                painter.drawRect(solidCell.adjusted(1.4, 1.4, -1.4, -1.4));
             }
-            const bool solidDrivingTile = isRoadTile || isGrassTile;
-            painter.setPen(QPen(solidDrivingTile
-                                ? QColor(45, 55, 72, 70)
-                                : QColor(QStringLiteral("#2D3748")),
-                            1));
-            painter.drawRect(cell);
-            painter.setPen(QPen(tileBorderColor(tileType), solidDrivingTile ? 2 : 1));
-            painter.drawRect(cell.adjusted(1.5, 1.5, -1.5, -1.5));
 
             if (hasStartAt(row, col)) {
                 painter.save();
-                const qreal radius = qMax<qreal>(8.0, qMin(cell.width(), cell.height()) * 0.28);
-                const QRectF marker(cell.center().x() - radius,
-                                    cell.center().y() - radius,
-                                    radius * 2.0,
-                                    radius * 2.0);
-                painter.setBrush(QColor(QStringLiteral("#38BDF8")));
-                painter.setPen(QPen(QColor(255, 255, 255, 220), 2));
-                painter.drawEllipse(marker);
-                painter.setPen(Qt::white);
-                painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
-                painter.drawText(marker, Qt::AlignCenter, QStringLiteral("S"));
+                painter.fillRect(solidCell, QColor(8, 57, 72, 255));
+                painter.setPen(QPen(QColor(0, 245, 255, 230), 1.6));
+                painter.drawRect(solidCell);
+                drawTileLabel(painter, solidCell, QStringLiteral("S"), 13);
                 painter.restore();
             }
 
             if (isFinishAt(row, col)) {
                 painter.save();
-                const QRectF marker = cell.adjusted(cell.width() * 0.18,
-                                                    cell.height() * 0.18,
-                                                    -cell.width() * 0.18,
-                                                    -cell.height() * 0.18);
-                painter.setBrush(QColor(QStringLiteral("#F43F5E")));
-                painter.setPen(QPen(QColor(255, 255, 255, 220), 2));
-                painter.drawRoundedRect(marker, 4, 4);
-                painter.setPen(Qt::white);
-                painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
-                painter.drawText(marker, Qt::AlignCenter, QStringLiteral("FIN"));
+                painter.fillRect(solidCell, QColor(53, 18, 42, 255));
+                painter.setPen(QPen(QColor(255, 79, 122, 230), 1.6));
+                painter.drawRect(solidCell);
+                drawTileLabel(painter, solidCell, QStringLiteral("F"), 13);
                 painter.restore();
             }
 
             if (hasItemBoxAt(row, col)) {
                 painter.save();
-                painter.setBrush(QColor(156, 92, 255, 230));
-                painter.setPen(QPen(QColor(236, 225, 255), 2));
-                painter.drawRoundedRect(cell.adjusted(8, 8, -8, -8), 4, 4);
-                painter.setPen(Qt::white);
-                painter.setFont(QFont(QStringLiteral("Arial"), 10, QFont::Bold));
-                painter.drawText(cell, Qt::AlignCenter, QStringLiteral("?"));
+                painter.fillRect(solidCell, QColor(44, 32, 82, 255));
+                painter.setPen(QPen(QColor(245, 208, 254, 230), 1.6));
+                painter.drawRect(solidCell);
+                drawTileLabel(painter, solidCell, QStringLiteral("?"), 15);
                 painter.restore();
             }
 
             if (Checkpoint* cp = checkpointAt(row, col)) {
+                Q_UNUSED(cp);
                 painter.save();
-                painter.setBrush(QColor(255, 214, 64, 72));
-                painter.setPen(QPen(QColor(255, 214, 64), 3));
-                painter.drawRoundedRect(cell.adjusted(5, 5, -5, -5), 5, 5);
-                painter.setPen(Qt::white);
-                painter.setFont(QFont(QStringLiteral("Arial"), 9, QFont::Bold));
-                painter.drawText(cell, Qt::AlignCenter, QStringLiteral("CP%1").arg(cp->getIndexInRoute() + 1));
+                painter.fillRect(solidCell, QColor(45, 42, 28, 255));
+                painter.setPen(QPen(QColor(255, 216, 80, 230), 1.6));
+                painter.drawRect(solidCell);
+                drawTileLabel(painter, solidCell, QStringLiteral("CP"), 11);
                 painter.restore();
             }
         }
@@ -751,7 +704,7 @@ bool CustomTrackEditorWidget::isFinishAt(int row, int col) const
         return false;
     }
 
-    return tile->getType() == TileType::FinishLine || tile->getType() == TileType::StartLine;
+    return tile->getType() == TileType::FinishLine;
 }
 
 Checkpoint* CustomTrackEditorWidget::checkpointAt(int row, int col) const
@@ -771,23 +724,23 @@ QColor CustomTrackEditorWidget::tileColor(TileType type) const
 {
     switch (type) {
     case TileType::Road:
-        return QColor(QStringLiteral("#46566B"));
+        return QColor(8, 35, 62, 255);
     case TileType::Grass:
-        return QColor(QStringLiteral("#6BBF59"));
+        return QColor(8, 43, 44, 255);
     case TileType::Sand:
-        return QColor(217, 167, 63);
+        return QColor(78, 52, 16, 255);
     case TileType::Asphalt:
-        return QColor(QStringLiteral("#46566B"));
+        return QColor(12, 33, 54, 255);
     case TileType::StartLine:
-        return QColor(QStringLiteral("#38BDF8"));
+        return QColor(8, 57, 72, 255);
     case TileType::FinishLine:
-        return QColor(QStringLiteral("#F43F5E"));
+        return QColor(53, 18, 42, 255);
     case TileType::Wall:
-        return QColor(QStringLiteral("#A0AEC0"));
+        return QColor(31, 31, 29, 255);
     case TileType::Barrier:
-        return QColor(QStringLiteral("#D69E2E"));
+        return QColor(42, 36, 22, 255);
     default:
-        return QColor(QStringLiteral("#1A202C"));
+        return QColor(6, 32, 34, 255);
     }
 }
 

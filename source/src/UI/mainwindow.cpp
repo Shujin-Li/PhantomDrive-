@@ -45,6 +45,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSpacerItem>
 #include <QStatusBar>
 #include <QTextEdit>
@@ -170,6 +171,7 @@ QString visualAssetPath(const QString& relativePath)
         QCoreApplication::applicationDirPath() + QStringLiteral("/assets"),
         QCoreApplication::applicationDirPath() + QStringLiteral("/../assets"),
         QCoreApplication::applicationDirPath() + QStringLiteral("/../../assets"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../../../assets"),
         QDir::currentPath() + QStringLiteral("/assets"),
         QDir::currentPath() + QStringLiteral("/source/assets"),
         QDir::currentPath()
@@ -885,7 +887,8 @@ void MainWindow::setupCustomTrackControls()
         if (pageLayout) {
             m_customTrackEditor = new CustomTrackEditorWidget(gamePage);
             m_customTrackEditor->hide();
-            pageLayout->addWidget(m_customTrackEditor, 1);
+            m_customTrackEditor->setGeometry(gamePage->rect());
+            m_customTrackEditor->raise();
 
             connect(m_customTrackEditor, &CustomTrackEditorWidget::playRequested,
                     this, &MainWindow::playCurrentCustomTrack);
@@ -1127,9 +1130,49 @@ void MainWindow::styleMainMenu()
     }
 
     if (ui->verticalLayout) {
-        ui->verticalLayout->setSpacing(14);
+        ui->verticalLayout->setSpacing(22);
         ui->verticalLayout->setContentsMargins(0, 0, 0, 0);
         ui->verticalLayout->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
+
+        if (!ui->pageMenu->property("mainMenuLayoutRebuilt").toBool()) {
+            while (QLayoutItem* item = ui->verticalLayout->takeAt(0)) {
+                delete item;
+            }
+
+            auto addCenteredRow = [this](const QList<QPushButton*>& buttons, int spacing) {
+                auto* row = new QHBoxLayout();
+                row->setSpacing(spacing);
+                row->setContentsMargins(0, 0, 0, 0);
+                row->addStretch(1);
+                for (QPushButton* button : buttons) {
+                    if (button) {
+                        row->addWidget(button);
+                    }
+                }
+                row->addStretch(1);
+                ui->verticalLayout->addLayout(row);
+            };
+
+            if (m_btnGuide) {
+                m_btnGuide->setParent(ui->pageMenu);
+                m_btnGuide->raise();
+            }
+
+            addCenteredRow({ ui->btn_Arcade, m_btnCustomTrackMode, ui->btn_Learn }, 28);
+            addCenteredRow({ m_btnTwoPlayerRace, m_btnAdaptiveDemo }, 28);
+
+            auto* secondaryColumn = new QVBoxLayout();
+            secondaryColumn->setSpacing(12);
+            secondaryColumn->setContentsMargins(0, 24, 0, 0);
+            secondaryColumn->setAlignment(Qt::AlignHCenter);
+            for (QPushButton* button : { m_btnLoadCustomTrack, ui->btn_History, ui->btn_Exit }) {
+                if (button) {
+                    secondaryColumn->addWidget(button, 0, Qt::AlignHCenter);
+                }
+            }
+            ui->verticalLayout->addLayout(secondaryColumn);
+            ui->pageMenu->setProperty("mainMenuLayoutRebuilt", true);
+        }
     }
 
     const QList<QPushButton*> menuButtons = {
@@ -1148,8 +1191,29 @@ void MainWindow::styleMainMenu()
             continue;
         }
         button->setCursor(Qt::PointingHandCursor);
-        button->setMinimumSize(620, 58);
-        button->setMaximumSize(860, 66);
+        button->setMinimumSize(0, 0);
+        button->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+    }
+
+    for (QPushButton* button : { ui->btn_Arcade, m_btnCustomTrackMode, ui->btn_Learn }) {
+        if (button) {
+            button->setFixedSize(310, 72);
+        }
+    }
+    for (QPushButton* button : { m_btnTwoPlayerRace, m_btnAdaptiveDemo }) {
+        if (button) {
+            button->setFixedSize(330, 66);
+        }
+    }
+    for (QPushButton* button : { m_btnLoadCustomTrack, ui->btn_History, ui->btn_Exit }) {
+        if (button) {
+            button->setFixedSize(520, 58);
+        }
+    }
+    if (m_btnGuide && ui->pageMenu) {
+        m_btnGuide->setFixedSize(230, 56);
+        m_btnGuide->move(qMax(24, ui->pageMenu->width() - m_btnGuide->width() - 64), 52);
+        m_btnGuide->raise();
     }
 
     if (m_aiDifficultyCombo) {
@@ -1227,6 +1291,31 @@ void MainWindow::setGameHeaderVisible(bool visible)
 
     hudLayout->invalidate();
     pageLayout->invalidate();
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event)
+{
+    QMainWindow::resizeEvent(event);
+
+    if (m_btnGuide && ui->pageMenu) {
+        m_btnGuide->move(qMax(24, ui->pageMenu->width() - m_btnGuide->width() - 64), 52);
+        m_btnGuide->raise();
+    }
+
+    if (!m_customTrackEditor || m_customTrackPlaying
+        || m_currentMode != QStringLiteral("Custom Track")
+        || !m_customTrackEditor->isVisible()
+        || !ui->stackedWidget || ui->stackedWidget->currentIndex() != 1) {
+        return;
+    }
+
+    QWidget* gamePage = ui->stackedWidget->widget(1);
+    if (!gamePage) {
+        return;
+    }
+
+    m_customTrackEditor->setGeometry(gamePage->rect());
+    m_customTrackEditor->raise();
 }
 
 void MainWindow::returnToMainMenuFromGame(bool finishWithReport)
@@ -1330,7 +1419,12 @@ void MainWindow::showCustomTrackEditor()
     }
     setGameHeaderVisible(false);
     if (m_customTrackEditor) {
+        QWidget* gamePage = ui->stackedWidget ? ui->stackedWidget->widget(1) : nullptr;
+        if (gamePage) {
+            m_customTrackEditor->setGeometry(gamePage->rect());
+        }
         m_customTrackEditor->show();
+        m_customTrackEditor->raise();
         m_customTrackEditor->setFocus();
     }
 
@@ -1762,6 +1856,8 @@ void MainWindow::setupGameView()
     const int trackCenterCol = 15;
     const int trackOuterRadius = 12;
     const int trackInnerRadius = 8;
+    const int startLineRow = trackCenterRow - trackOuterRadius;
+    const int finishLineRow = startLineRow + 1;
 
     for (int row = 0; row < 30; ++row) {
         for (int col = 0; col < 30; ++col) {
@@ -1776,13 +1872,18 @@ void MainWindow::setupGameView()
             const bool isOuterWall = (distFromCenter > trackOuterRadius && distFromCenter <= trackOuterRadius + 1);
             const bool isInnerWall = (distFromCenter < trackInnerRadius && distFromCenter >= trackInnerRadius - 1);
 
-            // 起跑线：环道最北侧一行（row=3），横向 5 格，与 FinishLine 重合
-            const bool isStartLine = (row == trackCenterRow - trackOuterRadius
+            // Keep spawn on StartLine; draw FinishLine one tile lower as a separate visual marker.
+            const bool isStartLine = (row == startLineRow
                                       && col >= trackCenterCol - 2
                                       && col <= trackCenterCol + 2);
+            const bool isFinishLine = (row == finishLineRow
+                                       && col >= trackCenterCol - 2
+                                       && col <= trackCenterCol + 2);
 
             if (isStartLine) {
                 tile->setType(TileType::StartLine);
+            } else if (isFinishLine) {
+                tile->setType(TileType::FinishLine);
             } else if (isOnTrack) {
                 tile->setType(TileType::Road);
             } else if (isOuterWall || isInnerWall) {
@@ -1796,7 +1897,7 @@ void MainWindow::setupGameView()
     }
 
     const qreal tileSize = 64.0;
-    const int startRow = trackCenterRow - trackOuterRadius;
+    const int startRow = startLineRow;
     const int startCol = trackCenterCol;
     const QVector2D startPos(startCol * tileSize + tileSize / 2.0,
                              startRow * tileSize + tileSize / 2.0);
@@ -2667,6 +2768,7 @@ void MainWindow::handlePowerupCollectedForPlayer(PhantomDrive::PowerupType type,
         effectiveType = kCustomPool[index];
     }
 
+    const QString collectedTypeName = powerupTypeToString(type);
     const QString typeName = powerupTypeToString(effectiveType);
     const QString powerupId = QStringLiteral("eb_%1").arg(typeName.toLower().replace(QStringLiteral(" "), QStringLiteral("_")));
     VehiclePhysics* targetPhysics = (playerIndex == 2) ? m_player2Physics : m_vehiclePhysics;
@@ -2675,12 +2777,17 @@ void MainWindow::handlePowerupCollectedForPlayer(PhantomDrive::PowerupType type,
     qreal* targetSpeed = (playerIndex == 2) ? &m_player2Speed : &m_playerSpeed;
     const QString playerLabel = playerIndex == 2 ? QStringLiteral("P2") : QStringLiteral("P1");
 
-    onPowerupCollected(playerIndex == 2 ? QStringLiteral("P2 %1").arg(typeName) : typeName);
+    onPowerupCollected(playerIndex == 2 ? QStringLiteral("P2 %1").arg(collectedTypeName) : collectedTypeName);
 
     // Unified powerup notification: ArcadeHUD only (LearningHUD is deprecated).
-    auto notifyArcadeHUD = [this](const QString& type, int durationMs) {
+    auto notifyArcadeHUD = [this, playerIndex](const QString& type, int durationMs) {
         if (m_arcadeHUD) {
-            m_arcadeHUD->updatePowerupState(type, durationMs > 0 ? durationMs / 1000 : 0);
+            const int remainingSecs = durationMs > 0 ? durationMs / 1000 : 0;
+            if (m_twoPlayerMode) {
+                m_arcadeHUD->updatePlayerPowerup(playerIndex, type, remainingSecs);
+            } else {
+                m_arcadeHUD->updatePowerupState(type, remainingSecs);
+            }
         }
     };
 
@@ -2792,8 +2899,39 @@ void MainWindow::updateRaceHud()
         return;
     }
 
+    m_arcadeHUD->setTwoPlayerMode(m_twoPlayerMode);
     m_arcadeHUD->updateSpeed(displaySpeedKmh());
-    if (m_customTrackPlaying) {
+    if (m_twoPlayerMode) {
+        const int totalCheckpoints = qMax(1, m_raceCheckpointTotal);
+        const int p1Checkpoint = qBound(0, m_nextCheckpointIndex, totalCheckpoints);
+        const int p2Checkpoint = qBound(0, m_player2NextCheckpointIndex, totalCheckpoints);
+        const qreal p1Progress = (m_lapsCompleted * (totalCheckpoints + 1)) + p1Checkpoint;
+        const qreal p2Progress = (m_player2LapsCompleted * (totalCheckpoints + 1)) + p2Checkpoint;
+        int p1Position = 1;
+        int p2Position = 2;
+        if (p2Progress > p1Progress || (qAbs(p2Progress - p1Progress) < 0.001 && m_player2Speed > m_playerSpeed)) {
+            p1Position = 2;
+            p2Position = 1;
+        }
+
+        const int p2Count = 1;
+        const int totalRacers = (m_aiManager ? m_aiManager->getOpponentCount() : 0) + 1 + p2Count;
+        const int totalLaps = m_customTrackPlaying ? 1 : qMax(1, m_totalLaps);
+        m_arcadeHUD->updatePlayer1Status(displaySpeedKmh(),
+                                         m_currentSpeedLimit,
+                                         m_currentTrafficLightState,
+                                         qBound(1, m_lapsCompleted + 1, totalLaps),
+                                         totalLaps,
+                                         p1Position,
+                                         qMax(1, totalRacers));
+        m_arcadeHUD->updatePlayer2Status(speedToDisplayKmh(m_player2Speed),
+                                         m_currentSpeedLimit,
+                                         m_currentTrafficLightState,
+                                         qBound(1, m_player2LapsCompleted + 1, totalLaps),
+                                         totalLaps,
+                                         p2Position,
+                                         qMax(1, totalRacers));
+    } else if (m_customTrackPlaying) {
         const int total = qMax(0, m_raceCheckpointTotal);
         const int passed = qBound(0, m_nextCheckpointIndex, total);
         const QString nextTarget = passed >= total
@@ -2807,10 +2945,11 @@ void MainWindow::updateRaceHud()
     m_arcadeHUD->updateLapTime(formatRaceTime(qMax<qint64>(0, m_sessionElapsedMs - m_currentLapStartMs)));
 
     // Total racers: P1 + AI count (+ P2 in two-player mode)
-    const int p2Count = m_twoPlayerMode ? 1 : 0;
-    const int totalRacers = (m_aiManager ? m_aiManager->getOpponentCount() : 0) + 1 + p2Count;
-    const int playerPosition = m_aiManager ? m_aiManager->getPlayerRacePosition() : 1;
-    m_arcadeHUD->updatePosition(playerPosition, qMax(1, totalRacers));
+    if (!m_twoPlayerMode) {
+        const int totalRacers = (m_aiManager ? m_aiManager->getOpponentCount() : 0) + 1;
+        const int playerPosition = m_aiManager ? m_aiManager->getPlayerRacePosition() : 1;
+        m_arcadeHUD->updatePosition(playerPosition, qMax(1, totalRacers));
+    }
 
     const AIOpponent* ai1 = m_aiManager ? m_aiManager->getOpponent(QStringLiteral("ai_1")) : nullptr;
     const AIOpponent* ai2 = m_aiManager ? m_aiManager->getOpponent(QStringLiteral("ai_2")) : nullptr;
@@ -3491,6 +3630,7 @@ void MainWindow::startDrivingSession(const QString& mode)
     if (m_arcadeHUD) {
         m_arcadeHUD->setGameMode(mode);
         m_arcadeHUD->reset();
+        m_arcadeHUD->setTwoPlayerMode(m_twoPlayerMode);
         m_arcadeHUD->show();
 
         // Position the HUD panel on the right side of the game canvas.
@@ -4078,19 +4218,54 @@ void MainWindow::onPowerupCollected(const QString& powerupType)
 {
     QString displayText;
     PhantomDrive::FeedbackType type = PhantomDrive::FeedbackType::Powerup;
+    const QString normalizedType = powerupType.toLower();
 
-    if (powerupType.toLower().contains("boost")) {
+    if (normalizedType.contains("boost")) {
         displayText = "Boost Collected!";
-    } else if (powerupType.toLower().contains("shield")) {
+    } else if (normalizedType.contains("shield")) {
         displayText = "Shield Active!";
-    } else if (powerupType.toLower().contains("emp")) {
+    } else if (normalizedType.contains("emp")) {
         displayText = "EMP Pulse!";
-    } else if (powerupType.toLower().contains("repair")) {
+    } else if (normalizedType.contains("repair")) {
         displayText = "Repair Kit!";
     } else {
         displayText = QString("%1 Collected!").arg(powerupType);
     }
 
+    auto soundForPowerup = [](const QString& key) {
+        if (key.contains("boost") || key.contains("speed")) {
+            return PhantomDrive::SoundEffect::PowerupBoost;
+        }
+        if (key.contains("shield")) {
+            return PhantomDrive::SoundEffect::PowerupShield;
+        }
+        if (key.contains("emp")) {
+            return PhantomDrive::SoundEffect::PowerupEMP;
+        }
+        if (key.contains("repair") || key.contains("health") || key.contains("fix")) {
+            return PhantomDrive::SoundEffect::PowerupRepair;
+        }
+        if (key.contains("oil")) {
+            return PhantomDrive::SoundEffect::PowerupOil;
+        }
+        if (key.contains("magnet")) {
+            return PhantomDrive::SoundEffect::PowerupMagnet;
+        }
+        if (key.contains("custom") || key.contains("mystery")) {
+            return PhantomDrive::SoundEffect::PowerupCustom;
+        }
+        if (key.contains("missile") || key.contains("rocket")) {
+            return PhantomDrive::SoundEffect::PowerupMissile;
+        }
+        if (key.contains("invisible") || key.contains("invisibility") || key.contains("stealth")) {
+            return PhantomDrive::SoundEffect::PowerupInvisibility;
+        }
+        if (key.contains("teleport") || key.contains("blink")) {
+            return PhantomDrive::SoundEffect::PowerupTeleport;
+        }
+        return PhantomDrive::SoundEffect::PowerupGeneric;
+    };
+
     showInteractiveFeedback(displayText, type);
-    playSound(PhantomDrive::SoundEffect::PowerupCollect);
+    playSound(soundForPowerup(normalizedType));
 }

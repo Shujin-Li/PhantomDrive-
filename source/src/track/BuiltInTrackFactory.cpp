@@ -303,6 +303,7 @@ TrackData* createNeonLoop(QObject* parent)
     paintVerticalRoad(track, 4, 4, 13, TileType::Asphalt);
 
     setTile(track, 4, 11, TileType::StartLine, TileDirection::East);
+    setTile(track, 5, 11, TileType::FinishLine, TileDirection::East);
     track->setStartPosition(tileCenter(4, 11));
     track->addStartPosition(tileCenter(4, 11));
     track->setStartRotation(90.0);

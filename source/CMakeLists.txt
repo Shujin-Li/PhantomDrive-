@@ -370,6 +370,12 @@ set_target_properties(PhantomDriveApp PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
+add_custom_command(TARGET PhantomDriveApp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:PhantomDriveApp>/assets"
+)
+
 install(TARGETS PhantomDriveApp
     RUNTIME DESTINATION bin
 )

@@ -17,6 +17,7 @@
 #include <QFontMetrics>
 #include <QHash>
 #include <QRadialGradient>
+#include <QSet>
 #include <QTimer>
 #include <QPixmap>
 #include <QtMath>
@@ -50,24 +51,30 @@ QString normalizedPlayerId(const QString& playerId)
 constexpr int kCollisionImpactDurationMs = 320;
 constexpr int kCollisionImpactCooldownMs = 200;
 constexpr int kMaxCollisionImpacts = 5;
-constexpr qreal kTrafficLightVisualScale = 1.12;
+constexpr qreal kTrafficLightVisualScale = 1.45;
 
 QString visualAssetPath(const QString& relativePath)
 {
-    const QString assetRelative = QStringLiteral("visual_upgrade/phantomdrive_direct_use_assets/%1").arg(relativePath);
+    const QStringList assetRelatives = {
+        QStringLiteral("visual_upgrade/phantomdrive_extra_assets_bundle_fixed_transparent/%1").arg(relativePath),
+        QStringLiteral("visual_upgrade/phantomdrive_direct_use_assets/%1").arg(relativePath)
+    };
     const QStringList roots = {
         QCoreApplication::applicationDirPath() + QStringLiteral("/assets"),
         QCoreApplication::applicationDirPath() + QStringLiteral("/../assets"),
         QCoreApplication::applicationDirPath() + QStringLiteral("/../../assets"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../../../assets"),
         QDir::currentPath() + QStringLiteral("/assets"),
         QDir::currentPath() + QStringLiteral("/source/assets"),
         QDir::currentPath()
     };
 
     for (const QString& root : roots) {
-        const QString candidate = QDir(root).filePath(assetRelative);
-        if (QFileInfo::exists(candidate)) {
-            return candidate;
+        for (const QString& assetRelative : assetRelatives) {
+            const QString candidate = QDir(root).filePath(assetRelative);
+            if (QFileInfo::exists(candidate)) {
+                return candidate;
+            }
         }
     }
     return QString();
@@ -86,6 +93,7 @@ const QPixmap& visualPixmap(const QString& relativePath)
 QString powerupIconPath(const QString& powerupType)
 {
     const QString type = powerupType.trimmed().toLower();
+    if (type.contains(QStringLiteral("custom")) || type.contains(QStringLiteral("random"))) return QStringLiteral("powerups/pd_powerup_custom.png");
     if (type.contains(QStringLiteral("boost"))) return QStringLiteral("powerups/pd_powerup_boost.png");
     if (type.contains(QStringLiteral("shield"))) return QStringLiteral("powerups/pd_powerup_shield.png");
     if (type.contains(QStringLiteral("missile"))) return QStringLiteral("powerups/pd_powerup_missile.png");
@@ -96,6 +104,98 @@ QString powerupIconPath(const QString& powerupType)
     if (type.contains(QStringLiteral("teleport"))) return QStringLiteral("powerups/pd_powerup_teleport.png");
     if (type.contains(QStringLiteral("magnet"))) return QStringLiteral("powerups/pd_powerup_magnet.png");
     return QString();
+}
+
+QString speedLimitImagePath(int limit)
+{
+    static const QSet<int> supportedLimits = {20, 30, 40, 50, 60, 70, 80, 90, 100, 120};
+    const int normalized = supportedLimits.contains(limit) ? limit : 60;
+    return QStringLiteral("traffic/pd_speed_limit_%1.png").arg(normalized);
+}
+
+bool isRoadVisualTile(const TrackTile* tile)
+{
+    if (!tile) {
+        return false;
+    }
+
+    const TileType type = tile->getType();
+    return tile->isDrivable()
+        || type == TileType::Road
+        || type == TileType::Asphalt
+        || type == TileType::StartLine
+        || type == TileType::FinishLine;
+}
+
+bool roadRunsVerticallyFromTiles(const TrackData* track, const QVector2D& worldPos)
+{
+    if (!track) {
+        return false;
+    }
+
+    const QPoint tilePos = TrackData::worldToTile(worldPos);
+    const int row = tilePos.y();
+    const int col = tilePos.x();
+
+    int verticalScore = 0;
+    int horizontalScore = 0;
+    for (int distance = 1; distance <= 2; ++distance) {
+        verticalScore += isRoadVisualTile(track->getTileAt(row - distance, col)) ? 1 : 0;
+        verticalScore += isRoadVisualTile(track->getTileAt(row + distance, col)) ? 1 : 0;
+        horizontalScore += isRoadVisualTile(track->getTileAt(row, col - distance)) ? 1 : 0;
+        horizontalScore += isRoadVisualTile(track->getTileAt(row, col + distance)) ? 1 : 0;
+    }
+
+    return verticalScore > horizontalScore;
+}
+
+bool roadRunsVerticallyAt(const TrackData* track, const QVector2D& worldPos, const QSizeF& crossingSize)
+{
+    Q_UNUSED(track);
+    Q_UNUSED(worldPos);
+
+    const qreal width = qMax<qreal>(1.0, crossingSize.width());
+    const qreal height = qMax<qreal>(1.0, crossingSize.height());
+
+    // Pedestrian crossing bounds describe the stripe zone that spans across the road.
+    // A wide crossing zone belongs to a vertical road; a tall crossing zone belongs to a horizontal road.
+    return width >= height;
+}
+
+QVector2D roadsideVisualOffset(const TrackData* track, const QVector2D& worldPos, qreal tileSize)
+{
+    if (!track) {
+        return QVector2D(-tileSize * 0.95f, -tileSize * 0.45f);
+    }
+
+    const QPoint tilePos = TrackData::worldToTile(worldPos);
+    const int row = tilePos.y();
+    const int col = tilePos.x();
+    const bool roadVertical = roadRunsVerticallyFromTiles(track, worldPos);
+
+    struct OffsetCandidate {
+        int dRow;
+        int dCol;
+        QVector2D offset;
+    };
+
+    const QList<OffsetCandidate> candidates = roadVertical
+        ? QList<OffsetCandidate>{{0, -1, QVector2D(-tileSize * 1.08f, 0.0f)},
+                                 {0, 1, QVector2D(tileSize * 1.08f, 0.0f)},
+                                 {-1, 0, QVector2D(0.0f, -tileSize * 1.08f)},
+                                 {1, 0, QVector2D(0.0f, tileSize * 1.08f)}}
+        : QList<OffsetCandidate>{{-1, 0, QVector2D(0.0f, -tileSize * 1.08f)},
+                                 {1, 0, QVector2D(0.0f, tileSize * 1.08f)},
+                                 {0, -1, QVector2D(-tileSize * 1.08f, 0.0f)},
+                                 {0, 1, QVector2D(tileSize * 1.08f, 0.0f)}};
+
+    for (const OffsetCandidate& candidate : candidates) {
+        if (!isRoadVisualTile(track->getTileAt(row + candidate.dRow, col + candidate.dCol))) {
+            return candidate.offset;
+        }
+    }
+
+    return roadVertical ? QVector2D(-tileSize * 1.08f, 0.0f) : QVector2D(0.0f, -tileSize * 1.08f);
 }
 
 void dumpTrackLayoutForDebug(const TrackData* track, const QString& label)
@@ -521,6 +621,7 @@ void GameViewWidget::paintEvent(QPaintEvent* event)
     painter.setRenderHint(QPainter::TextAntialiasing);
 
     painter.fillRect(rect(), m_backgroundColor);
+    drawOuterBackdrop(painter);
 
     drawTrack(painter);
     drawStartFinishMarkers(painter);
@@ -580,6 +681,28 @@ void GameViewWidget::mousePressEvent(QMouseEvent* event)
             return;
         }
     }
+}
+
+void GameViewWidget::drawOuterBackdrop(QPainter& painter)
+{
+    const QPixmap& backdrop = visualPixmap(QStringLiteral("backgrounds/pd_outer_background.png"));
+    if (backdrop.isNull()) {
+        return;
+    }
+
+    painter.save();
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+
+    const qreal tileW = qMax<qreal>(1.0, backdrop.width());
+    const qreal tileH = qMax<qreal>(1.0, backdrop.height());
+    qreal offsetX = m_renderState.cameraPosition.x() * 0.08;
+    qreal offsetY = -m_renderState.cameraPosition.y() * 0.08;
+    offsetX -= qFloor(offsetX / tileW) * tileW;
+    offsetY -= qFloor(offsetY / tileH) * tileH;
+
+    painter.drawTiledPixmap(rect(), backdrop, QPointF(offsetX, offsetY));
+    painter.fillRect(rect(), QColor(2, 6, 14, 112));
+    painter.restore();
 }
 
 void GameViewWidget::drawTrack(QPainter& painter)
@@ -801,6 +924,7 @@ void GameViewWidget::drawCheckpoints(QPainter& painter)
         const QPointF cornerA = worldToScreen(QVector2D(worldBounds.left(), worldBounds.top()));
         const QPointF cornerB = worldToScreen(QVector2D(worldBounds.right(), worldBounds.bottom()));
         const QRectF screenRect = QRectF(cornerA, cornerB).normalized();
+        const QPixmap& checkpointImage = visualPixmap(QStringLiteral("track_markers/pd_checkpoint.png"));
 
         painter.save();
         painter.setPen(QPen(QColor(255, 216, 80, 80), 8));
@@ -810,16 +934,18 @@ void GameViewWidget::drawCheckpoints(QPainter& painter)
         painter.setBrush(QColor(255, 216, 80, 55));
         painter.drawRoundedRect(screenRect, 6, 6);
 
-        const QRectF labelRect(screenRect.center().x() - 24,
-                               screenRect.center().y() - 13,
-                               48,
-                               26);
-        painter.setBrush(QColor(8, 18, 32, 230));
-        painter.setPen(QPen(QColor(255, 216, 80), 2));
-        painter.drawRoundedRect(labelRect, 7, 7);
-        painter.setPen(Qt::white);
-        painter.setFont(QFont(QStringLiteral("Arial"), 10, QFont::Bold));
-        painter.drawText(labelRect, Qt::AlignCenter, QStringLiteral("CP%1").arg(i + 1));
+        if (!checkpointImage.isNull()) {
+            const qreal aspect = screenRect.height() > 0.0 ? screenRect.width() / screenRect.height() : 1.0;
+            const qreal iconScale = aspect > 1.45 ? 0.76 : 0.64;
+            const qreal iconSize = qMin(qMin(screenRect.width(), screenRect.height()) * iconScale,
+                                        m_tileSize * m_renderState.cameraZoom * 1.6);
+            const QRectF iconRect(screenRect.center().x() - iconSize / 2.0,
+                                  screenRect.center().y() - iconSize / 2.0,
+                                  iconSize,
+                                  iconSize);
+            painter.drawPixmap(iconRect, checkpointImage, checkpointImage.rect());
+        }
+
         painter.restore();
     }
 }
@@ -835,25 +961,33 @@ void GameViewWidget::drawStartFinishMarkers(QPainter& painter)
     const QList<QVector2D> starts = m_currentTrack->getStartPositions();
     if (!starts.isEmpty()) {
         const QPointF center = worldToScreen(starts.first());
-        const qreal glowRadius = 26.0;
-        painter.setBrush(QColor(0, 230, 255, 55));
-        painter.setPen(Qt::NoPen);
-        painter.drawEllipse(center, glowRadius, glowRadius);
-        const qreal radius = 18.0;
-        const QRectF marker(center.x() - radius, center.y() - radius, radius * 2.0, radius * 2.0);
-        painter.setBrush(QColor(0, 205, 255, 235));
-        painter.setPen(QPen(QColor(226, 255, 255), 3));
-        painter.drawEllipse(marker);
-        painter.setPen(Qt::white);
-        painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
-        painter.drawText(marker, Qt::AlignCenter, QStringLiteral("S"));
-        const QRectF tag(center.x() - 34, center.y() + 20, 68, 20);
-        painter.setBrush(QColor(5, 18, 32, 230));
-        painter.setPen(QPen(QColor(0, 230, 255), 1));
-        painter.drawRoundedRect(tag, 6, 6);
-        painter.setPen(QColor(220, 255, 255));
-        painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
-        painter.drawText(tag, Qt::AlignCenter, QStringLiteral("START"));
+        const QPixmap& startImage = visualPixmap(QStringLiteral("track_markers/pd_start.png"));
+        if (!startImage.isNull()) {
+            const qreal markerW = m_tileSize * m_renderState.cameraZoom * 1.8;
+            const qreal markerH = m_tileSize * m_renderState.cameraZoom * 1.1;
+            const QRectF marker(center.x() - markerW / 2.0, center.y() - markerH / 2.0, markerW, markerH);
+            painter.drawPixmap(marker, startImage, startImage.rect());
+        } else {
+            const qreal glowRadius = 26.0;
+            painter.setBrush(QColor(0, 230, 255, 55));
+            painter.setPen(Qt::NoPen);
+            painter.drawEllipse(center, glowRadius, glowRadius);
+            const qreal radius = 18.0;
+            const QRectF marker(center.x() - radius, center.y() - radius, radius * 2.0, radius * 2.0);
+            painter.setBrush(QColor(0, 205, 255, 235));
+            painter.setPen(QPen(QColor(226, 255, 255), 3));
+            painter.drawEllipse(marker);
+            painter.setPen(Qt::white);
+            painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
+            painter.drawText(marker, Qt::AlignCenter, QStringLiteral("S"));
+            const QRectF tag(center.x() - 34, center.y() + 20, 68, 20);
+            painter.setBrush(QColor(5, 18, 32, 230));
+            painter.setPen(QPen(QColor(0, 230, 255), 1));
+            painter.drawRoundedRect(tag, 6, 6);
+            painter.setPen(QColor(220, 255, 255));
+            painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
+            painter.drawText(tag, Qt::AlignCenter, QStringLiteral("START"));
+        }
     }
 
     for (int row = 0; row < m_currentTrack->getRowCount(); ++row) {
@@ -868,16 +1002,28 @@ void GameViewWidget::drawStartFinishMarkers(QPainter& painter)
             }
 
             const QPointF center = worldToScreen(TrackData::tileToWorldCenter(row, col, m_tileSize));
-            painter.setBrush(QColor(255, 70, 110, 55));
-            painter.setPen(Qt::NoPen);
-            painter.drawEllipse(center, 30.0, 30.0);
-            const QRectF flag(center.x() - 34.0, center.y() - 15.0, 68.0, 30.0);
-            painter.setBrush(QColor(255, 255, 255, 235));
-            painter.setPen(QPen(QColor(255, 66, 104), 3));
-            painter.drawRoundedRect(flag, 4, 4);
-            painter.setPen(QColor(231, 76, 60));
-            painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
-            painter.drawText(flag, Qt::AlignCenter, QStringLiteral("FINISH"));
+            const QString markerPath = type == TileType::StartLine
+                ? QStringLiteral("track_markers/pd_start.png")
+                : QStringLiteral("track_markers/pd_finish.png");
+            const QPixmap& markerImage = visualPixmap(markerPath);
+            if (!markerImage.isNull()) {
+                const qreal markerW = m_tileSize * m_renderState.cameraZoom * 1.75;
+                const qreal markerH = m_tileSize * m_renderState.cameraZoom * 1.05;
+                const QRectF marker(center.x() - markerW / 2.0, center.y() - markerH / 2.0, markerW, markerH);
+                painter.drawPixmap(marker, markerImage, markerImage.rect());
+            } else {
+                painter.setBrush(QColor(255, 70, 110, 55));
+                painter.setPen(Qt::NoPen);
+                painter.drawEllipse(center, 30.0, 30.0);
+                const QRectF flag(center.x() - 34.0, center.y() - 15.0, 68.0, 30.0);
+                painter.setBrush(QColor(255, 255, 255, 235));
+                painter.setPen(QPen(QColor(255, 66, 104), 3));
+                painter.drawRoundedRect(flag, 4, 4);
+                painter.setPen(QColor(231, 76, 60));
+                painter.setFont(QFont(QStringLiteral("Arial"), 8, QFont::Bold));
+                painter.drawText(flag, Qt::AlignCenter,
+                                 type == TileType::StartLine ? QStringLiteral("START") : QStringLiteral("FINISH"));
+            }
         }
     }
 
@@ -1017,12 +1163,8 @@ void GameViewWidget::drawPowerupBox(QPainter& painter, const GameRenderObject& b
     const QString iconPath = powerupIconPath(powerupType);
     const QPixmap icon = iconPath.isEmpty() ? QPixmap() : visualPixmap(iconPath);
 
-    painter.setBrush(QBrush(box.color));
-    painter.setPen(QPen(box.color.lighter(140), 3));
-    painter.drawRoundedRect(boxRect, 4, 4);
-
     if (!icon.isNull()) {
-        const qreal iconSize = qMin<qreal>(48.0, qMax<qreal>(28.0, 40.0 * m_renderState.cameraZoom));
+        const qreal iconSize = qMin<qreal>(58.0, qMax<qreal>(38.0, 50.0 * m_renderState.cameraZoom));
         const QRectF iconRect(center.x() - iconSize / 2.0,
                               center.y() - iconSize / 2.0,
                               iconSize,
@@ -1034,11 +1176,14 @@ void GameViewWidget::drawPowerupBox(QPainter& painter, const GameRenderObject& b
         painter.drawText(boxRect, Qt::AlignCenter, box.label);
     }
 
-    painter.setPen(QColor(255, 255, 255, 210));
-    painter.setFont(QFont("Arial", 8));
-    painter.drawText(QRectF(center.x() - 38, center.y() + halfH + 4, 76, 14),
+    painter.setPen(QColor(0, 0, 0, 180));
+    painter.setFont(QFont("Arial", 9, QFont::Bold));
+    const QRectF labelRect(center.x() - 46, center.y() + halfH + 4, 92, 16);
+    painter.drawText(labelRect.translated(1, 1),
                      Qt::AlignCenter,
                      powerupType);
+    painter.setPen(QColor(255, 255, 255, 210));
+    painter.drawText(labelRect, Qt::AlignCenter, powerupType);
 }
 
 void GameViewWidget::drawWorldEffects(QPainter& painter)
@@ -1121,13 +1266,21 @@ void GameViewWidget::drawTrafficLight(QPainter& painter, const GameRenderObject&
     qreal halfW = light.size.width() * m_renderState.cameraZoom * kTrafficLightVisualScale / 2;
     qreal halfH = light.size.height() * m_renderState.cameraZoom * kTrafficLightVisualScale / 2;
 
-    QRectF poleRect(center.x() - halfW * 0.3, center.y() - halfH, halfW * 0.6, halfH * 2);
-    painter.fillRect(poleRect, QColor(52, 58, 64));
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
 
-    QRectF lightRect(center.x() - halfW, center.y() - halfH * 1.5, halfW * 2, halfH);
-    painter.setBrush(QBrush(QColor(44, 62, 80)));
-    painter.setPen(QPen(QColor(149, 165, 166), 1));
-    painter.drawRoundedRect(lightRect, 3, 3);
+    QRectF poleRect(center.x() - halfW * 0.18, center.y() - halfH * 0.25, halfW * 0.36, halfH * 1.85);
+    painter.fillRect(poleRect, QColor(43, 52, 61));
+    painter.fillRect(poleRect.adjusted(poleRect.width() * 0.55, 0, 0, 0), QColor(28, 35, 43, 180));
+
+    QRectF lightRect(center.x() - halfW * 0.82, center.y() - halfH * 1.52, halfW * 1.64, halfH * 1.18);
+    painter.setBrush(QColor(18, 30, 44, 245));
+    painter.setPen(QPen(QColor(145, 168, 186), 1.4));
+    painter.drawRoundedRect(lightRect, 5, 5);
+
+    painter.setBrush(QColor(6, 14, 24, 160));
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(lightRect.adjusted(3, 3, -3, -3), 4, 4);
 
     QString state = light.extraData["state"].toString();
     QColor lightColor;
@@ -1139,28 +1292,59 @@ void GameViewWidget::drawTrafficLight(QPainter& painter, const GameRenderObject&
         lightColor = QColor(46, 204, 113);
     }
 
-    qreal lightRadius = halfW * 0.6;
-    painter.setBrush(QBrush(lightColor));
+    qreal lightRadius = halfW * 0.58;
+    const QPointF bulbCenter(center.x(), center.y() - halfH * 0.93);
+    QColor glowColor = lightColor;
+    glowColor.setAlpha(110);
+    painter.setBrush(glowColor);
     painter.setPen(Qt::NoPen);
-    painter.drawEllipse(QPointF(center.x(), center.y() - halfH * 0.5), lightRadius, lightRadius);
+    painter.drawEllipse(bulbCenter, lightRadius * 1.55, lightRadius * 1.55);
 
-    painter.setPen(QColor(255, 255, 255));
-    painter.setFont(QFont("Arial", 8));
+    QRadialGradient bulbGradient(bulbCenter, lightRadius);
+    bulbGradient.setColorAt(0.0, QColor(255, 255, 255, 230));
+    bulbGradient.setColorAt(0.28, lightColor.lighter(130));
+    bulbGradient.setColorAt(1.0, lightColor.darker(120));
+    painter.setBrush(QBrush(bulbGradient));
+    painter.setPen(QPen(QColor(255, 255, 255, 180), 1.2));
+    painter.drawEllipse(bulbCenter, lightRadius, lightRadius);
+
+    painter.setBrush(QColor(255, 255, 255, 110));
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(QPointF(bulbCenter.x() - lightRadius * 0.3, bulbCenter.y() - lightRadius * 0.32),
+                        lightRadius * 0.22,
+                        lightRadius * 0.18);
+
+    QRectF baseRect(center.x() - halfW * 0.42, center.y() + halfH * 1.48, halfW * 0.84, halfH * 0.13);
+    painter.setBrush(QColor(34, 43, 52));
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(baseRect, 2, 2);
+
+    painter.setBrush(QBrush(lightColor));
+    painter.setPen(QColor(235, 245, 255));
+    painter.setFont(QFont("Arial", 8, QFont::Bold));
     painter.drawText(QRectF(center.x() - halfW, center.y() + halfH, halfW * 2, 12),
                      Qt::AlignCenter, state);
+    painter.restore();
 }
 
 void GameViewWidget::drawSpeedLimitSign(QPainter& painter, const GameRenderObject& sign)
 {
     QPointF center = worldToScreen(sign.position);
-    qreal halfW = sign.size.width() * m_renderState.cameraZoom / 2;
-    qreal halfH = sign.size.height() * m_renderState.cameraZoom / 2;
+    const QPointF offset = worldToScreen(sign.position + roadsideVisualOffset(m_currentTrack, sign.position, m_tileSize)) - center;
+    const QPointF visualCenter = center + offset;
+    qreal halfW = sign.size.width() * m_renderState.cameraZoom * 2.18 / 2;
+    qreal halfH = sign.size.height() * m_renderState.cameraZoom * 2.18 / 2;
 
-    QRectF poleRect(center.x() - 2, center.y(), 4, halfH);
-    painter.fillRect(poleRect, QColor(127, 140, 141));
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
 
-    QRectF signRect(center.x() - halfW, center.y() - halfH * 2, halfW * 2, halfH * 2);
-    const QPixmap& signImage = visualPixmap(QStringLiteral("traffic/pd_speed_limit_60.png"));
+    QRectF poleRect(visualCenter.x() - 2.5, visualCenter.y(), 5, halfH * 1.35);
+    painter.fillRect(poleRect, QColor(88, 103, 114));
+    painter.fillRect(poleRect.adjusted(2.5, 0, 0, 0), QColor(45, 55, 65, 160));
+
+    QRectF signRect(visualCenter.x() - halfW, visualCenter.y() - halfH * 2, halfW * 2, halfH * 2);
+    const int limit = sign.extraData.value(QStringLiteral("limit"), sign.label).toInt();
+    const QPixmap& signImage = visualPixmap(speedLimitImagePath(limit));
     if (!signImage.isNull()) {
         painter.drawPixmap(signRect, signImage, signImage.rect());
     } else {
@@ -1170,8 +1354,9 @@ void GameViewWidget::drawSpeedLimitSign(QPainter& painter, const GameRenderObjec
     }
 
     painter.setPen(QColor(44, 62, 80));
-    painter.setFont(QFont("Arial", 10, QFont::Bold));
+    painter.setFont(QFont("Arial", 12, QFont::Bold));
     painter.drawText(signRect, Qt::AlignCenter, sign.label);
+    painter.restore();
 }
 
 void GameViewWidget::drawPedestrianCrossing(QPainter& painter, const GameRenderObject& crossing)
@@ -1181,23 +1366,49 @@ void GameViewWidget::drawPedestrianCrossing(QPainter& painter, const GameRenderO
     qreal halfH = crossing.size.height() * m_renderState.cameraZoom / 2;
 
     QRectF crossRect(center.x() - halfW, center.y() - halfH, halfW * 2, halfH * 2);
-    const QPixmap& crosswalkImage = visualPixmap(QStringLiteral("traffic/pd_crosswalk_stripes.png"));
-    if (!crosswalkImage.isNull()) {
-        painter.drawPixmap(crossRect, crosswalkImage, crosswalkImage.rect());
-    } else {
-        painter.fillRect(crossRect, QColor(255, 255, 255, 80));
+    painter.fillRect(crossRect, QColor(255, 255, 255, 28));
 
-        painter.setPen(QPen(QColor(255, 255, 255), 2, Qt::DashLine));
-        painter.drawRect(crossRect);
+    painter.setPen(QPen(QColor(255, 255, 255, 120), 2, Qt::DashLine));
+    painter.drawRect(crossRect);
 
-        int stripeCount = 5;
-        qreal stripeWidth = halfW * 2 / stripeCount;
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(255, 255, 255, 215));
+    const bool verticalRoad = roadRunsVerticallyAt(m_currentTrack, crossing.position, crossing.size);
+    const qreal roadVisualWidth = qMin(crossRect.width() * 0.72,
+                                       m_tileSize * m_renderState.cameraZoom * 2.35);
+    const qreal roadVisualHeight = qMin(crossRect.height() * 0.72,
+                                        m_tileSize * m_renderState.cameraZoom * 2.35);
+    if (verticalRoad) {
+        const QRectF stripeArea(center.x() - roadVisualWidth / 2.0,
+                                crossRect.top() + crossRect.height() * 0.09,
+                                roadVisualWidth,
+                                crossRect.height() * 0.82);
+        const int stripeCount = 6;
+        const qreal stripeH = stripeArea.height() / (stripeCount * 1.85);
+        const qreal gap = (stripeArea.height() - stripeH * stripeCount) / (stripeCount + 1);
         for (int i = 0; i < stripeCount; ++i) {
-            if (i % 2 == 0) {
-                QRectF stripe(center.x() - halfW + i * stripeWidth, center.y() - halfH,
-                              stripeWidth, halfH * 2);
-                painter.fillRect(stripe, QColor(255, 255, 255, 150));
-            }
+            const qreal y = stripeArea.top() + gap + i * (stripeH + gap);
+            const QRectF stripe(stripeArea.left(),
+                                y,
+                                stripeArea.width(),
+                                stripeH);
+            painter.fillRect(stripe, QColor(255, 255, 255, 220));
+        }
+    } else {
+        const QRectF stripeArea(crossRect.left() + crossRect.width() * 0.09,
+                                center.y() - roadVisualHeight / 2.0,
+                                crossRect.width() * 0.82,
+                                roadVisualHeight);
+        const int stripeCount = 6;
+        const qreal stripeW = stripeArea.width() / (stripeCount * 1.85);
+        const qreal gap = (stripeArea.width() - stripeW * stripeCount) / (stripeCount + 1);
+        for (int i = 0; i < stripeCount; ++i) {
+            const qreal x = stripeArea.left() + gap + i * (stripeW + gap);
+            const QRectF stripe(x,
+                                stripeArea.top(),
+                                stripeW,
+                                stripeArea.height());
+            painter.fillRect(stripe, QColor(255, 255, 255, 220));
         }
     }
 
@@ -1214,7 +1425,7 @@ void GameViewWidget::drawPedestrianCrossing(QPainter& painter, const GameRenderO
         const QPointF p(center.x() - halfW + t * halfW * 2.0,
                         center.y() - halfH * 0.55 + (i % 2) * halfH * 0.75);
         if (!pedestrianImage.isNull()) {
-            const qreal personW = qBound<qreal>(18.0, halfW * 0.24, 34.0);
+            const qreal personW = qBound<qreal>(34.0, halfW * 0.42, 58.0);
             const qreal personH = personW * 1.45;
             const QRectF personRect(p.x() - personW / 2.0,
                                     p.y() - personH * 0.65,

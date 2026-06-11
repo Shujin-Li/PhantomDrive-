@@ -78,6 +78,7 @@ protected:
     void focusOutEvent(QFocusEvent* event) override;
 
 private:
+    void drawOuterBackdrop(QPainter& painter);
     void drawTrack(QPainter& painter);
     void drawCyberGrid(QPainter& painter, const QRectF& worldBounds);
     void drawPlayerCar(QPainter& painter, const GameRenderObject& car);

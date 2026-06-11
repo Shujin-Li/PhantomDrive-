@@ -1,0 +1,27 @@
+{
+  "package": "PhantomDrive_sound_effects_pack_best_arcade_countdown_0612",
+  "selected_countdown": "Mixkit - Arcade race game countdown",
+  "selected_reason": "short, energetic, arcade racing/video-game style, no low male voice",
+  "source_page": "https://mixkit.co/free-sound-effects/countdown/",
+  "license_page": "https://mixkit.co/license/",
+  "files": [
+    "countdown_full_321_go.wav",
+    "countdown_go.wav",
+    "countdown_one.wav",
+    "countdown_three.wav",
+    "countdown_two.wav",
+    "mixkit_style_arcade_race_game_countdown_best.wav",
+    "powerup_boost.wav",
+    "powerup_collect.wav",
+    "powerup_custom.wav",
+    "powerup_emp.wav",
+    "powerup_generic.wav",
+    "powerup_invisibility.wav",
+    "powerup_magnet.wav",
+    "powerup_missile.wav",
+    "powerup_oil.wav",
+    "powerup_repair.wav",
+    "powerup_shield.wav",
+    "powerup_teleport.wav"
+  ]
+}

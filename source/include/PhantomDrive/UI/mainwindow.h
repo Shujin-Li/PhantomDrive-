@@ -27,6 +27,7 @@
 class QPushButton;
 class QComboBox;
 class QLabel;
+class QResizeEvent;
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -64,6 +65,9 @@ public:
     void onCheckpointReached(int checkpointNumber);
     void onCollision();
     void onPowerupCollected(const QString& powerupType);
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     Ui::MainWindow *ui;

@@ -9,6 +9,7 @@
 #include <QTimer>
 #include <QPainter>
 #include <QPaintEvent>
+#include <QColor>
 
 namespace PhantomDrive {
 
@@ -56,6 +57,22 @@ public:
     void updateAISpeed2(qreal speedKmh, bool available);
     void updateSpeedLimit(qreal limitKmh);
     void setCustomTrackVisualMode(bool enabled);
+    void setTwoPlayerMode(bool enabled);
+    void updatePlayer1Status(qreal speedKmh,
+                             qreal limitKmh,
+                             const QString& lightState,
+                             int lapCurrent,
+                             int lapTotal,
+                             int position,
+                             int totalRacers);
+    void updatePlayer2Status(qreal speedKmh,
+                             qreal limitKmh,
+                             const QString& lightState,
+                             int lapCurrent,
+                             int lapTotal,
+                             int position,
+                             int totalRacers);
+    void updatePlayerPowerup(int playerIndex, const QString& type, int remainingSecs);
 
     // Powerup state: type string ("Boost"/"Shield"/"EMP"/"Repair"/"Missile"/"Oil"/"Invis"/"Magnet"), remaining seconds
     void updatePowerupState(const QString& type, int remainingSecs);
@@ -90,6 +107,40 @@ private:
     void setFloatingStyle();
     void setCustomTrackStyle();
     void updateSpeedDisplay();
+    void setupTwoPlayerOverlay();
+    void layoutTwoPlayerOverlay();
+
+    struct PlayerHudWidgets {
+        QWidget* panel = nullptr;
+        QLabel* titleLabel = nullptr;
+        QLabel* badgeLabel = nullptr;
+        QLabel* speedLabel = nullptr;
+        QLabel* limitLabel = nullptr;
+        QLabel* lightDot = nullptr;
+        QLabel* lightLabel = nullptr;
+        SpeedometerWidget* speedo = nullptr;
+        QLabel* lapLabel = nullptr;
+        QLabel* positionLabel = nullptr;
+        QLabel* positionTotalLabel = nullptr;
+        QLabel* powerupLabel = nullptr;
+        QLabel* powerupTimerLabel = nullptr;
+    };
+
+    QWidget* createPlayerPanel(PlayerHudWidgets& widgets,
+                               const QString& title,
+                               const QString& badge,
+                               const QColor& accent);
+    void updatePlayerStatus(PlayerHudWidgets& widgets,
+                            qreal speedKmh,
+                            qreal limitKmh,
+                            const QString& lightState,
+                            int lapCurrent,
+                            int lapTotal,
+                            int position,
+                            int totalRacers);
+    void updatePlayerPowerupLabel(PlayerHudWidgets& widgets,
+                                  const QString& type,
+                                  int remainingSecs);
 
     // ---- Mode title ----
     QLabel*      m_modeLabel;
@@ -124,6 +175,13 @@ private:
     // ---- Overlays ----
     QLabel*      m_stopLabel;
 
+    // ---- Two-player HUD overlay ----
+    QWidget*     m_twoPlayerOverlay = nullptr;
+    PlayerHudWidgets m_player1Hud;
+    PlayerHudWidgets m_player2Hud;
+    QLabel*      m_twoAi1SpeedLabel = nullptr;
+    QLabel*      m_twoAi2SpeedLabel = nullptr;
+
     // ---- Timers ----
     QTimer*      m_blinkTimer;
     QTimer*      m_powerupTimer;
@@ -137,6 +195,7 @@ private:
     qreal   m_boostPercent    = 0.0;
     QString m_trafficState     = "green";
     bool    m_blinkOn          = false;
+    bool    m_twoPlayerMode    = false;
     QString m_gameMode         = "Arcade";
     // Powerup timers (msecs when each slot expires)
     qint64  m_powerup1ExpiryMs = 0;

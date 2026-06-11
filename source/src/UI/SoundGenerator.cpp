@@ -427,6 +427,43 @@ QByteArray SoundGenerator::generateWavFile(SoundEffect effect, int durationMs) c
     case SoundEffect::PowerupCollect: {
         return createChirpWav(800, 2000, 250, 44100);
     }
+    case SoundEffect::PowerupGeneric: {
+        return createChirpWav(700, 1500, 180, 44100);
+    }
+    case SoundEffect::PowerupBoost: {
+        return createBoostWav(450, 44100);
+    }
+    case SoundEffect::PowerupShield: {
+        int notes[] = {880, 1320, 1760};
+        int durs[] = {80, 80, 140};
+        return createFanfareWav(3, notes, durs, 44100);
+    }
+    case SoundEffect::PowerupEMP: {
+        return createChirpWav(260, 80, 180, 44100);
+    }
+    case SoundEffect::PowerupRepair: {
+        int notes[] = {523, 659, 784};
+        int durs[] = {90, 90, 160};
+        return createFanfareWav(3, notes, durs, 44100);
+    }
+    case SoundEffect::PowerupOil: {
+        return createNoiseWav(140, 44100);
+    }
+    case SoundEffect::PowerupMagnet: {
+        return createChirpWav(420, 980, 260, 44100);
+    }
+    case SoundEffect::PowerupCustom: {
+        return createChirpWav(600, 1800, 360, 44100);
+    }
+    case SoundEffect::PowerupMissile: {
+        return createChirpWav(220, 720, 180, 44100);
+    }
+    case SoundEffect::PowerupInvisibility: {
+        return createChirpWav(1600, 320, 360, 44100);
+    }
+    case SoundEffect::PowerupTeleport: {
+        return createChirpWav(520, 1800, 260, 44100);
+    }
 
     // --- Legacy ---
     case SoundEffect::CountdownBeep:
@@ -477,6 +514,17 @@ QString SoundGenerator::getSoundFilePath(SoundEffect effect) const
     CASE(FinalLap, "final_lap.wav")
     CASE(RaceFinish, "race_finish.wav")
     CASE(PowerupCollect, "powerup_collect.wav")
+    CASE(PowerupGeneric, "powerup_generic.wav")
+    CASE(PowerupBoost, "powerup_boost.wav")
+    CASE(PowerupShield, "powerup_shield.wav")
+    CASE(PowerupEMP, "powerup_emp.wav")
+    CASE(PowerupRepair, "powerup_repair.wav")
+    CASE(PowerupOil, "powerup_oil.wav")
+    CASE(PowerupMagnet, "powerup_magnet.wav")
+    CASE(PowerupCustom, "powerup_custom.wav")
+    CASE(PowerupMissile, "powerup_missile.wav")
+    CASE(PowerupInvisibility, "powerup_invisibility.wav")
+    CASE(PowerupTeleport, "powerup_teleport.wav")
     CASE(CountdownBeep, "countdown_beep.wav")
     CASE(Collision, "collision.wav")
     CASE(SpeedBoost, "speed_boost.wav")
@@ -515,6 +563,17 @@ void SoundGenerator::generateAllSounds() const
         SoundEffect::FinalLap,
         SoundEffect::RaceFinish,
         SoundEffect::PowerupCollect,
+        SoundEffect::PowerupGeneric,
+        SoundEffect::PowerupBoost,
+        SoundEffect::PowerupShield,
+        SoundEffect::PowerupEMP,
+        SoundEffect::PowerupRepair,
+        SoundEffect::PowerupOil,
+        SoundEffect::PowerupMagnet,
+        SoundEffect::PowerupCustom,
+        SoundEffect::PowerupMissile,
+        SoundEffect::PowerupInvisibility,
+        SoundEffect::PowerupTeleport,
         SoundEffect::CountdownBeep,
         SoundEffect::Collision,
         SoundEffect::SpeedBoost,

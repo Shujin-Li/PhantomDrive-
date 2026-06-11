@@ -15,6 +15,23 @@ using namespace PhantomDrive;
 namespace {
 
 constexpr qreal kSpeedometerMaxKmh = 120.0;
+constexpr qreal kGaugeStartDeg = 225.0;
+constexpr qreal kGaugeSpanDeg = 270.0;
+
+qreal speedFraction(qreal speed, qreal maxSpeed)
+{
+    return qBound<qreal>(0.0, speed / qMax<qreal>(1.0, maxSpeed), 1.0);
+}
+
+qreal speedAngleDeg(qreal speed, qreal maxSpeed)
+{
+    return kGaugeStartDeg - speedFraction(speed, maxSpeed) * kGaugeSpanDeg;
+}
+
+int qtAngle16(qreal degrees)
+{
+    return static_cast<int>(degrees * 16.0);
+}
 
 QColor speedStateColor(qreal speed, qreal speedLimit)
 {
@@ -35,6 +52,29 @@ QColor speedStateColor(qreal speed, qreal speedLimit)
         return QColor(QStringLiteral("#F6C343"));
     }
     return QColor(QStringLiteral("#FF3366"));
+}
+
+QString ordinalText(int position)
+{
+    switch (position) {
+    case 1: return QStringLiteral("1ST");
+    case 2: return QStringLiteral("2ND");
+    case 3: return QStringLiteral("3RD");
+    default: return QStringLiteral("%1TH").arg(qMax(1, position));
+    }
+}
+
+QColor powerupColor(const QString& type)
+{
+    if (type == "Boost")      return QColor(QStringLiteral("#00FF88"));
+    if (type == "Shield")     return QColor(QStringLiteral("#44AAFF"));
+    if (type == "EMP")        return QColor(QStringLiteral("#FF88FF"));
+    if (type == "Repair")     return QColor(QStringLiteral("#FF6644"));
+    if (type == "Missile")    return QColor(QStringLiteral("#FF4444"));
+    if (type == "Oil")        return QColor(QStringLiteral("#888888"));
+    if (type == "Invis")      return QColor(QStringLiteral("#AAAAAA"));
+    if (type == "Magnet")     return QColor(QStringLiteral("#FFAA44"));
+    return QColor(QStringLiteral("#CC88FF"));
 }
 
 } // namespace
@@ -83,10 +123,9 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
     const QPointF centre(W / 2.0, H / 2.0);
     const qreal radius = qMin(W, H) * 0.44;
 
-    const qreal startDeg = 225.0;
-    const qreal spanDeg  = 270.0;
-
     const QColor stateColor = speedStateColor(m_speed, m_speedLimit);
+    const qreal displaySpeed = qBound<qreal>(0.0, qRound(m_speed), m_maxSpeed);
+    const qreal fraction = speedFraction(displaySpeed, m_maxSpeed);
 
     // ---- Outer neon glow ----
     {
@@ -96,8 +135,7 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
         p.setPen(glowPen);
         p.setBrush(Qt::NoBrush);
         QRectF gr(centre.x() - radius, centre.y() - radius, radius * 2, radius * 2);
-        p.drawArc(gr, static_cast<int>((180.0 - startDeg) * 16),
-                  static_cast<int>(-spanDeg * 16));
+        p.drawArc(gr, qtAngle16(kGaugeStartDeg), qtAngle16(-kGaugeSpanDeg));
     }
 
     // ---- Background arc ----
@@ -105,18 +143,15 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
         QPen bgPen(QColor(15, 22, 45, 200), 8, Qt::SolidLine, Qt::RoundCap);
         p.setPen(bgPen);
         QRectF ar(centre.x() - radius, centre.y() - radius, radius * 2, radius * 2);
-        p.drawArc(ar, static_cast<int>((180.0 - startDeg) * 16),
-                  static_cast<int>(-spanDeg * 16));
+        p.drawArc(ar, qtAngle16(kGaugeStartDeg), qtAngle16(-kGaugeSpanDeg));
     }
 
     // ---- Speed fill arc ----
-    const qreal fraction = m_speed / m_maxSpeed;
     {
         QPen arcPen(stateColor, 8, Qt::SolidLine, Qt::RoundCap);
         p.setPen(arcPen);
         QRectF ar(centre.x() - radius, centre.y() - radius, radius * 2, radius * 2);
-        p.drawArc(ar, static_cast<int>((180.0 - startDeg) * 16),
-                  static_cast<int>(-spanDeg * fraction * 16));
+        p.drawArc(ar, qtAngle16(kGaugeStartDeg), qtAngle16(-kGaugeSpanDeg * fraction));
     }
 
     // ---- Tick marks ----
@@ -124,8 +159,7 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
         const int maxVal = static_cast<int>(m_maxSpeed);
         for (int v = 0; v <= maxVal; v += 10) {
             const bool isMajor = (v % 30 == 0);
-            const qreal frac = static_cast<qreal>(v) / m_maxSpeed;
-            const qreal angleDeg = startDeg - frac * spanDeg;
+            const qreal angleDeg = speedAngleDeg(v, m_maxSpeed);
             const qreal angleRad = qDegreesToRadians(angleDeg);
             const qreal r1 = radius * (isMajor ? 0.80 : 0.86);
             const qreal r2 = radius * 0.94;
@@ -146,8 +180,7 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
         const QList<int> labelVals = {0, 30, 60, 90, 120};
         for (int v : labelVals) {
             if (v > maxVal) continue;
-            const qreal frac = static_cast<qreal>(v) / m_maxSpeed;
-            const qreal angleDeg = startDeg - frac * spanDeg;
+            const qreal angleDeg = speedAngleDeg(v, m_maxSpeed);
             const qreal angleRad = qDegreesToRadians(angleDeg);
             const qreal lr = radius * 0.62;
             const QPointF lp(centre.x() + lr * qCos(angleRad),
@@ -161,7 +194,7 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
 
     // ---- Needle ----
     {
-        const qreal needleDeg = startDeg - fraction * spanDeg;
+        const qreal needleDeg = speedAngleDeg(displaySpeed, m_maxSpeed);
         const qreal needleRad = qDegreesToRadians(needleDeg);
         const qreal nLen = radius * 0.75;
         const qreal nBase = radius * 0.12;
@@ -195,7 +228,7 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
         p.setPen(stateColor);
         QRectF tr(centre.x() - radius * 0.4, centre.y() + radius * 0.08,
                   radius * 0.8, radius * 0.38);
-        p.drawText(tr, Qt::AlignCenter, QString::number(static_cast<int>(m_speed)));
+        p.drawText(tr, Qt::AlignCenter, QString::number(static_cast<int>(displaySpeed)));
 
         const int ufSize = qMax(7, static_cast<int>(radius * 0.11));
         QFont uf("Segoe UI", ufSize);
@@ -635,6 +668,186 @@ void ArcadeHUD::setupUI()
     m_stopLabel->setVisible(false);
     m_stopLabel->setGeometry(6, 6, 55, 24);
     m_stopLabel->raise();
+
+    setupTwoPlayerOverlay();
+}
+
+QWidget* ArcadeHUD::createPlayerPanel(PlayerHudWidgets& widgets,
+                                      const QString& title,
+                                      const QString& badge,
+                                      const QColor& accent)
+{
+    QWidget* panel = new QWidget(m_twoPlayerOverlay);
+    panel->setStyleSheet(QString(R"(
+        QWidget {
+            background: rgba(5, 11, 27, 238);
+            border: 1px solid rgba(%1, %2, %3, 210);
+            border-radius: 7px;
+        }
+        QLabel { border: none; background: transparent; }
+    )").arg(accent.red()).arg(accent.green()).arg(accent.blue()));
+
+    QVBoxLayout* root = new QVBoxLayout(panel);
+    root->setContentsMargins(10, 8, 10, 8);
+    root->setSpacing(5);
+
+    QHBoxLayout* titleRow = new QHBoxLayout();
+    titleRow->setSpacing(6);
+    widgets.titleLabel = new QLabel(title, panel);
+    widgets.titleLabel->setStyleSheet(QStringLiteral(
+        "QLabel{color:%1;font-size:12px;font-weight:bold;letter-spacing:2px;}").arg(accent.name()));
+    titleRow->addWidget(widgets.titleLabel);
+    titleRow->addStretch();
+    widgets.badgeLabel = new QLabel(badge, panel);
+    widgets.badgeLabel->setAlignment(Qt::AlignCenter);
+    widgets.badgeLabel->setFixedSize(34, 22);
+    widgets.badgeLabel->setStyleSheet(QStringLiteral(
+        "QLabel{color:#FFFFFF;font-size:11px;font-weight:bold;border:1px solid %1;border-radius:5px;"
+        "background:rgba(15,22,45,230);}").arg(accent.name()));
+    titleRow->addWidget(widgets.badgeLabel);
+    root->addLayout(titleRow);
+
+    QHBoxLayout* metricRow = new QHBoxLayout();
+    metricRow->setSpacing(8);
+    auto addMetric = [&](const QString& label, QLabel*& valueLabel, const QString& color) {
+        QVBoxLayout* col = new QVBoxLayout();
+        col->setSpacing(0);
+        QLabel* titleLabel = new QLabel(label, panel);
+        titleLabel->setStyleSheet("QLabel{color:rgba(130,190,255,180);font-size:7px;font-weight:bold;letter-spacing:2px;}");
+        col->addWidget(titleLabel);
+        valueLabel = new QLabel("--", panel);
+        valueLabel->setStyleSheet(QStringLiteral(
+            "QLabel{color:%1;font-size:24px;font-weight:bold;font-family:'Segoe UI',sans-serif;}").arg(color));
+        col->addWidget(valueLabel);
+        metricRow->addLayout(col, 1);
+    };
+    addMetric(QStringLiteral("SPEED"), widgets.speedLabel, QStringLiteral("#2EF27A"));
+    addMetric(QStringLiteral("LIMIT"), widgets.limitLabel, QStringLiteral("#F6C343"));
+
+    QVBoxLayout* lightCol = new QVBoxLayout();
+    lightCol->setSpacing(2);
+    QLabel* lightTitle = new QLabel("LIGHT", panel);
+    lightTitle->setAlignment(Qt::AlignCenter);
+    lightTitle->setStyleSheet("QLabel{color:rgba(130,190,255,180);font-size:7px;font-weight:bold;letter-spacing:2px;}");
+    lightCol->addWidget(lightTitle);
+    widgets.lightDot = new QLabel(panel);
+    widgets.lightDot->setFixedSize(22, 22);
+    widgets.lightDot->setStyleSheet("QLabel{background:#00E060;border-radius:11px;border:2px solid rgba(255,255,255,60);}");
+    lightCol->addWidget(widgets.lightDot, 0, Qt::AlignCenter);
+    widgets.lightLabel = new QLabel("GREEN", panel);
+    widgets.lightLabel->setAlignment(Qt::AlignCenter);
+    widgets.lightLabel->setStyleSheet("QLabel{color:#00E060;font-size:8px;font-weight:bold;}");
+    lightCol->addWidget(widgets.lightLabel);
+    metricRow->addLayout(lightCol, 1);
+    root->addLayout(metricRow);
+
+    QHBoxLayout* bodyRow = new QHBoxLayout();
+    bodyRow->setSpacing(8);
+    widgets.speedo = new SpeedometerWidget(panel);
+    widgets.speedo->setFixedSize(104, 104);
+    bodyRow->addWidget(widgets.speedo, 0, Qt::AlignCenter);
+
+    QVBoxLayout* infoCol = new QVBoxLayout();
+    infoCol->setSpacing(5);
+    auto makeInfoCard = [&](const QString& label, QLabel*& valueLabel, const QString& color) {
+        QWidget* card = new QWidget(panel);
+        card->setStyleSheet("QWidget{background:rgba(6,18,42,220);border:1px solid rgba(0,190,255,80);border-radius:6px;}");
+        QVBoxLayout* cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(7, 5, 7, 5);
+        cardLayout->setSpacing(1);
+        QLabel* titleLabel = new QLabel(label, card);
+        titleLabel->setStyleSheet("QLabel{color:rgba(145,205,255,180);font-size:7px;font-weight:bold;letter-spacing:2px;}");
+        cardLayout->addWidget(titleLabel);
+        valueLabel = new QLabel("--", card);
+        valueLabel->setStyleSheet(QStringLiteral("QLabel{color:%1;font-size:14px;font-weight:bold;}").arg(color));
+        cardLayout->addWidget(valueLabel);
+        infoCol->addWidget(card);
+    };
+    makeInfoCard(QStringLiteral("LAP"), widgets.lapLabel, QStringLiteral("#2FF3FF"));
+
+    QWidget* posCard = new QWidget(panel);
+    posCard->setStyleSheet("QWidget{background:rgba(6,18,42,220);border:1px solid rgba(0,190,255,80);border-radius:6px;}");
+    QHBoxLayout* posLayout = new QHBoxLayout(posCard);
+    posLayout->setContentsMargins(7, 5, 7, 5);
+    posLayout->setSpacing(4);
+    widgets.positionLabel = new QLabel("1ST", posCard);
+    widgets.positionLabel->setStyleSheet("QLabel{color:#FFE000;font-size:18px;font-weight:bold;}");
+    posLayout->addWidget(widgets.positionLabel);
+    widgets.positionTotalLabel = new QLabel("/ 1", posCard);
+    widgets.positionTotalLabel->setStyleSheet("QLabel{color:rgba(255,220,0,150);font-size:10px;font-weight:bold;}");
+    posLayout->addWidget(widgets.positionTotalLabel);
+    infoCol->addWidget(posCard);
+
+    QWidget* powerCard = new QWidget(panel);
+    powerCard->setStyleSheet("QWidget{background:rgba(6,18,42,220);border:1px solid rgba(120,70,255,90);border-radius:6px;}");
+    QHBoxLayout* powerLayout = new QHBoxLayout(powerCard);
+    powerLayout->setContentsMargins(7, 5, 7, 5);
+    powerLayout->setSpacing(4);
+    widgets.powerupLabel = new QLabel("--", powerCard);
+    widgets.powerupLabel->setStyleSheet("QLabel{color:#CC88FF;font-size:12px;font-weight:bold;}");
+    powerLayout->addWidget(widgets.powerupLabel, 1);
+    widgets.powerupTimerLabel = new QLabel("", powerCard);
+    widgets.powerupTimerLabel->setAlignment(Qt::AlignRight);
+    widgets.powerupTimerLabel->setStyleSheet("QLabel{color:rgba(255,255,255,150);font-size:10px;font-weight:bold;}");
+    powerLayout->addWidget(widgets.powerupTimerLabel);
+    infoCol->addWidget(powerCard);
+
+    bodyRow->addLayout(infoCol, 1);
+    root->addLayout(bodyRow);
+
+    widgets.panel = panel;
+    return panel;
+}
+
+void ArcadeHUD::setupTwoPlayerOverlay()
+{
+    m_twoPlayerOverlay = new QWidget(this);
+    m_twoPlayerOverlay->setObjectName("twoPlayerOverlay");
+    m_twoPlayerOverlay->setStyleSheet(R"(
+        QWidget#twoPlayerOverlay {
+            background-color: rgba(6, 12, 28, 250);
+            border: 1px solid rgba(0, 190, 255, 95);
+            border-radius: 12px;
+        }
+    )");
+
+    QVBoxLayout* root = new QVBoxLayout(m_twoPlayerOverlay);
+    root->setContentsMargins(8, 8, 8, 8);
+    root->setSpacing(7);
+    root->addWidget(createPlayerPanel(m_player1Hud, QStringLiteral("PLAYER 1"), QStringLiteral("P1"), QColor("#FF5BD7")));
+    root->addWidget(createPlayerPanel(m_player2Hud, QStringLiteral("PLAYER 2"), QStringLiteral("P2"), QColor("#22C7FF")));
+
+    auto makeAiRow = [&](const QString& title, QLabel*& valueLabel, const QString& color) {
+        QWidget* row = new QWidget(m_twoPlayerOverlay);
+        row->setStyleSheet("QWidget{background:rgba(6,18,42,220);border:1px solid rgba(0,190,255,85);border-radius:6px;}");
+        QHBoxLayout* layout = new QHBoxLayout(row);
+        layout->setContentsMargins(9, 5, 9, 5);
+        QLabel* label = new QLabel(title, row);
+        label->setStyleSheet(QStringLiteral("QLabel{color:%1;font-size:8px;font-weight:bold;letter-spacing:2px;}").arg(color));
+        layout->addWidget(label);
+        valueLabel = new QLabel("--", row);
+        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        valueLabel->setStyleSheet(QStringLiteral("QLabel{color:%1;font-size:12px;font-weight:bold;}").arg(color));
+        layout->addWidget(valueLabel, 1);
+        root->addWidget(row);
+    };
+    makeAiRow(QStringLiteral("AI 1 SPEED"), m_twoAi1SpeedLabel, QStringLiteral("#FFAA00"));
+    makeAiRow(QStringLiteral("AI 2 SPEED"), m_twoAi2SpeedLabel, QStringLiteral("#FF66CC"));
+    root->addStretch();
+
+    m_twoPlayerOverlay->hide();
+    layoutTwoPlayerOverlay();
+}
+
+void ArcadeHUD::layoutTwoPlayerOverlay()
+{
+    if (!m_twoPlayerOverlay) {
+        return;
+    }
+    m_twoPlayerOverlay->setGeometry(rect().adjusted(0, 0, 0, 0));
+    if (m_twoPlayerMode) {
+        m_twoPlayerOverlay->raise();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -680,11 +893,13 @@ void ArcadeHUD::setCustomTrackVisualMode(bool enabled)
 void ArcadeHUD::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);
+    layoutTwoPlayerOverlay();
 }
 
 void ArcadeHUD::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
+    layoutTwoPlayerOverlay();
 }
 
 // ---------------------------------------------------------------------------
@@ -710,8 +925,100 @@ void ArcadeHUD::updateSpeedDisplay()
 void ArcadeHUD::updateSpeed(qreal speed)
 {
     m_currentSpeed = qBound(0.0, speed, kSpeedometerMaxKmh);
-    if (m_speedBigLabel) m_speedBigLabel->setText(QString::number(static_cast<int>(m_currentSpeed)));
+    if (m_speedBigLabel) m_speedBigLabel->setText(QString::number(qRound(m_currentSpeed)));
     updateSpeedDisplay();
+}
+
+void ArcadeHUD::setTwoPlayerMode(bool enabled)
+{
+    m_twoPlayerMode = enabled;
+    if (!m_twoPlayerOverlay) {
+        return;
+    }
+    m_twoPlayerOverlay->setVisible(enabled);
+    if (enabled) {
+        layoutTwoPlayerOverlay();
+        m_twoPlayerOverlay->raise();
+        if (m_stopLabel) {
+            m_stopLabel->raise();
+        }
+    }
+}
+
+void ArcadeHUD::updatePlayer1Status(qreal speedKmh,
+                                    qreal limitKmh,
+                                    const QString& lightState,
+                                    int lapCurrent,
+                                    int lapTotal,
+                                    int position,
+                                    int totalRacers)
+{
+    updatePlayerStatus(m_player1Hud, speedKmh, limitKmh, lightState, lapCurrent, lapTotal, position, totalRacers);
+}
+
+void ArcadeHUD::updatePlayer2Status(qreal speedKmh,
+                                    qreal limitKmh,
+                                    const QString& lightState,
+                                    int lapCurrent,
+                                    int lapTotal,
+                                    int position,
+                                    int totalRacers)
+{
+    updatePlayerStatus(m_player2Hud, speedKmh, limitKmh, lightState, lapCurrent, lapTotal, position, totalRacers);
+}
+
+void ArcadeHUD::updatePlayerStatus(PlayerHudWidgets& widgets,
+                                   qreal speedKmh,
+                                   qreal limitKmh,
+                                   const QString& lightState,
+                                   int lapCurrent,
+                                   int lapTotal,
+                                   int position,
+                                   int totalRacers)
+{
+    const qreal displaySpeed = qBound(0.0, speedKmh, kSpeedometerMaxKmh);
+    const qreal displayLimit = qMax(0.0, limitKmh);
+    const QString state = lightState.toLower();
+    const bool red = (state == "red");
+    const bool yellow = (state == "yellow" || state == "amber");
+    const QColor speedColor = speedStateColor(displaySpeed, displayLimit);
+    const QString lightColor = red ? QStringLiteral("#FF0033")
+                                   : yellow ? QStringLiteral("#FFAA00")
+                                            : QStringLiteral("#00E060");
+    const QString lightText = red ? QStringLiteral("RED")
+                                  : yellow ? QStringLiteral("YELLOW")
+                                           : QStringLiteral("GREEN");
+
+    if (widgets.speedLabel) {
+        widgets.speedLabel->setText(QString::number(qRound(displaySpeed)));
+        widgets.speedLabel->setStyleSheet(QStringLiteral(
+            "QLabel{color:%1;font-size:24px;font-weight:bold;font-family:'Segoe UI',sans-serif;}").arg(speedColor.name()));
+    }
+    if (widgets.limitLabel) {
+        widgets.limitLabel->setText(displayLimit > 0 ? QString::number(qRound(displayLimit)) : QStringLiteral("--"));
+    }
+    if (widgets.lightDot) {
+        widgets.lightDot->setStyleSheet(QStringLiteral(
+            "QLabel{background:%1;border-radius:11px;border:2px solid rgba(255,255,255,60);}").arg(lightColor));
+    }
+    if (widgets.lightLabel) {
+        widgets.lightLabel->setText(lightText);
+        widgets.lightLabel->setStyleSheet(QStringLiteral("QLabel{color:%1;font-size:8px;font-weight:bold;}").arg(lightColor));
+    }
+    if (widgets.speedo) {
+        widgets.speedo->setSpeedLimit(displayLimit);
+        widgets.speedo->setSpeed(displaySpeed);
+        widgets.speedo->setRedLight(false);
+    }
+    if (widgets.lapLabel) {
+        widgets.lapLabel->setText(QStringLiteral("Lap %1 / %2").arg(qMax(1, lapCurrent)).arg(qMax(1, lapTotal)));
+    }
+    if (widgets.positionLabel) {
+        widgets.positionLabel->setText(ordinalText(position));
+    }
+    if (widgets.positionTotalLabel) {
+        widgets.positionTotalLabel->setText(QStringLiteral("/ %1").arg(qMax(1, totalRacers)));
+    }
 }
 
 void ArcadeHUD::updateLap(int lapsCompleted, int totalLaps)
@@ -754,13 +1061,7 @@ void ArcadeHUD::updateTotalTime(const QString& time)
 void ArcadeHUD::updatePosition(int position, int totalRacers)
 {
     m_totalRacers = qMax(1, totalRacers);
-    QString posText;
-    switch (position) {
-    case 1: posText = "1ST"; break;
-    case 2: posText = "2ND"; break;
-    case 3: posText = "3RD"; break;
-    default: posText = QString("%1TH").arg(position); break;
-    }
+    const QString posText = ordinalText(position);
     if (m_positionLabel) m_positionLabel->setText(posText);
     if (m_positionTotalLabel) m_positionTotalLabel->setText(QStringLiteral(" / %1").arg(m_totalRacers));
 }
@@ -773,19 +1074,27 @@ void ArcadeHUD::updateBoost(qreal boostPercent)
 
 void ArcadeHUD::updateAISpeed1(qreal speedKmh, bool available)
 {
+    const QString text = available
+        ? QStringLiteral("%1 km/h").arg(static_cast<int>(speedKmh))
+        : QStringLiteral("--");
     if (m_ai1SpeedLabel) {
-        m_ai1SpeedLabel->setText(available
-                                     ? QStringLiteral("%1 km/h").arg(static_cast<int>(speedKmh))
-                                     : QStringLiteral("--"));
+        m_ai1SpeedLabel->setText(text);
+    }
+    if (m_twoAi1SpeedLabel) {
+        m_twoAi1SpeedLabel->setText(text);
     }
 }
 
 void ArcadeHUD::updateAISpeed2(qreal speedKmh, bool available)
 {
+    const QString text = available
+        ? QStringLiteral("%1 km/h").arg(static_cast<int>(speedKmh))
+        : QStringLiteral("--");
     if (m_ai2SpeedLabel) {
-        m_ai2SpeedLabel->setText(available
-                                     ? QStringLiteral("%1 km/h").arg(static_cast<int>(speedKmh))
-                                     : QStringLiteral("--"));
+        m_ai2SpeedLabel->setText(text);
+    }
+    if (m_twoAi2SpeedLabel) {
+        m_twoAi2SpeedLabel->setText(text);
     }
 }
 
@@ -892,6 +1201,8 @@ void ArcadeHUD::reset()
     if (m_positionTotalLabel) m_positionTotalLabel->setText("/ 1");
     if (m_ai1SpeedLabel)   m_ai1SpeedLabel->setText("--");
     if (m_ai2SpeedLabel)   m_ai2SpeedLabel->setText("--");
+    if (m_twoAi1SpeedLabel) m_twoAi1SpeedLabel->setText("--");
+    if (m_twoAi2SpeedLabel) m_twoAi2SpeedLabel->setText("--");
     if (m_boostBar)       m_boostBar->setValue(0);
     if (m_speedLimitLabel) m_speedLimitLabel->setText("--");
     if (m_stopLabel)       m_stopLabel->setVisible(false);
@@ -906,6 +1217,8 @@ void ArcadeHUD::reset()
     if (m_powerupSlot2) m_powerupSlot2->setText("--");
     if (m_powerupTimer1) m_powerupTimer1->setText("");
     if (m_powerupTimer2) m_powerupTimer2->setText("");
+    updatePlayerPowerupLabel(m_player1Hud, QStringLiteral("--"), 0);
+    updatePlayerPowerupLabel(m_player2Hud, QStringLiteral("--"), 0);
     if (m_objectiveLabel) m_objectiveLabel->setText("Next: CP1");
     updateSpeedDisplay();
 }
@@ -963,6 +1276,34 @@ void ArcadeHUD::updatePowerupState(const QString& type, int remainingSecs)
     }
 }
 
+void ArcadeHUD::updatePlayerPowerup(int playerIndex, const QString& type, int remainingSecs)
+{
+    updatePlayerPowerupLabel(playerIndex == 2 ? m_player2Hud : m_player1Hud, type, remainingSecs);
+}
+
+void ArcadeHUD::updatePlayerPowerupLabel(PlayerHudWidgets& widgets,
+                                         const QString& type,
+                                         int remainingSecs)
+{
+    if (!widgets.powerupLabel || !widgets.powerupTimerLabel) {
+        return;
+    }
+    if (type.isEmpty() || type == "--") {
+        widgets.powerupLabel->setText(QStringLiteral("--"));
+        widgets.powerupTimerLabel->setText(QString());
+        widgets.powerupLabel->setStyleSheet("QLabel{color:#CC88FF;font-size:12px;font-weight:bold;}");
+        return;
+    }
+
+    const QColor color = powerupColor(type);
+    widgets.powerupLabel->setText(type);
+    widgets.powerupLabel->setStyleSheet(QStringLiteral(
+        "QLabel{color:%1;font-size:12px;font-weight:bold;}").arg(color.name()));
+    widgets.powerupTimerLabel->setText(remainingSecs > 0
+        ? QStringLiteral("%1s").arg(remainingSecs)
+        : QString());
+}
+
 void ArcadeHUD::clearPowerupState()
 {
     if (m_powerupSlot1) m_powerupSlot1->setText("--");
@@ -973,6 +1314,8 @@ void ArcadeHUD::clearPowerupState()
     m_powerup2ExpiryMs = 0;
     m_powerup1Type.clear();
     m_powerup2Type.clear();
+    updatePlayerPowerupLabel(m_player1Hud, QStringLiteral("--"), 0);
+    updatePlayerPowerupLabel(m_player2Hud, QStringLiteral("--"), 0);
     m_powerupTimer->stop();
 }
 

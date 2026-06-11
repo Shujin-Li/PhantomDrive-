@@ -53,7 +53,19 @@ qreal effectVolumeMultiplier(SoundEffect effect)
     case SoundEffect::OffRoad:
         return 0.45;
     case SoundEffect::PowerupCollect:
+    case SoundEffect::PowerupGeneric:
+    case SoundEffect::PowerupBoost:
+    case SoundEffect::PowerupShield:
+    case SoundEffect::PowerupRepair:
+    case SoundEffect::PowerupOil:
+    case SoundEffect::PowerupMagnet:
+    case SoundEffect::PowerupCustom:
+    case SoundEffect::PowerupInvisibility:
+    case SoundEffect::PowerupTeleport:
         return 0.70;
+    case SoundEffect::PowerupEMP:
+    case SoundEffect::PowerupMissile:
+        return 0.78;
     case SoundEffect::CountdownBeep:
         return 0.90;
     case SoundEffect::Collision:
@@ -94,6 +106,17 @@ SoundCategory effectCategory(SoundEffect effect)
     case SoundEffect::Boost:
         return SoundCategory::Car;
     case SoundEffect::PowerupCollect:
+    case SoundEffect::PowerupGeneric:
+    case SoundEffect::PowerupBoost:
+    case SoundEffect::PowerupShield:
+    case SoundEffect::PowerupEMP:
+    case SoundEffect::PowerupRepair:
+    case SoundEffect::PowerupOil:
+    case SoundEffect::PowerupMagnet:
+    case SoundEffect::PowerupCustom:
+    case SoundEffect::PowerupMissile:
+    case SoundEffect::PowerupInvisibility:
+    case SoundEffect::PowerupTeleport:
         return SoundCategory::Item;
     case SoundEffect::CountdownBeep:
     case SoundEffect::Collision:
@@ -176,6 +199,17 @@ void SoundManager::initializeSoundPaths()
         { SoundEffect::FinalLap,         assetsPath + "final_lap.wav" },
         { SoundEffect::RaceFinish,      assetsPath + "race_finish.wav" },
         { SoundEffect::PowerupCollect,   assetsPath + "powerup_collect.wav" },
+        { SoundEffect::PowerupGeneric,   assetsPath + "powerup_generic.wav" },
+        { SoundEffect::PowerupBoost,     assetsPath + "powerup_boost.wav" },
+        { SoundEffect::PowerupShield,    assetsPath + "powerup_shield.wav" },
+        { SoundEffect::PowerupEMP,       assetsPath + "powerup_emp.wav" },
+        { SoundEffect::PowerupRepair,    assetsPath + "powerup_repair.wav" },
+        { SoundEffect::PowerupOil,       assetsPath + "powerup_oil.wav" },
+        { SoundEffect::PowerupMagnet,    assetsPath + "powerup_magnet.wav" },
+        { SoundEffect::PowerupCustom,    assetsPath + "powerup_custom.wav" },
+        { SoundEffect::PowerupMissile,   assetsPath + "powerup_missile.wav" },
+        { SoundEffect::PowerupInvisibility, assetsPath + "powerup_invisibility.wav" },
+        { SoundEffect::PowerupTeleport,  assetsPath + "powerup_teleport.wav" },
         { SoundEffect::CountdownBeep,   assetsPath + "countdown_beep.wav" },
         { SoundEffect::Collision,       assetsPath + "collision.wav" },
         { SoundEffect::SpeedBoost,      assetsPath + "speed_boost.wav" },

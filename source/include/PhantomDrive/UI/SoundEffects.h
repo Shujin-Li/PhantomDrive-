@@ -44,6 +44,17 @@ enum class SoundEffect {
 
     // --- Items ---
     PowerupCollect,
+    PowerupGeneric,
+    PowerupBoost,
+    PowerupShield,
+    PowerupEMP,
+    PowerupRepair,
+    PowerupOil,
+    PowerupMagnet,
+    PowerupCustom,
+    PowerupMissile,
+    PowerupInvisibility,
+    PowerupTeleport,
 
     // --- Legacy (kept for compat) ---
     CountdownBeep,
