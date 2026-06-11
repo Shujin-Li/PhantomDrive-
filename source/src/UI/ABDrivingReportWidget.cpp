@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QPainter>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QStringList>
 #include <QtGlobal>
 #include <QVBoxLayout>
@@ -81,6 +82,46 @@ QString scoreViolationTypeName(ViolationType type)
     return QStringLiteral("Unknown");
 }
 
+QString reportBandLabel(int score)
+{
+    if (score >= 85) {
+        return QStringLiteral("Excellent");
+    }
+    if (score >= 70) {
+        return QStringLiteral("Good");
+    }
+    return QStringLiteral("Need Practice");
+}
+
+QColor violationTagColor(const QString& type)
+{
+    const QString key = type.toLower();
+    if (key.contains(QStringLiteral("speed"))) {
+        return QColor(255, 215, 0, 70);
+    }
+    if (key.contains(QStringLiteral("red"))) {
+        return QColor(255, 68, 102, 75);
+    }
+    if (key.contains(QStringLiteral("collision")) || key.contains(QStringLiteral("pedestrian"))) {
+        return QColor(255, 68, 102, 95);
+    }
+    return QColor(0, 180, 255, 55);
+}
+
+QString coachAdviceHtml(const QString& advice)
+{
+    const QStringList blocks = advice.split(QRegularExpression(QStringLiteral("\\n\\s*\\n")), Qt::SkipEmptyParts);
+    QString html = QStringLiteral("<div style='color:#C8DCFF;'>");
+    for (const QString& block : blocks) {
+        html += QStringLiteral(
+            "<div style='margin-bottom:8px; padding:10px 12px; border:1px solid rgba(0,180,255,70);"
+            " border-radius:8px; background-color:rgba(8,14,32,185);'>%1</div>")
+            .arg(block.trimmed().toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br>")));
+    }
+    html += QStringLiteral("</div>");
+    return html;
+}
+
 } // namespace
 
 ABDrivingReportWidget::ABDrivingReportWidget(QWidget* parent)
@@ -152,6 +193,11 @@ void ABDrivingReportWidget::setupUI()
     addMetric(m_totalScoreLabel, "Total Score", "#F1C40F");
     addMetric(m_gradeLabel, "Grade", "#9B59B6", 30);
     addMetric(m_violationCountLabel, "Violations", "#E74C3C");
+    m_totalScoreLabel->setAlignment(Qt::AlignCenter);
+    m_totalScoreLabel->setStyleSheet(QStringLiteral(
+        "QLabel { color: #FFD700; font-size: 42px; font-weight: bold; font-family: 'Consolas', Arial;"
+        " padding: 8px 14px; background-color: rgba(18,18,48,215);"
+        " border: 2px solid rgba(255,54,101,170); border-radius: 10px; }"));
     mainLayout->addWidget(statsPanel);
 
     QFrame* speedPanel = makePanel(this);
@@ -240,6 +286,7 @@ void ABDrivingReportWidget::setupUI()
     auto* adviceLayout = new QVBoxLayout(advicePanel);
     adviceLayout->addWidget(makeTitle("AI Coach Advice", advicePanel));
     m_aiReportLabel = new QLabel("Waiting for report data...", advicePanel);
+    m_aiReportLabel->setTextFormat(Qt::RichText);
     m_aiReportLabel->setWordWrap(true);
     m_aiReportLabel->setMinimumHeight(80);
     m_aiReportLabel->setStyleSheet(
@@ -362,7 +409,9 @@ void ABDrivingReportWidget::setReportSummary(const ReportSummary& summary)
     setMockDataEnabled(false);
 
     m_totalScoreLabel->setText(QString::number(summary.totalScore));
-    m_gradeLabel->setText(summary.grade.trimmed().isEmpty() ? "--" : summary.grade);
+    m_gradeLabel->setText(summary.grade.trimmed().isEmpty()
+        ? "--"
+        : QStringLiteral("%1 / %2").arg(summary.grade, reportBandLabel(summary.totalScore)));
     m_violationCountLabel->setText(QString::number(summary.violations.size()));
 
     if (summary.averageSpeed > 0.0) {
@@ -515,12 +564,22 @@ void ABDrivingReportWidget::updateViolationTable(const QList<ViolationItem>& vio
         const int row = m_violationTable->rowCount();
         m_violationTable->insertRow(row);
         m_violationTable->setItem(row, 0, new QTableWidgetItem(formattedTime(violation.timestamp)));
-        m_violationTable->setItem(row, 1, new QTableWidgetItem(violation.type));
+
+        QTableWidgetItem* typeItem = new QTableWidgetItem(QStringLiteral("  %1  ").arg(violation.type));
+        typeItem->setTextAlignment(Qt::AlignCenter);
+        typeItem->setBackground(QBrush(violationTagColor(violation.type)));
+        typeItem->setForeground(QBrush(QColor(232, 244, 255)));
+        m_violationTable->setItem(row, 1, typeItem);
+
         m_violationTable->setItem(row, 2, new QTableWidgetItem(violation.description));
         m_violationTable->setItem(row, 3, new QTableWidgetItem(QString::number(violation.speed, 'f', 1)));
         m_violationTable->setItem(row, 4, new QTableWidgetItem(
             violation.limit > 0.0 ? QString::number(violation.limit, 'f', 1) : "--"));
-        m_violationTable->setItem(row, 5, new QTableWidgetItem(QString("-%1").arg(violation.penalty)));
+
+        QTableWidgetItem* penaltyItem = new QTableWidgetItem(QString("-%1").arg(violation.penalty));
+        penaltyItem->setTextAlignment(Qt::AlignCenter);
+        penaltyItem->setForeground(QBrush(QColor(255, 68, 102)));
+        m_violationTable->setItem(row, 5, penaltyItem);
     }
 
     m_violationTable->scrollToBottom();
@@ -528,9 +587,11 @@ void ABDrivingReportWidget::updateViolationTable(const QList<ViolationItem>& vio
 
 void ABDrivingReportWidget::updateCoachAdvice(const QString& advice)
 {
-    m_aiReportLabel->setText(advice.trimmed().isEmpty()
+    const QString text = advice.trimmed().isEmpty()
         ? "No coach advice provided."
-        : advice.trimmed());
+        : advice.trimmed();
+    m_aiReportLabel->setTextFormat(Qt::RichText);
+    m_aiReportLabel->setText(coachAdviceHtml(text));
 }
 
 void ABDrivingReportWidget::resetBreakdownChart()

@@ -14,7 +14,7 @@ namespace PhantomDrive {
 
 #include "PhantomDrive_global.h"
 
-// Full-circle speedometer gauge (0-240 km/h) — compact 200x200.
+// Full-circle speedometer gauge (0-120 km/h) — compact 200x200.
 class SpeedometerWidget : public QWidget
 {
     Q_OBJECT
@@ -30,7 +30,7 @@ protected:
 
 private:
     qreal m_speed     = 0.0;
-    qreal m_maxSpeed  = 240.0;
+    qreal m_maxSpeed  = 120.0;
     qreal m_speedLimit = 0.0;
     bool  m_redLight  = false;
 };

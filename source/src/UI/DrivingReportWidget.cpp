@@ -16,6 +16,51 @@ namespace PhantomDrive {
 
 namespace {
 constexpr int kChartWindowSeconds = 60;
+
+QString scoreBandLabel(qreal score)
+{
+    if (score >= 85.0) {
+        return QStringLiteral("Excellent");
+    }
+    if (score >= 70.0) {
+        return QStringLiteral("Good");
+    }
+    return QStringLiteral("Need Practice");
+}
+
+QColor violationTagColor(ViolationType type)
+{
+    switch (type) {
+    case ViolationType::SpeedOverLimit:
+        return QColor(255, 215, 0, 70);
+    case ViolationType::RedLight:
+        return QColor(255, 68, 102, 75);
+    case ViolationType::Collision:
+    case ViolationType::PedestrianCollision:
+        return QColor(255, 68, 102, 95);
+    case ViolationType::WrongWay:
+        return QColor(180, 79, 255, 80);
+    default:
+        return QColor(0, 180, 255, 55);
+    }
+}
+
+QString coachAdviceHtml(const QStringList& lines)
+{
+    QString html = QStringLiteral("<div style='color:#C8DCFF;'>");
+    for (const QString& rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+        html += QStringLiteral(
+            "<div style='margin-bottom:8px; padding:10px 12px; border:1px solid rgba(0,180,255,70);"
+            " border-radius:8px; background-color:rgba(8,14,32,185);'>%1</div>")
+            .arg(line.toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br>")));
+    }
+    html += QStringLiteral("</div>");
+    return html;
+}
 }
 
 DrivingReportWidget::DrivingReportWidget(QWidget *parent)
@@ -148,7 +193,9 @@ QFrame* DrivingReportWidget::createCard(const QString& title, QWidget* content)
 QWidget* DrivingReportWidget::createSummaryCard(const QString& title, QLabel*& valueLabel, const QString& objectName)
 {
     QFrame* card = new QFrame(this);
-    card->setObjectName(QStringLiteral("neonCard"));
+    card->setObjectName(objectName == QStringLiteral("bigNumberYellow")
+        ? QStringLiteral("scoreSummaryCard")
+        : QStringLiteral("neonCard"));
 
     QVBoxLayout* layout = new QVBoxLayout(card);
     layout->setContentsMargins(16, 16, 16, 16);
@@ -729,9 +776,10 @@ void DrivingReportWidget::setCoachReportMarkdown(const QString& markdown)
     }
 
     const QString text = markdown.trimmed();
-    m_aiReportLabel->setText(text.isEmpty()
-        ? QStringLiteral("Waiting for AI coach report...")
-        : text);
+    QStringList lines;
+    lines << (text.isEmpty() ? QStringLiteral("Waiting for AI coach report...") : text);
+    m_aiReportLabel->setTextFormat(Qt::RichText);
+    m_aiReportLabel->setText(coachAdviceHtml(lines));
 }
 
 void DrivingReportWidget::setMockDataEnabled(bool enabled)
@@ -910,9 +958,19 @@ void DrivingReportWidget::updateViolationTable()
 
         const QDateTime dt = QDateTime::fromMSecsSinceEpoch(v.timestamp);
         m_violationTable->setItem(row, 0, new QTableWidgetItem(dt.isValid() ? dt.toString(QStringLiteral("hh:mm:ss")) : QStringLiteral("--:--:--")));
-        m_violationTable->setItem(row, 1, new QTableWidgetItem(violationTypeDisplay(v.type)));
+
+        QTableWidgetItem* typeItem = new QTableWidgetItem(QStringLiteral("  %1  ").arg(violationTypeDisplay(v.type)));
+        typeItem->setTextAlignment(Qt::AlignCenter);
+        typeItem->setBackground(QBrush(violationTagColor(v.type)));
+        typeItem->setForeground(QBrush(QColor(232, 244, 255)));
+        m_violationTable->setItem(row, 1, typeItem);
+
         m_violationTable->setItem(row, 2, new QTableWidgetItem(v.description.isEmpty() ? QStringLiteral("Violation event") : v.description));
-        m_violationTable->setItem(row, 3, new QTableWidgetItem(QStringLiteral("-%1").arg(v.penaltyPoints)));
+
+        QTableWidgetItem* penaltyItem = new QTableWidgetItem(QStringLiteral("-%1").arg(v.penaltyPoints));
+        penaltyItem->setTextAlignment(Qt::AlignCenter);
+        penaltyItem->setForeground(QBrush(QColor(255, 68, 102)));
+        m_violationTable->setItem(row, 3, penaltyItem);
     }
 }
 
@@ -938,7 +996,8 @@ void DrivingReportWidget::updateCoachAdvice()
         lines << QStringLiteral("Waiting for AI coach report...");
     }
 
-    m_aiReportLabel->setText(lines.join(QStringLiteral("\n\n")));
+    m_aiReportLabel->setTextFormat(Qt::RichText);
+    m_aiReportLabel->setText(coachAdviceHtml(lines));
 }
 
 void DrivingReportWidget::updateHistoryChart()
@@ -1017,7 +1076,12 @@ void DrivingReportWidget::updateSummaryLabels()
             : QString::number(m_currentReport.totalScore, 'f', 1));
     }
     if (m_gradeLabel) {
-        m_gradeLabel->setText(m_currentReport.grade.isEmpty() ? QStringLiteral("--") : m_currentReport.grade);
+        if (m_currentReport.grade.isEmpty()) {
+            m_gradeLabel->setText(QStringLiteral("--"));
+        } else {
+            m_gradeLabel->setText(QStringLiteral("%1 / %2")
+                .arg(m_currentReport.grade, scoreBandLabel(m_currentReport.totalScore)));
+        }
     }
     if (m_violationCountLabel) {
         const int count = !m_currentReport.violations.isEmpty() ? m_currentReport.violations.size() : m_violations.size();

@@ -787,6 +787,14 @@ static const QString reportPanelQss() {
         QFrame#neonCard:hover {
             border: 1px solid rgba(0,180,255,130);
         }
+        QFrame#scoreSummaryCard {
+            background-color: rgba(18,18,48,235);
+            border: 2px solid rgba(255,54,101,150);
+            border-radius: 14px;
+        }
+        QFrame#scoreSummaryCard:hover {
+            border: 2px solid rgba(255,54,101,220);
+        }
 
         /* ---- 卡片标题 ---- */
         QLabel#cardTitle {
@@ -818,7 +826,7 @@ static const QString reportPanelQss() {
         }
         QLabel#bigNumberYellow {
             color: #FFD700;
-            font-size: 38px;
+            font-size: 46px;
             font-weight: bold;
             font-family: 'Consolas', 'Courier New', monospace;
         }
@@ -887,7 +895,7 @@ static const QString reportPanelQss() {
             color: rgba(200,220,255,200);
             font-size: 12px;
             line-height: 1.6;
-            background-color: rgba(8,14,32,160);
+            background-color: rgba(8,14,32,90);
             border-radius: 8px;
             padding: 10px 14px;
             border: 1px solid rgba(0,180,255,30);

@@ -15,11 +15,11 @@ namespace PhantomDrive {
 namespace {
 
 constexpr qreal WorldTileSize = 64.0;
-constexpr int ToolbarHeight = 188;
-constexpr int ToolbarMargin = 12;
-constexpr int ButtonHeight = 46;
-constexpr int ButtonGap = 10;
-constexpr int BottomStatusHeight = 42;
+constexpr int ToolbarHeight = 148;
+constexpr int ToolbarMargin = 10;
+constexpr int ButtonHeight = 36;
+constexpr int ButtonGap = 8;
+constexpr int BottomStatusHeight = 34;
 
 QString brushLabel(CustomTrackBrush brush)
 {
@@ -87,7 +87,7 @@ CustomTrackEditorWidget::CustomTrackEditorWidget(QWidget* parent)
     , m_currentBrush(CustomTrackBrush::Road)
     , m_tileSize(32.0)
 {
-    setMinimumSize(1040, 700);
+    setMinimumSize(900, 620);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
@@ -167,7 +167,7 @@ void CustomTrackEditorWidget::setupButtons()
         auto* button = new QPushButton(brushLabel(brush), this);
         button->setCheckable(true);
         button->setFocusPolicy(Qt::NoFocus);
-        button->setMinimumSize(86, ButtonHeight);
+        button->setMinimumSize(76, ButtonHeight);
         button->setToolTip(brush == CustomTrackBrush::Finish ? QStringLiteral("Finish / StartLine")
                            : brush == CustomTrackBrush::Checkpoint ? QStringLiteral("Checkpoint")
                            : brush == CustomTrackBrush::ItemBox ? QStringLiteral("Item Box")
@@ -255,7 +255,7 @@ void CustomTrackEditorWidget::layoutButtons()
     const int contentLeft = ToolbarMargin + 18;
     const int contentWidth = qMax(360, width() - (ToolbarMargin + 18) * 2);
     int x = contentLeft;
-    int y = 78;
+    int y = 64;
 
     const QList<CustomTrackBrush> brushes = {
         CustomTrackBrush::Road,
@@ -267,7 +267,7 @@ void CustomTrackEditorWidget::layoutButtons()
         CustomTrackBrush::ItemBox,
         CustomTrackBrush::Erase
     };
-    const int brushWidth = qBound(92, (contentWidth - ButtonGap * (brushes.size() - 1)) / brushes.size(), 150);
+    const int brushWidth = qBound(78, (contentWidth - ButtonGap * (brushes.size() - 1)) / brushes.size(), 150);
     for (int i = 0; i < brushes.size(); ++i) {
         QPushButton* button = m_brushButtons.value(brushes.at(i));
         if (button) {
@@ -277,9 +277,9 @@ void CustomTrackEditorWidget::layoutButtons()
     }
 
     x = contentLeft;
-    y = 132;
+    y = 106;
     const QList<QPushButton*> actions = {m_playButton, m_saveButton, m_loadButton, m_exportButton, m_backButton};
-    const int actionWidth = qBound(130, (contentWidth - ButtonGap * (actions.size() - 1)) / actions.size(), 250);
+    const int actionWidth = qBound(118, (contentWidth - ButtonGap * (actions.size() - 1)) / actions.size(), 250);
     for (int i = 0; i < actions.size(); ++i) {
         actions.at(i)->setGeometry(x, y, actionWidth, ButtonHeight);
         x += actionWidth + ButtonGap;
@@ -288,15 +288,17 @@ void CustomTrackEditorWidget::layoutButtons()
 
 QRectF CustomTrackEditorWidget::gridRect() const
 {
-    const qreal availableWidth = width() - ToolbarMargin * 2.0 - 18.0;
-    const qreal availableHeight = height() - ToolbarHeight - BottomStatusHeight - ToolbarMargin;
+    const qreal canvasLeft = ToolbarMargin + 8.0;
+    const qreal canvasTop = ToolbarHeight + 8.0;
+    const qreal availableWidth = qMax<qreal>(240.0, width() - canvasLeft * 2.0);
+    const qreal availableHeight = qMax<qreal>(180.0, height() - canvasTop - BottomStatusHeight - ToolbarMargin * 2.0);
     const qreal sizeByWidth = availableWidth / EditorCols;
     const qreal sizeByHeight = availableHeight / EditorRows;
     const qreal size = qMax<qreal>(8.0, qMin(sizeByWidth, sizeByHeight));
     const qreal gridWidth = size * EditorCols;
     const qreal gridHeight = size * EditorRows;
-    return QRectF(ToolbarMargin + 9.0 + (availableWidth - gridWidth) / 2.0,
-                  ToolbarHeight + (availableHeight - gridHeight) / 2.0,
+    return QRectF(canvasLeft + (availableWidth - gridWidth) / 2.0,
+                  canvasTop + (availableHeight - gridHeight) / 2.0,
                   gridWidth,
                   gridHeight);
 }
@@ -338,7 +340,7 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
     bg.setColorAt(1.0, QColor(19, 8, 38));
     painter.fillRect(rect(), bg);
 
-    const QRectF topBar(ToolbarMargin, ToolbarMargin, width() - ToolbarMargin * 2, 42);
+    const QRectF topBar(ToolbarMargin, ToolbarMargin, width() - ToolbarMargin * 2, 38);
     painter.setPen(QPen(panelBorder, 1));
     painter.setBrush(panelColor);
     painter.drawRoundedRect(topBar, 12, 12);
@@ -353,7 +355,7 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
     painter.drawText(topBar.adjusted(0, 0, -16, 0), Qt::AlignRight | Qt::AlignVCenter,
                      QStringLiteral("Speed 0 km/h  |  Limit 60 km/h  |  Light READY"));
 
-    const QRectF toolPanel(ToolbarMargin, 62, width() - ToolbarMargin * 2, 116);
+    const QRectF toolPanel(ToolbarMargin, 54, width() - ToolbarMargin * 2, 88);
     painter.setPen(QPen(panelBorder, 1));
     painter.setBrush(panelColor);
     painter.drawRoundedRect(toolPanel, 14, 14);
@@ -372,9 +374,9 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
     painter.drawRoundedRect(canvasPanel.adjusted(5, 5, -5, -5), 12, 12);
 
     const QRectF statusPanel(ToolbarMargin,
-                             height() - BottomStatusHeight + 8,
+                             height() - BottomStatusHeight + 6,
                              width() - ToolbarMargin * 2,
-                             BottomStatusHeight - 18);
+                             BottomStatusHeight - 14);
     painter.setBrush(panelColor);
     painter.setPen(QPen(panelBorder, 1));
     painter.drawRoundedRect(statusPanel, 10, 10);

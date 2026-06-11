@@ -14,7 +14,7 @@ using namespace PhantomDrive;
 
 namespace {
 
-constexpr qreal kSpeedometerMaxKmh = 240.0;
+constexpr qreal kSpeedometerMaxKmh = 120.0;
 
 QColor speedStateColor(qreal speed, qreal speedLimit)
 {
@@ -136,14 +136,14 @@ void SpeedometerWidget::paintEvent(QPaintEvent*)
         }
     }
 
-    // ---- Speed labels: 0, 60, 120, 180, 240 ----
+    // ---- Speed labels: 0, 30, 60, 90, 120 ----
     {
         const int maxVal = static_cast<int>(m_maxSpeed);
         const int fs = qMax(6, static_cast<int>(radius * 0.11));
         QFont lf("Segoe UI", fs, QFont::Bold);
         p.setFont(lf);
         p.setPen(QColor(180, 210, 255));
-        const QList<int> labelVals = {0, 60, 120, 180, 240};
+        const QList<int> labelVals = {0, 30, 60, 90, 120};
         for (int v : labelVals) {
             if (v > maxVal) continue;
             const qreal frac = static_cast<qreal>(v) / m_maxSpeed;
