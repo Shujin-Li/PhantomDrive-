@@ -2634,8 +2634,12 @@ void MainWindow::handlePowerupCollectedForPlayer(PhantomDrive::PowerupType type,
     } else if (effectiveType == PowerupType::Missile && m_powerupWorld && targetPhysics) {
         const QString targetId = m_powerupWorld->findBestMissileTarget(
             *targetPosition, targetPhysics->getRotation(), m_aiManager);
-        notifyArcadeHUD(QStringLiteral("Missile"), 1500);
-        Q_UNUSED(targetId);
+        if (!targetId.isEmpty()) {
+            m_powerupWorld->spawnMissile(*targetPosition, targetId);
+            notifyArcadeHUD(QStringLiteral("Missile"), 1500);
+        } else if (m_arcadeHUD) {
+            m_arcadeHUD->showRaceBanner(QStringLiteral("No target"));
+        }
     } else if (effectiveType == PowerupType::OilSlick && m_powerupWorld && targetPhysics) {
         const qreal radians = qDegreesToRadians(targetPhysics->getRotation());
         const QVector2D dropPos = *targetPosition

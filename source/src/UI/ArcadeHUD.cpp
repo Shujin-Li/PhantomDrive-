@@ -14,6 +14,8 @@ using namespace PhantomDrive;
 
 namespace {
 
+constexpr qreal kSpeedometerMaxKmh = 240.0;
+
 QColor speedStateColor(qreal speed, qreal speedLimit)
 {
     if (speedLimit > 0.0) {
@@ -397,7 +399,7 @@ void ArcadeHUD::setupUI()
     // SPEEDOMETER (200x200px — compact)
     // ========================================================================
     m_speedo = new SpeedometerWidget(this);
-    m_speedo->setMaxSpeed(240.0);
+    m_speedo->setMaxSpeed(kSpeedometerMaxKmh);
     m_speedo->setFixedSize(200, 200);
     root->addWidget(m_speedo, 0, Qt::AlignHCenter);
 
@@ -707,8 +709,8 @@ void ArcadeHUD::updateSpeedDisplay()
 // ---------------------------------------------------------------------------
 void ArcadeHUD::updateSpeed(qreal speed)
 {
-    m_currentSpeed = speed;
-    if (m_speedBigLabel) m_speedBigLabel->setText(QString::number(static_cast<int>(speed)));
+    m_currentSpeed = qBound(0.0, speed, kSpeedometerMaxKmh);
+    if (m_speedBigLabel) m_speedBigLabel->setText(QString::number(static_cast<int>(m_currentSpeed)));
     updateSpeedDisplay();
 }
 
