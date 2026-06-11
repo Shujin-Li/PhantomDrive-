@@ -33,6 +33,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDialog>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHash>
@@ -41,12 +42,16 @@
 #include <QLayoutItem>
 #include <QMessageBox>
 #include <QPointer>
+#include <QPainter>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSpacerItem>
 #include <QStatusBar>
 #include <QTextEdit>
 #include <QVBoxLayout>
 #include <QVariant>
+#include <QDir>
+#include <QFileInfo>
 #include <QRandomGenerator>
 #include <QtMath>
 #include <QGraphicsOpacityEffect>
@@ -157,6 +162,70 @@ void addGateCheckpoint(TrackData* track, int id, int routeIndex,
 constexpr qreal kPhysicsMaxSpeed = 300.0;
 constexpr qreal kDisplayMaxSpeedKmh = 120.0;
 constexpr qreal kTileSize = 64.0;
+
+QString visualAssetPath(const QString& relativePath)
+{
+    const QString assetRelative = QStringLiteral("visual_upgrade/phantomdrive_direct_use_assets/%1").arg(relativePath);
+    const QStringList roots = {
+        QCoreApplication::applicationDirPath() + QStringLiteral("/assets"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../assets"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../../assets"),
+        QDir::currentPath() + QStringLiteral("/assets"),
+        QDir::currentPath() + QStringLiteral("/source/assets"),
+        QDir::currentPath()
+    };
+
+    for (const QString& root : roots) {
+        const QString candidate = QDir(root).filePath(assetRelative);
+        if (QFileInfo::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return QString();
+}
+
+class MenuBackgroundLayer : public QWidget
+{
+public:
+    explicit MenuBackgroundLayer(QWidget* parent)
+        : QWidget(parent)
+        , m_background(visualAssetPath(QStringLiteral("menu/pd_main_menu_bg_phantomdrive_1920x1080.png")))
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAutoFillBackground(false);
+    }
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (watched == parentWidget() && event && event->type() == QEvent::Resize) {
+            setGeometry(parentWidget()->rect());
+            lower();
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        painter.fillRect(rect(), QColor(5, 8, 22));
+
+        if (m_background.isNull()) {
+            return;
+        }
+
+        const QSize scaledSize = m_background.size().scaled(size(), Qt::KeepAspectRatioByExpanding);
+        const QRect target((width() - scaledSize.width()) / 2,
+                           (height() - scaledSize.height()) / 2,
+                           scaledSize.width(),
+                           scaledSize.height());
+        painter.drawPixmap(target, m_background);
+    }
+
+private:
+    QPixmap m_background;
+};
 
 bool tileAtIsStartFinish(PhantomDrive::TrackData* track, const QVector2D& position)
 {
@@ -1030,15 +1099,29 @@ void MainWindow::showArcadeSetupDialog()
 
 void MainWindow::styleMainMenu()
 {
+    if (ui->pageMenu) {
+        auto* background = ui->pageMenu->findChild<MenuBackgroundLayer*>(QStringLiteral("mainMenuVisualBackground"));
+        if (!background) {
+            background = new MenuBackgroundLayer(ui->pageMenu);
+            background->setObjectName(QStringLiteral("mainMenuVisualBackground"));
+        }
+        background->setGeometry(ui->pageMenu->rect());
+        background->lower();
+        background->show();
+        ui->pageMenu->installEventFilter(background);
+        ui->pageMenu->setStyleSheet(QStringLiteral("QWidget#pageMenu{background:transparent;}"));
+    }
+
     if (ui->label) {
         ui->label->setObjectName(QStringLiteral("label_MainLogo"));
-        ui->label->setText(QStringLiteral("PHANTOMDRIVE"));
-        ui->label->setMinimumHeight(120);
+        ui->label->clear();
+        ui->label->setVisible(false);
     }
 
     if (ui->menuGridLayout) {
         ui->menuGridLayout->setContentsMargins(96, 74, 96, 74);
         ui->menuGridLayout->setVerticalSpacing(20);
+        ui->menuGridLayout->setRowMinimumHeight(0, 300);
         ui->menuGridLayout->setRowStretch(0, 0);
         ui->menuGridLayout->setRowStretch(1, 1);
     }

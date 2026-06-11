@@ -10,10 +10,15 @@
 #include <QMouseEvent>
 #include <QPen>
 #include <QBrush>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QFont>
 #include <QFontMetrics>
+#include <QHash>
 #include <QRadialGradient>
 #include <QTimer>
+#include <QPixmap>
 #include <QtMath>
 #include <QDebug>
 
@@ -45,6 +50,53 @@ QString normalizedPlayerId(const QString& playerId)
 constexpr int kCollisionImpactDurationMs = 320;
 constexpr int kCollisionImpactCooldownMs = 200;
 constexpr int kMaxCollisionImpacts = 5;
+constexpr qreal kTrafficLightVisualScale = 1.12;
+
+QString visualAssetPath(const QString& relativePath)
+{
+    const QString assetRelative = QStringLiteral("visual_upgrade/phantomdrive_direct_use_assets/%1").arg(relativePath);
+    const QStringList roots = {
+        QCoreApplication::applicationDirPath() + QStringLiteral("/assets"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../assets"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../../assets"),
+        QDir::currentPath() + QStringLiteral("/assets"),
+        QDir::currentPath() + QStringLiteral("/source/assets"),
+        QDir::currentPath()
+    };
+
+    for (const QString& root : roots) {
+        const QString candidate = QDir(root).filePath(assetRelative);
+        if (QFileInfo::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return QString();
+}
+
+const QPixmap& visualPixmap(const QString& relativePath)
+{
+    static QHash<QString, QPixmap> cache;
+    auto it = cache.find(relativePath);
+    if (it == cache.end()) {
+        it = cache.insert(relativePath, QPixmap(visualAssetPath(relativePath)));
+    }
+    return it.value();
+}
+
+QString powerupIconPath(const QString& powerupType)
+{
+    const QString type = powerupType.trimmed().toLower();
+    if (type.contains(QStringLiteral("boost"))) return QStringLiteral("powerups/pd_powerup_boost.png");
+    if (type.contains(QStringLiteral("shield"))) return QStringLiteral("powerups/pd_powerup_shield.png");
+    if (type.contains(QStringLiteral("missile"))) return QStringLiteral("powerups/pd_powerup_missile.png");
+    if (type.contains(QStringLiteral("oil"))) return QStringLiteral("powerups/pd_powerup_oil.png");
+    if (type.contains(QStringLiteral("emp"))) return QStringLiteral("powerups/pd_powerup_emp.png");
+    if (type.contains(QStringLiteral("invis"))) return QStringLiteral("powerups/pd_powerup_invisibility.png");
+    if (type.contains(QStringLiteral("repair"))) return QStringLiteral("powerups/pd_powerup_repair.png");
+    if (type.contains(QStringLiteral("teleport"))) return QStringLiteral("powerups/pd_powerup_teleport.png");
+    if (type.contains(QStringLiteral("magnet"))) return QStringLiteral("powerups/pd_powerup_magnet.png");
+    return QString();
+}
 
 void dumpTrackLayoutForDebug(const TrackData* track, const QString& label)
 {
@@ -961,20 +1013,32 @@ void GameViewWidget::drawPowerupBox(QPainter& painter, const GameRenderObject& b
     qreal halfH = box.size.height() * m_renderState.cameraZoom / 2;
 
     QRectF boxRect(center.x() - halfW, center.y() - halfH, halfW * 2, halfH * 2);
+    const QString powerupType = box.extraData.value(QStringLiteral("powerupType")).toString();
+    const QString iconPath = powerupIconPath(powerupType);
+    const QPixmap& icon = iconPath.isEmpty() ? QPixmap() : visualPixmap(iconPath);
 
     painter.setBrush(QBrush(box.color));
     painter.setPen(QPen(box.color.lighter(140), 3));
     painter.drawRoundedRect(boxRect, 4, 4);
 
-    painter.setPen(Qt::white);
-    painter.setFont(QFont("Arial", box.label.size() > 2 ? 9 : 13, QFont::Bold));
-    painter.drawText(boxRect, Qt::AlignCenter, box.label);
+    if (!icon.isNull()) {
+        const qreal iconSize = qMin<qreal>(48.0, qMax<qreal>(28.0, 40.0 * m_renderState.cameraZoom));
+        const QRectF iconRect(center.x() - iconSize / 2.0,
+                              center.y() - iconSize / 2.0,
+                              iconSize,
+                              iconSize);
+        painter.drawPixmap(iconRect, icon, icon.rect());
+    } else {
+        painter.setPen(Qt::white);
+        painter.setFont(QFont("Arial", box.label.size() > 2 ? 9 : 13, QFont::Bold));
+        painter.drawText(boxRect, Qt::AlignCenter, box.label);
+    }
 
     painter.setPen(QColor(255, 255, 255, 210));
     painter.setFont(QFont("Arial", 8));
     painter.drawText(QRectF(center.x() - 38, center.y() + halfH + 4, 76, 14),
                      Qt::AlignCenter,
-                     box.extraData.value(QStringLiteral("powerupType")).toString());
+                     powerupType);
 }
 
 void GameViewWidget::drawWorldEffects(QPainter& painter)
