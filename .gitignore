@@ -1,0 +1,12 @@
+build/
+build*/
+cmake-build-*/
+windows-release/
+*.exe
+*.dll
+*.pdb
+*.obj
+*.lib
+*.zip
+*.7z
+*.rar
