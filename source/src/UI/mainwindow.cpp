@@ -1100,7 +1100,7 @@ void MainWindow::showArcadeSetupDialog()
 void MainWindow::styleMainMenu()
 {
     if (ui->pageMenu) {
-        auto* background = ui->pageMenu->findChild<MenuBackgroundLayer*>(QStringLiteral("mainMenuVisualBackground"));
+        QWidget* background = ui->pageMenu->findChild<QWidget*>(QStringLiteral("mainMenuVisualBackground"));
         if (!background) {
             background = new MenuBackgroundLayer(ui->pageMenu);
             background->setObjectName(QStringLiteral("mainMenuVisualBackground"));

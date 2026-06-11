@@ -374,6 +374,10 @@ install(TARGETS PhantomDriveApp
     RUNTIME DESTINATION bin
 )
 
+install(DIRECTORY assets/
+    DESTINATION bin/assets
+)
+
 if(PHANTOMDRIVE_BUILD_TESTS)
     add_executable(test_main_window
         tests/test_main_window.cpp
@@ -450,4 +454,3 @@ if(PHANTOMDRIVE_BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
 endif()
-
