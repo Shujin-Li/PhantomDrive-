@@ -1015,7 +1015,7 @@ void GameViewWidget::drawPowerupBox(QPainter& painter, const GameRenderObject& b
     QRectF boxRect(center.x() - halfW, center.y() - halfH, halfW * 2, halfH * 2);
     const QString powerupType = box.extraData.value(QStringLiteral("powerupType")).toString();
     const QString iconPath = powerupIconPath(powerupType);
-    const QPixmap& icon = iconPath.isEmpty() ? QPixmap() : visualPixmap(iconPath);
+    const QPixmap icon = iconPath.isEmpty() ? QPixmap() : visualPixmap(iconPath);
 
     painter.setBrush(QBrush(box.color));
     painter.setPen(QPen(box.color.lighter(140), 3));
@@ -1118,8 +1118,8 @@ void GameViewWidget::drawCollisionImpacts(QPainter& painter)
 void GameViewWidget::drawTrafficLight(QPainter& painter, const GameRenderObject& light)
 {
     QPointF center = worldToScreen(light.position);
-    qreal halfW = light.size.width() * m_renderState.cameraZoom / 2;
-    qreal halfH = light.size.height() * m_renderState.cameraZoom / 2;
+    qreal halfW = light.size.width() * m_renderState.cameraZoom * kTrafficLightVisualScale / 2;
+    qreal halfH = light.size.height() * m_renderState.cameraZoom * kTrafficLightVisualScale / 2;
 
     QRectF poleRect(center.x() - halfW * 0.3, center.y() - halfH, halfW * 0.6, halfH * 2);
     painter.fillRect(poleRect, QColor(52, 58, 64));
@@ -1160,9 +1160,14 @@ void GameViewWidget::drawSpeedLimitSign(QPainter& painter, const GameRenderObjec
     painter.fillRect(poleRect, QColor(127, 140, 141));
 
     QRectF signRect(center.x() - halfW, center.y() - halfH * 2, halfW * 2, halfH * 2);
-    painter.setBrush(QBrush(QColor(255, 255, 255)));
-    painter.setPen(QPen(QColor(231, 76, 60), 3));
-    painter.drawEllipse(signRect);
+    const QPixmap& signImage = visualPixmap(QStringLiteral("traffic/pd_speed_limit_60.png"));
+    if (!signImage.isNull()) {
+        painter.drawPixmap(signRect, signImage, signImage.rect());
+    } else {
+        painter.setBrush(QBrush(QColor(255, 255, 255)));
+        painter.setPen(QPen(QColor(231, 76, 60), 3));
+        painter.drawEllipse(signRect);
+    }
 
     painter.setPen(QColor(44, 62, 80));
     painter.setFont(QFont("Arial", 10, QFont::Bold));
@@ -1176,18 +1181,23 @@ void GameViewWidget::drawPedestrianCrossing(QPainter& painter, const GameRenderO
     qreal halfH = crossing.size.height() * m_renderState.cameraZoom / 2;
 
     QRectF crossRect(center.x() - halfW, center.y() - halfH, halfW * 2, halfH * 2);
-    painter.fillRect(crossRect, QColor(255, 255, 255, 80));
+    const QPixmap& crosswalkImage = visualPixmap(QStringLiteral("traffic/pd_crosswalk_stripes.png"));
+    if (!crosswalkImage.isNull()) {
+        painter.drawPixmap(crossRect, crosswalkImage, crosswalkImage.rect());
+    } else {
+        painter.fillRect(crossRect, QColor(255, 255, 255, 80));
 
-    painter.setPen(QPen(QColor(255, 255, 255), 2, Qt::DashLine));
-    painter.drawRect(crossRect);
+        painter.setPen(QPen(QColor(255, 255, 255), 2, Qt::DashLine));
+        painter.drawRect(crossRect);
 
-    int stripeCount = 5;
-    qreal stripeWidth = halfW * 2 / stripeCount;
-    for (int i = 0; i < stripeCount; ++i) {
-        if (i % 2 == 0) {
-            QRectF stripe(center.x() - halfW + i * stripeWidth, center.y() - halfH,
-                         stripeWidth, halfH * 2);
-            painter.fillRect(stripe, QColor(255, 255, 255, 150));
+        int stripeCount = 5;
+        qreal stripeWidth = halfW * 2 / stripeCount;
+        for (int i = 0; i < stripeCount; ++i) {
+            if (i % 2 == 0) {
+                QRectF stripe(center.x() - halfW + i * stripeWidth, center.y() - halfH,
+                              stripeWidth, halfH * 2);
+                painter.fillRect(stripe, QColor(255, 255, 255, 150));
+            }
         }
     }
 
@@ -1198,10 +1208,22 @@ void GameViewWidget::drawPedestrianCrossing(QPainter& painter, const GameRenderO
 
     const QVariant pedestrianValue = crossing.extraData.value(QStringLiteral("pedestrianCount"));
     const int pedestrianCount = qMax(1, pedestrianValue.isValid() ? pedestrianValue.toInt() : 3);
+    const QPixmap& pedestrianImage = visualPixmap(QStringLiteral("traffic/pd_pedestrian_walk.png"));
     for (int i = 0; i < pedestrianCount; ++i) {
         const qreal t = (i + 1.0) / (pedestrianCount + 1.0);
         const QPointF p(center.x() - halfW + t * halfW * 2.0,
                         center.y() - halfH * 0.55 + (i % 2) * halfH * 0.75);
+        if (!pedestrianImage.isNull()) {
+            const qreal personW = qBound<qreal>(18.0, halfW * 0.24, 34.0);
+            const qreal personH = personW * 1.45;
+            const QRectF personRect(p.x() - personW / 2.0,
+                                    p.y() - personH * 0.65,
+                                    personW,
+                                    personH);
+            painter.drawPixmap(personRect, pedestrianImage, pedestrianImage.rect());
+            continue;
+        }
+
         painter.setPen(QPen(QColor(44, 62, 80), 2));
         painter.setBrush(QColor(241, 196, 15));
         painter.drawEllipse(QPointF(p.x(), p.y() - 7), 5, 5);
