@@ -216,6 +216,7 @@ GameViewWidget::GameViewWidget(QWidget* parent)
     , m_playerShieldActive(false)
     , m_playerInvisibleActive(false)
     , m_playerMagnetActive(false)
+    , m_paused(false)
     , m_collisionImpactTimer(new QTimer(this))
     , m_lastCollisionImpactMs(-kCollisionImpactCooldownMs)
 {
@@ -574,6 +575,10 @@ void GameViewWidget::resetCamera()
 
 void GameViewWidget::showCollisionImpact(const QVector2D& worldPosition, qreal intensity)
 {
+    if (m_paused) {
+        return;
+    }
+
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     if (nowMs - m_lastCollisionImpactMs < kCollisionImpactCooldownMs) {
         return;
@@ -598,12 +603,32 @@ void GameViewWidget::showCollisionImpact(const QVector2D& worldPosition, qreal i
     update();
 }
 
+void GameViewWidget::setPaused(bool paused)
+{
+    if (m_paused == paused) {
+        return;
+    }
+
+    m_paused = paused;
+    if (m_paused) {
+        m_collisionImpactTimer->stop();
+    } else if (!m_collisionImpactEffects.isEmpty()) {
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        for (CollisionImpactEffect& effect : m_collisionImpactEffects) {
+            effect.startMs = nowMs;
+        }
+        m_collisionImpactTimer->start();
+    }
+    update();
+}
+
 void GameViewWidget::clearAll()
 {
     m_renderState.clear();
     m_currentTrack = nullptr;
     m_collisionImpactEffects.clear();
     m_collisionImpactTimer->stop();
+    m_paused = false;
     update();
 }
 
@@ -654,6 +679,10 @@ void GameViewWidget::paintEvent(QPaintEvent* event)
     }
 
     drawCollisionImpacts(painter);
+
+    if (m_paused) {
+        drawPausedOverlay(painter);
+    }
 }
 
 void GameViewWidget::resizeEvent(QResizeEvent* event)
@@ -1256,6 +1285,45 @@ void GameViewWidget::drawCollisionImpacts(QPainter& painter)
         painter.setPen(QPen(innerColor, qMax<qreal>(1.5, 2.4 * fade * zoomScale)));
         painter.drawEllipse(center, innerRadius, innerRadius);
     }
+
+    painter.restore();
+}
+
+void GameViewWidget::drawPausedOverlay(QPainter& painter)
+{
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    painter.fillRect(rect(), QColor(2, 8, 20, 105));
+
+    const QSize boxSize(qMin(360, qMax(240, width() / 4)), 96);
+    const QRect boxRect((width() - boxSize.width()) / 2,
+                        qMax(80, (height() - boxSize.height()) / 2 - 40),
+                        boxSize.width(),
+                        boxSize.height());
+
+    QLinearGradient bg(boxRect.topLeft(), boxRect.bottomRight());
+    bg.setColorAt(0.0, QColor(5, 18, 38, 238));
+    bg.setColorAt(1.0, QColor(18, 10, 42, 238));
+    painter.setBrush(bg);
+    painter.setPen(QPen(QColor(0, 230, 255), 2));
+    painter.drawRoundedRect(boxRect, 14, 14);
+
+    painter.setPen(QPen(QColor(255, 64, 150, 150), 1));
+    painter.drawRoundedRect(boxRect.adjusted(5, 5, -5, -5), 10, 10);
+
+    QFont titleFont(QStringLiteral("Segoe UI"), 28, QFont::Bold);
+    titleFont.setLetterSpacing(QFont::AbsoluteSpacing, 4);
+    painter.setFont(titleFont);
+    painter.setPen(QColor(238, 252, 255));
+    painter.drawText(boxRect.adjusted(0, 8, 0, -24), Qt::AlignCenter, QStringLiteral("PAUSED"));
+
+    QFont subFont(QStringLiteral("Segoe UI"), 10, QFont::DemiBold);
+    painter.setFont(subFont);
+    painter.setPen(QColor(120, 235, 255, 220));
+    painter.drawText(boxRect.adjusted(0, 58, 0, -8),
+                     Qt::AlignCenter,
+                     QStringLiteral("Press Resume to continue"));
 
     painter.restore();
 }

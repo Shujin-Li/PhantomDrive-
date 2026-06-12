@@ -34,8 +34,8 @@ InteractiveFeedback::InteractiveFeedback(QWidget* parent)
     , m_countdownStep(0)
     , m_queueTimer(new QTimer(this))
     , m_positionTimer(new QTimer(this))
-    , m_maxVisibleMessages(MAX_ACTIVE_MESSAGES)
-    , m_messageSpacing(10)
+    , m_maxVisibleMessages(2)
+    , m_messageSpacing(8)
     , m_isPaused(false)
     , m_centerMode(false)
 {
@@ -181,7 +181,8 @@ void InteractiveFeedback::updatePosition()
 
 void InteractiveFeedback::showFeedback(const QString& message, FeedbackType type)
 {
-    enqueueMessage(FeedbackMessage(message, type, static_cast<int>(type) + 1, 2000, true));
+    const int duration = (type == FeedbackType::Critical || type == FeedbackType::Milestone) ? 1900 : 1500;
+    enqueueMessage(FeedbackMessage(message, type, static_cast<int>(type) + 1, duration, true));
 }
 
 void InteractiveFeedback::showFeedback(const QString& message, int points, FeedbackType type)
@@ -193,7 +194,7 @@ void InteractiveFeedback::showFeedback(const QString& message, int points, Feedb
         displayText = QString("%1 %2").arg(message).arg(points);
     }
 
-    FeedbackMessage msg(displayText, type, static_cast<int>(type) + 1, 2500, true);
+    FeedbackMessage msg(displayText, type, static_cast<int>(type) + 1, 1700, true);
     enqueueMessage(msg);
 }
 
@@ -315,6 +316,14 @@ void InteractiveFeedback::showShield(bool active)
 void InteractiveFeedback::clearAll()
 {
     m_messageQueue.clear();
+    if (m_countdownTimer) {
+        m_countdownTimer->stop();
+        disconnect(m_countdownTimer, &QTimer::timeout, this, nullptr);
+    }
+    if (m_countdownLabel) {
+        m_countdownLabel->hide();
+    }
+    m_countdownStep = 0;
 
     for (QWidget* label : m_activeLabels) {
         label->deleteLater();
@@ -327,12 +336,19 @@ void InteractiveFeedback::pause()
 {
     m_isPaused = true;
     m_queueTimer->stop();
+    if (m_countdownTimer) {
+        m_countdownTimer->stop();
+    }
 }
 
 void InteractiveFeedback::resume()
 {
     m_isPaused = false;
     m_queueTimer->start();
+    if (m_countdownTimer && m_countdownLabel && m_countdownLabel->isVisible() && m_countdownStep > 0) {
+        m_countdownTimer->setSingleShot(true);
+        m_countdownTimer->start(900);
+    }
 }
 
 void InteractiveFeedback::enqueueMessage(const FeedbackMessage& msg)
@@ -365,10 +381,13 @@ void InteractiveFeedback::displayMessage(const FeedbackMessage& msg)
 
     label->setFont(QFont("Segoe UI", 18, QFont::Bold));
 
-    label->adjustSize();
-    const int maxLabelWidth = qMax(220, width() - 28);
-    const int labelWidth = qMin(qMax(label->width() + 44, 180), maxLabelWidth);
-    const int labelHeight = msg.text.size() > 28 ? 68 : 54;
+    const int maxLabelWidth = qMax(260, m_containerWidget->width() - 16);
+    const int desiredTextWidth = label->fontMetrics().horizontalAdvance(msg.text) + 72;
+    const int labelWidth = qBound(240, desiredTextWidth, maxLabelWidth);
+    label->setFixedWidth(labelWidth);
+
+    const int wrappedHeight = label->heightForWidth(labelWidth);
+    const int labelHeight = qBound(62, wrappedHeight, qMax(90, height() / 3));
     label->setFixedSize(labelWidth, labelHeight);
 
     auto* opacity = new QGraphicsOpacityEffect(label);
@@ -441,6 +460,15 @@ void InteractiveFeedback::animateMessage(QWidget* label, const FeedbackMessage& 
     group->start();
 
     QTimer::singleShot(msg.durationMs, this, [this, label, msg]() {
+        if (m_isPaused) {
+            QTimer::singleShot(250, this, [this, label, msg]() {
+                if (m_activeLabels.contains(label) && !m_isPaused) {
+                    animateMessage(label, FeedbackMessage(msg.text, msg.type, msg.priority, 0, msg.autoHide));
+                }
+            });
+            return;
+        }
+
         if (!m_activeLabels.contains(label)) return;
 
         QParallelAnimationGroup* fadeGroup = new QParallelAnimationGroup(label);
@@ -482,29 +510,29 @@ QString InteractiveFeedback::getStyleSheetForType(FeedbackType type, const QStri
 
     switch (type) {
     case FeedbackType::Positive:
-        bgColor = QColor(46, 204, 113, 230);
-        textColor = Qt::white;
-        borderColor = "#27AE60";
+        bgColor = QColor(8, 32, 28, 225);
+        textColor = QColor(220, 255, 244);
+        borderColor = "#00FFAA";
         break;
     case FeedbackType::Warning:
-        bgColor = QColor(243, 156, 18, 230);
-        textColor = Qt::white;
-        borderColor = "#F39C12";
+        bgColor = QColor(42, 30, 10, 225);
+        textColor = QColor(255, 238, 190);
+        borderColor = "#FFD700";
         break;
     case FeedbackType::Critical:
-        bgColor = QColor(231, 76, 60, 230);
-        textColor = Qt::white;
-        borderColor = "#E74C3C";
+        bgColor = QColor(44, 12, 24, 230);
+        textColor = QColor(255, 220, 230);
+        borderColor = "#FF4466";
         break;
     case FeedbackType::Powerup:
-        bgColor = QColor(155, 89, 182, 230);
-        textColor = Qt::white;
-        borderColor = "#9B59B6";
+        bgColor = QColor(22, 14, 46, 225);
+        textColor = QColor(232, 228, 255);
+        borderColor = "#B44FFF";
         break;
     case FeedbackType::Milestone:
-        bgColor = QColor(52, 152, 219, 230);
-        textColor = Qt::white;
-        borderColor = "#3498DB";
+        bgColor = QColor(8, 24, 44, 225);
+        textColor = QColor(220, 244, 255);
+        borderColor = "#00B4FF";
         break;
     case FeedbackType::Countdown:
         bgColor = QColor(44, 62, 80, 240);
@@ -525,9 +553,9 @@ QString InteractiveFeedback::getStyleSheetForType(FeedbackType type, const QStri
            .arg(bgColor.alpha()).arg(textColor.name().mid(1))
            .arg(borderColor);
     default:
-        bgColor = QColor(44, 62, 80, 220);
-        textColor = Qt::white;
-        borderColor = "#34495E";
+        bgColor = QColor(8, 14, 32, 220);
+        textColor = QColor(232, 244, 255);
+        borderColor = "#00B4FF";
         break;
     }
 
@@ -536,9 +564,9 @@ QString InteractiveFeedback::getStyleSheetForType(FeedbackType type, const QStri
             background-color: rgba(%1, %2, %3, %4);
             color: #%5;
             border: 2px solid %6;
-            border-radius: 8px;
-            padding: 8px 20px;
-            font-size: 18px;
+            border-radius: 14px;
+            padding: 10px 22px;
+            font-size: 17px;
             font-weight: bold;
             font-family: 'Segoe UI', 'Arial', sans-serif;
         }

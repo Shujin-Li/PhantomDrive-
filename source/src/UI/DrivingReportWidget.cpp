@@ -10,7 +10,9 @@
 #include <QAbstractItemView>
 #include <QResizeEvent>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSignalBlocker>
+#include <QSizePolicy>
 
 namespace PhantomDrive {
 
@@ -45,19 +47,89 @@ QColor violationTagColor(ViolationType type)
     }
 }
 
-QString coachAdviceHtml(const QStringList& lines)
+QString cleanCoachLine(QString line)
 {
-    QString html = QStringLiteral("<div style='color:#C8DCFF;'>");
-    for (const QString& rawLine : lines) {
-        const QString line = rawLine.trimmed();
+    line = line.trimmed();
+    line.remove(QRegularExpression(QStringLiteral("^[-*]\\s+")));
+    line.remove(QRegularExpression(QStringLiteral("^>\\s*")));
+    return line.trimmed();
+}
+
+QString coachAdviceHtml(const QString& markdown)
+{
+    QString text = markdown.trimmed();
+    if (text.isEmpty()) {
+        text = QStringLiteral("Waiting for AI coach report...");
+    }
+
+    QString html = QStringLiteral(
+        "<div style='color:#C8DCFF; font-size:14px; line-height:150%;'>");
+
+    QString currentTitle;
+    QStringList currentItems;
+    auto flushSection = [&]() {
+        if (currentTitle.isEmpty() && currentItems.isEmpty()) {
+            return;
+        }
+
+        html += QStringLiteral(
+            "<div style='margin-bottom:12px; padding:14px 16px;"
+            " border:1px solid rgba(0,180,255,95); border-radius:10px;"
+            " background-color:rgba(8,14,32,210);'>");
+
+        if (!currentTitle.isEmpty()) {
+            html += QStringLiteral(
+                "<div style='color:#00E5FF; font-size:16px; font-weight:700;"
+                " letter-spacing:0.5px; margin-bottom:8px;'>%1</div>")
+                .arg(currentTitle.toHtmlEscaped());
+        }
+
+        if (currentItems.isEmpty()) {
+            html += QStringLiteral("<div style='color:#AFC8E8;'>No details provided.</div>");
+        } else {
+            for (const QString& item : currentItems) {
+                html += QStringLiteral(
+                    "<div style='margin:5px 0; color:#DCEBFF;'>"
+                    "<span style='color:#00FFAA; font-weight:700;'>&bull;</span>"
+                    " <span>%1</span></div>")
+                    .arg(item.toHtmlEscaped());
+            }
+        }
+
+        html += QStringLiteral("</div>");
+        currentTitle.clear();
+        currentItems.clear();
+    };
+
+    const QStringList rawLines = text.split(QLatin1Char('\n'));
+    for (const QString& raw : rawLines) {
+        QString line = raw.trimmed();
         if (line.isEmpty()) {
             continue;
         }
-        html += QStringLiteral(
-            "<div style='margin-bottom:8px; padding:10px 12px; border:1px solid rgba(0,180,255,70);"
-            " border-radius:8px; background-color:rgba(8,14,32,185);'>%1</div>")
-            .arg(line.toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br>")));
+        if (line.startsWith(QStringLiteral("# "))) {
+            const QString reportTitle = line.mid(2).trimmed();
+            html += QStringLiteral(
+                "<div style='margin-bottom:12px; color:#E8F4FF; font-size:18px;"
+                " font-weight:800;'>%1</div>")
+                .arg(reportTitle.toHtmlEscaped());
+            continue;
+        }
+        if (line.startsWith(QStringLiteral("## "))) {
+            flushSection();
+            currentTitle = line.mid(3).trimmed();
+            continue;
+        }
+
+        const QString cleaned = cleanCoachLine(line);
+        if (!cleaned.isEmpty()) {
+            if (currentTitle.isEmpty()) {
+                currentTitle = QStringLiteral("报告说明");
+            }
+            currentItems << cleaned;
+        }
     }
+    flushSection();
     html += QStringLiteral("</div>");
     return html;
 }
@@ -478,7 +550,8 @@ void DrivingReportWidget::setupBottomSection(QVBoxLayout* rootLayout)
     m_aiReportLabel->setObjectName(QStringLiteral("coachText"));
     m_aiReportLabel->setWordWrap(true);
     m_aiReportLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    m_aiReportLabel->setMinimumHeight(170);
+    m_aiReportLabel->setMinimumHeight(360);
+    m_aiReportLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
     coachLayout->addWidget(m_aiReportLabel);
 
     bottom->addWidget(createCard(QStringLiteral("AI 教练建议 / Coach Advice"), m_coachAdviceWidget), 1);
@@ -776,10 +849,8 @@ void DrivingReportWidget::setCoachReportMarkdown(const QString& markdown)
     }
 
     const QString text = markdown.trimmed();
-    QStringList lines;
-    lines << (text.isEmpty() ? QStringLiteral("Waiting for AI coach report...") : text);
     m_aiReportLabel->setTextFormat(Qt::RichText);
-    m_aiReportLabel->setText(coachAdviceHtml(lines));
+    m_aiReportLabel->setText(coachAdviceHtml(text.isEmpty() ? QStringLiteral("Waiting for AI coach report...") : text));
 }
 
 void DrivingReportWidget::setMockDataEnabled(bool enabled)
@@ -997,7 +1068,7 @@ void DrivingReportWidget::updateCoachAdvice()
     }
 
     m_aiReportLabel->setTextFormat(Qt::RichText);
-    m_aiReportLabel->setText(coachAdviceHtml(lines));
+    m_aiReportLabel->setText(coachAdviceHtml(lines.join(QStringLiteral("\n\n"))));
 }
 
 void DrivingReportWidget::updateHistoryChart()

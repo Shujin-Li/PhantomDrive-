@@ -80,6 +80,7 @@ public:
 
     // Current race objective: "Next: CP1", "Next: FINISH", etc.
     void updateCurrentObjective(const QString& objective);
+    void setPaused(bool paused);
 
     void showRaceBanner(const QString& message);
     void showLapCompleted(int lapNumber);
@@ -196,6 +197,8 @@ private:
     QString m_trafficState     = "green";
     bool    m_blinkOn          = false;
     bool    m_twoPlayerMode    = false;
+    bool    m_paused           = false;
+    qint64  m_pauseStartedMs   = 0;
     QString m_gameMode         = "Arcade";
     // Powerup timers (msecs when each slot expires)
     qint64  m_powerup1ExpiryMs = 0;

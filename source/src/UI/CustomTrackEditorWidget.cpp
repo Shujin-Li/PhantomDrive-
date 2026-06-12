@@ -16,11 +16,15 @@ namespace PhantomDrive {
 namespace {
 
 constexpr qreal WorldTileSize = 64.0;
-constexpr int ToolbarHeight = 148;
+constexpr int ToolbarHeight = 178;
 constexpr int ToolbarMargin = 10;
 constexpr int ButtonHeight = 36;
 constexpr int ButtonGap = 8;
 constexpr int BottomStatusHeight = 34;
+constexpr int ToolPanelTop = 54;
+constexpr int ToolPanelHeight = 112;
+constexpr int BrushButtonTop = 76;
+constexpr int ActionButtonTop = 120;
 
 QString brushLabel(CustomTrackBrush brush)
 {
@@ -282,7 +286,7 @@ void CustomTrackEditorWidget::layoutButtons()
     const int contentLeft = ToolbarMargin + 18;
     const int contentWidth = qMax(360, width() - (ToolbarMargin + 18) * 2);
     int x = contentLeft;
-    int y = 64;
+    int y = BrushButtonTop;
 
     const QList<CustomTrackBrush> brushes = {
         CustomTrackBrush::Road,
@@ -299,16 +303,18 @@ void CustomTrackEditorWidget::layoutButtons()
         QPushButton* button = m_brushButtons.value(brushes.at(i));
         if (button) {
             button->setGeometry(x, y, brushWidth, ButtonHeight);
+            button->raise();
             x += brushWidth + ButtonGap;
         }
     }
 
     x = contentLeft;
-    y = 106;
+    y = ActionButtonTop;
     const QList<QPushButton*> actions = {m_playButton, m_saveButton, m_loadButton, m_exportButton, m_backButton};
     const int actionWidth = qBound(118, (contentWidth - ButtonGap * (actions.size() - 1)) / actions.size(), 250);
     for (int i = 0; i < actions.size(); ++i) {
         actions.at(i)->setGeometry(x, y, actionWidth, ButtonHeight);
+        actions.at(i)->raise();
         x += actionWidth + ButtonGap;
     }
 }
@@ -382,7 +388,7 @@ void CustomTrackEditorWidget::paintEvent(QPaintEvent* event)
     painter.drawText(topBar.adjusted(0, 0, -16, 0), Qt::AlignRight | Qt::AlignVCenter,
                      QStringLiteral("Speed 0 km/h  |  Limit 60 km/h  |  Light READY"));
 
-    const QRectF toolPanel(ToolbarMargin, 54, width() - ToolbarMargin * 2, 88);
+    const QRectF toolPanel(ToolbarMargin, ToolPanelTop, width() - ToolbarMargin * 2, ToolPanelHeight);
     painter.setPen(QPen(panelBorder, 1));
     painter.setBrush(panelColor);
     painter.drawRoundedRect(toolPanel, 14, 14);

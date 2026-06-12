@@ -7,6 +7,7 @@
 #include <QVector2D>
 #include <QList>
 #include <QSet>
+#include <QHash>
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
 #include "PhantomDrive_global.h"
@@ -87,6 +88,7 @@ private:
     PhantomDrive::DrivingReportWidget *m_reportWidget;
     QWidget *m_reportPage;   // cached pointer to the report page in stackedWidget
     QPushButton *m_btnFinishDrive;
+    QPushButton *m_btnPause;
     QComboBox *m_aiDifficultyCombo;
     QPushButton *m_btnLoadCustomTrack;
     QPushButton *m_btnCustomTrackMode;
@@ -104,6 +106,7 @@ private:
     PhantomDrive::TrackData *m_runtimeCustomTrack;
     QTimer *m_simTimer;
     QTimer *m_learningSessionTimer;   // auto-ends Learning Mode after max duration
+    QTimer *m_countdownFinishTimer;
     QString m_currentMode;
     QString m_customTrackPath;
     QComboBox* m_trackSelectCombo;
@@ -117,6 +120,13 @@ private:
     QString m_currentTrafficLightState;
     bool m_driveActive;
     bool m_countdownActive;
+    bool m_gamePaused;
+    int m_sessionGeneration;
+    int m_countdownRemainingMs;
+    qint64 m_countdownTimerStartedMs;
+    int m_countdownSessionGeneration;
+    int m_learningTimerRemainingMs;
+    qint64 m_learningTimerStartedMs;
     bool m_arcadeRaceFinished;
     bool m_customTrackPlaying;
     int m_lapsCompleted;
@@ -150,6 +160,8 @@ private:
     bool m_blockCheckpointsUntilLeaveNorth;
     bool m_wasInsideNextGate;
     QSet<QString> m_playerVehicleContacts;
+    QHash<QString, qreal> m_hudRaceProgressById;
+    QString m_hudRaceRouteSignature;
 
     void setupGameView();
     void setupVehiclePhysics();
@@ -159,6 +171,11 @@ private:
     void setupRaceSetupControls();
     void styleMainMenu();
     void setGameHeaderVisible(bool visible);
+    void clearTransientDrivingFeedback();
+    void toggleGamePaused();
+    void setGamePaused(bool paused);
+    void updatePauseButtonState();
+    void startCountdownFinishTimer(int remainingMs);
     void returnToMainMenuFromGame(bool finishWithReport);
     void exitApplicationFromGame();
     void initializeAIOpponents();

@@ -110,13 +110,44 @@ QColor violationTagColor(const QString& type)
 
 QString coachAdviceHtml(const QString& advice)
 {
-    const QStringList blocks = advice.split(QRegularExpression(QStringLiteral("\\n\\s*\\n")), Qt::SkipEmptyParts);
-    QString html = QStringLiteral("<div style='color:#C8DCFF;'>");
-    for (const QString& block : blocks) {
+    const QStringList blocks = advice.split(QRegularExpression(QStringLiteral("\\n\\s*(?=##\\s|#\\s)|\\n\\s*\\n")), Qt::SkipEmptyParts);
+    QString html = QStringLiteral("<div style='color:#C8DCFF; font-size:14px; line-height:150%;'>");
+    for (QString block : blocks) {
+        block = block.trimmed();
+        if (block.isEmpty()) {
+            continue;
+        }
+        QString title;
+        QStringList items;
+        const QStringList lines = block.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        for (QString line : lines) {
+            line = line.trimmed();
+            if (line.startsWith(QStringLiteral("# "))) {
+                title = line.mid(2).trimmed();
+            } else if (line.startsWith(QStringLiteral("## "))) {
+                title = line.mid(3).trimmed();
+            } else {
+                line.remove(QRegularExpression(QStringLiteral("^[-*]>?\\s*|^>\\s*")));
+                if (!line.trimmed().isEmpty()) {
+                    items << line.trimmed();
+                }
+            }
+        }
+        if (title.isEmpty()) {
+            title = QStringLiteral("Coach Note");
+        }
         html += QStringLiteral(
-            "<div style='margin-bottom:8px; padding:10px 12px; border:1px solid rgba(0,180,255,70);"
-            " border-radius:8px; background-color:rgba(8,14,32,185);'>%1</div>")
-            .arg(block.trimmed().toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br>")));
+            "<div style='margin-bottom:12px; padding:14px 16px; border:1px solid rgba(0,180,255,95);"
+            " border-radius:10px; background-color:rgba(8,14,32,210);'>"
+            "<div style='color:#00E5FF; font-size:16px; font-weight:700; margin-bottom:8px;'>%1</div>")
+            .arg(title.toHtmlEscaped());
+        for (const QString& item : items) {
+            html += QStringLiteral(
+                "<div style='margin:5px 0; color:#DCEBFF;'>"
+                "<span style='color:#00FFAA; font-weight:700;'>&bull;</span> %1</div>")
+                .arg(item.toHtmlEscaped());
+        }
+        html += QStringLiteral("</div>");
     }
     html += QStringLiteral("</div>");
     return html;
@@ -288,7 +319,7 @@ void ABDrivingReportWidget::setupUI()
     m_aiReportLabel = new QLabel("Waiting for report data...", advicePanel);
     m_aiReportLabel->setTextFormat(Qt::RichText);
     m_aiReportLabel->setWordWrap(true);
-    m_aiReportLabel->setMinimumHeight(80);
+    m_aiReportLabel->setMinimumHeight(240);
     m_aiReportLabel->setStyleSheet(
         "QLabel { color: #ecf0f1; font-size: 13px; line-height: 1.4; padding: 10px; "
         "background-color: rgba(15, 52, 96, 160); border-radius: 8px; }");

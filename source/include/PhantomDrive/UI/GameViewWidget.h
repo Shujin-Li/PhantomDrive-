@@ -57,6 +57,8 @@ public:
     void setCameraZoom(qreal zoom);
     void resetCamera();
     void showCollisionImpact(const QVector2D& worldPosition, qreal intensity = 1.0);
+    void setPaused(bool paused);
+    bool isPaused() const { return m_paused; }
 
 public slots:
     void clearAll();
@@ -90,6 +92,7 @@ private:
     void drawPedestrianCrossing(QPainter& painter, const GameRenderObject& crossing);
     void drawWorldEffects(QPainter& painter);
     void drawCollisionImpacts(QPainter& painter);
+    void drawPausedOverlay(QPainter& painter);
     void drawCheckpoints(QPainter& painter);
     void drawStartFinishMarkers(QPainter& painter);
     QPointF worldToScreen(const QVector2D& worldPos) const;
@@ -106,6 +109,7 @@ private:
     bool m_playerShieldActive;
     bool m_playerInvisibleActive;
     bool m_playerMagnetActive;
+    bool m_paused;
 
     struct CollisionImpactEffect {
         QVector2D worldPosition;

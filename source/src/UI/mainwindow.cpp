@@ -38,6 +38,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLayoutItem>
 #include <QMessageBox>
@@ -48,6 +49,7 @@
 #include <QResizeEvent>
 #include <QSpacerItem>
 #include <QStatusBar>
+#include <QStringList>
 #include <QTextEdit>
 #include <QVBoxLayout>
 #include <QVariant>
@@ -57,6 +59,9 @@
 #include <QtMath>
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
+
+#include <algorithm>
+#include <limits>
 
 using namespace PhantomDrive;
 
@@ -310,6 +315,439 @@ bool crossedCheckpointGate(const PhantomDrive::Checkpoint* cp,
     return false;
 }
 
+struct RaceHudEntry {
+    QString id;
+    int lap = 0;
+    int checkpoint = 0;
+    qreal progressPercent = 0.0;
+    qreal distanceToTarget = 0.0;
+    qreal absoluteProgress = 0.0;
+    int insertionOrder = 0;
+};
+
+qreal progressOnSegment(const QVector2D& position, const QVector2D& start, const QVector2D& end)
+{
+    const QVector2D segment = end - start;
+    const qreal lengthSq = segment.lengthSquared();
+    if (lengthSq <= 0.001) {
+        return 0.0;
+    }
+
+    return qBound<qreal>(0.0,
+                         QVector2D::dotProduct(position - start, segment) / lengthSq,
+                         1.0);
+}
+
+bool routeHasDuplicateEndpoint(const QList<Waypoint>& waypoints)
+{
+    return waypoints.size() > 1
+        && (waypoints.first().position - waypoints.last().position).lengthSquared() <= 1.0;
+}
+
+int routeSegmentCountFor(const QList<Waypoint>& waypoints)
+{
+    if (waypoints.size() < 2) {
+        return 1;
+    }
+    return routeHasDuplicateEndpoint(waypoints) ? waypoints.size() - 1 : waypoints.size();
+}
+
+qreal progressAlongWaypoints(const QVector2D& position, const QList<Waypoint>& waypoints)
+{
+    if (waypoints.size() < 2) {
+        return 0.0;
+    }
+
+    const int segmentCount = routeSegmentCountFor(waypoints);
+    qreal bestDistanceSq = std::numeric_limits<qreal>::max();
+    qreal bestProgress = 0.0;
+    for (int i = 0; i < segmentCount; ++i) {
+        const QVector2D start = waypoints.at(i).position;
+        const QVector2D end = waypoints.at((i + 1) % waypoints.size()).position;
+        const QVector2D segment = end - start;
+        const qreal lengthSq = segment.lengthSquared();
+        if (lengthSq <= 0.001) {
+            continue;
+        }
+
+        const qreal t = qBound<qreal>(0.0,
+                                      QVector2D::dotProduct(position - start, segment) / lengthSq,
+                                      1.0);
+        const QVector2D projected = start + segment * t;
+        const qreal distanceSq = (position - projected).lengthSquared();
+        if (distanceSq < bestDistanceSq) {
+            bestDistanceSq = distanceSq;
+            bestProgress = static_cast<qreal>(i) + t;
+        }
+    }
+
+    return bestProgress;
+}
+
+qreal progressAlongWaypointsNear(const QVector2D& position,
+                                 const QList<Waypoint>& waypoints,
+                                 qreal expectedAbsoluteProgress)
+{
+    if (waypoints.size() < 2) {
+        return 0.0;
+    }
+
+    const int segmentCount = routeSegmentCountFor(waypoints);
+    qreal bestScore = std::numeric_limits<qreal>::max();
+    qreal bestProgress = qMax<qreal>(0.0, expectedAbsoluteProgress);
+
+    for (int i = 0; i < segmentCount; ++i) {
+        const QVector2D start = waypoints.at(i).position;
+        const QVector2D end = waypoints.at((i + 1) % waypoints.size()).position;
+        const QVector2D segment = end - start;
+        const qreal lengthSq = segment.lengthSquared();
+        if (lengthSq <= 0.001) {
+            continue;
+        }
+
+        const qreal t = qBound<qreal>(0.0,
+                                      QVector2D::dotProduct(position - start, segment) / lengthSq,
+                                      1.0);
+        qreal candidate = static_cast<qreal>(i) + t;
+        while (candidate - expectedAbsoluteProgress > segmentCount * 0.5) {
+            candidate -= segmentCount;
+        }
+        while (expectedAbsoluteProgress - candidate > segmentCount * 0.5) {
+            candidate += segmentCount;
+        }
+
+        const QVector2D projected = start + segment * t;
+        const qreal distanceSq = (position - projected).lengthSquared();
+        const qreal progressDelta = candidate - expectedAbsoluteProgress;
+        const qreal score = distanceSq + (progressDelta * progressDelta * 4096.0);
+        if (score < bestScore) {
+            bestScore = score;
+            bestProgress = candidate;
+        }
+    }
+
+    return bestProgress;
+}
+
+QString routeSignatureFor(const QList<Waypoint>& waypoints)
+{
+    QStringList parts;
+    parts.reserve(waypoints.size());
+    for (const Waypoint& waypoint : waypoints) {
+        parts.append(QStringLiteral("%1,%2")
+                         .arg(qRound(waypoint.position.x()))
+                         .arg(qRound(waypoint.position.y())));
+    }
+    return parts.join(QLatin1Char('|'));
+}
+
+QList<Waypoint> firstOpponentWaypoints(PhantomDrive::AIOpponentManager* aiManager)
+{
+    if (!aiManager) {
+        return {};
+    }
+
+    const QList<PhantomDrive::AIOpponent*> opponents = aiManager->getAllOpponents();
+    for (const PhantomDrive::AIOpponent* ai : opponents) {
+        if (ai && !ai->getWaypoints().isEmpty()) {
+            return ai->getWaypoints();
+        }
+    }
+    return {};
+}
+
+QList<Waypoint> routeWaypointsFromTrack(PhantomDrive::TrackData* track)
+{
+    QList<Waypoint> route;
+    if (!track) {
+        return route;
+    }
+
+    auto appendUnique = [&route](const QVector2D& point) {
+        if (route.isEmpty() || (route.last().position - point).lengthSquared() > 1.0f) {
+            route.append(Waypoint(point, 110.0, false, 0, route.size()));
+        }
+    };
+
+    appendUnique(track->getStartPosition());
+    const QList<PhantomDrive::Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    for (PhantomDrive::Checkpoint* cp : checkpoints) {
+        if (cp) {
+            appendUnique(cp->getPosition());
+        }
+    }
+    appendUnique(track->getStartPosition());
+    return route;
+}
+
+QList<Waypoint> hudRankingWaypoints(PhantomDrive::AIOpponentManager* aiManager,
+                                    PhantomDrive::TrackData* track)
+{
+    QList<Waypoint> waypoints = firstOpponentWaypoints(aiManager);
+    if (waypoints.size() >= 2) {
+        return waypoints;
+    }
+    return routeWaypointsFromTrack(track);
+}
+
+qreal distanceToCheckpoint(PhantomDrive::TrackData* track,
+                           int checkpointIndex,
+                           const QVector2D& position)
+{
+    if (!track) {
+        return 0.0;
+    }
+
+    const QList<PhantomDrive::Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    if (checkpointIndex >= 0 && checkpointIndex < checkpoints.size() && checkpoints.at(checkpointIndex)) {
+        return (checkpoints.at(checkpointIndex)->getPosition() - position).length();
+    }
+
+    return (track->getStartPosition() - position).length();
+}
+
+qreal distanceToAiTarget(const PhantomDrive::AIOpponent* ai)
+{
+    if (!ai || ai->getWaypoints().isEmpty()) {
+        return 0.0;
+    }
+
+    const Waypoint waypoint = ai->getCurrentWaypoint();
+    return (waypoint.position - ai->getPosition()).length();
+}
+
+qreal playerRaceAbsoluteProgress(int lap,
+                                 int nextCheckpointIndex,
+                                 const QVector2D& position,
+                                 const QList<Waypoint>& route,
+                                 int totalCheckpoints)
+{
+    const int raceSegmentCount = qMax(1, totalCheckpoints + 1);
+    const int routeSegmentCount = routeSegmentCountFor(route);
+    const int boundedCheckpoint = qBound(0, nextCheckpointIndex, raceSegmentCount - 1);
+    const qreal expectedWithinLap = (static_cast<qreal>(boundedCheckpoint) / raceSegmentCount)
+        * routeSegmentCount;
+    const qreal expectedAbsolute = (qMax(0, lap) * routeSegmentCount) + expectedWithinLap;
+
+    if (route.size() >= 2) {
+        return progressAlongWaypointsNear(position, route, expectedAbsolute);
+    }
+
+    return expectedAbsolute;
+}
+
+qreal aiRaceAbsoluteProgress(const PhantomDrive::AIOpponent* ai)
+{
+    if (!ai) {
+        return 0.0;
+    }
+
+    const QList<Waypoint> waypoints = ai->getWaypoints();
+    const int waypointCount = waypoints.size();
+    const int routeSegmentCount = routeSegmentCountFor(waypoints);
+    if (waypointCount < 2) {
+        return qMax(0, ai->getCurrentLap()) * routeSegmentCount;
+    }
+
+    const int targetIndex = qBound(0, ai->getCurrentWaypointIndex(), waypointCount - 1);
+    if (targetIndex == 0 && ai->getCurrentLap() == 0 && ai->getCheckpointsPassed() == 0) {
+        return 0.0;
+    }
+
+    const int previousIndex = (targetIndex - 1 + waypointCount) % waypointCount;
+    qreal progressWithinLap = 0.0;
+    if (targetIndex == 0) {
+        progressWithinLap = progressOnSegment(ai->getPosition(),
+                                              waypoints.at(previousIndex).position,
+                                              waypoints.at(targetIndex).position);
+    } else {
+        progressWithinLap = (targetIndex - 1)
+            + progressOnSegment(ai->getPosition(),
+                                waypoints.at(previousIndex).position,
+                                waypoints.at(targetIndex).position);
+    }
+
+    return (qMax(0, ai->getCurrentLap()) * routeSegmentCount) + progressWithinLap;
+}
+
+QList<RaceHudEntry> buildRaceHudEntries(bool includeAi,
+                                        bool useFormalRaceProgress,
+                                        const QVector2D& p1Position,
+                                        int p1Lap,
+                                        int p1Checkpoint,
+                                        bool includeP2,
+                                        const QVector2D& p2Position,
+                                        int p2Lap,
+                                        int p2Checkpoint,
+                                        PhantomDrive::AIOpponentManager* aiManager,
+                                        PhantomDrive::TrackData* track,
+                                        int totalCheckpoints,
+                                        QHash<QString, qreal>* continuousProgressById,
+                                        QString* routeSignature)
+{
+    QList<RaceHudEntry> entries;
+    int order = 0;
+    const int checkpointTotal = qMax(0, totalCheckpoints);
+    const int segmentCount = qMax(1, checkpointTotal + 1);
+    const QList<Waypoint> rankingWaypoints = hudRankingWaypoints(aiManager, track);
+    const QString currentRouteSignature = routeSignatureFor(rankingWaypoints);
+    if (routeSignature && *routeSignature != currentRouteSignature) {
+        if (continuousProgressById) {
+            continuousProgressById->clear();
+        }
+        *routeSignature = currentRouteSignature;
+    }
+
+    auto applyFreeRouteProgress = [&](RaceHudEntry& entry, const QVector2D& position) {
+        if (rankingWaypoints.size() < 2) {
+            return;
+        }
+
+        const int waypointSegmentCount = routeSegmentCountFor(rankingWaypoints);
+        qreal continuousProgress = progressAlongWaypoints(position, rankingWaypoints);
+        if (continuousProgressById) {
+            const auto previousIt = continuousProgressById->constFind(entry.id);
+            if (previousIt != continuousProgressById->constEnd()) {
+                const qreal previous = previousIt.value();
+                qreal candidate = progressAlongWaypointsNear(position, rankingWaypoints, previous);
+                while (candidate - previous > waypointSegmentCount * 0.5) {
+                    candidate -= waypointSegmentCount;
+                }
+                while (previous - candidate > waypointSegmentCount * 0.5) {
+                    candidate += waypointSegmentCount;
+                }
+                continuousProgress = candidate;
+            }
+            continuousProgressById->insert(entry.id, continuousProgress);
+        }
+
+        if (checkpointTotal > 0
+            && entry.checkpoint >= checkpointTotal
+            && continuousProgress < ((entry.lap + 1) * waypointSegmentCount) - (waypointSegmentCount * 0.75)) {
+            continuousProgress = qMax(continuousProgress, ((entry.lap + 1) * waypointSegmentCount) - 0.001);
+            if (continuousProgressById) {
+                continuousProgressById->insert(entry.id, continuousProgress);
+            }
+        }
+
+        const qreal progressWithinLap = continuousProgress - (qFloor(continuousProgress / waypointSegmentCount) * waypointSegmentCount);
+        entry.lap = qFloor(continuousProgress / waypointSegmentCount);
+        entry.checkpoint = qFloor(progressWithinLap);
+        entry.progressPercent = qBound(0.0,
+                                       (progressWithinLap / waypointSegmentCount) * 100.0,
+                                       100.0);
+        entry.distanceToTarget = 1.0 - (progressWithinLap - qFloor(progressWithinLap));
+        entry.absoluteProgress = continuousProgress;
+    };
+
+    auto applyFormalProgressFields = [&](RaceHudEntry& entry, qreal absoluteProgress) {
+        entry.absoluteProgress = absoluteProgress;
+        const qreal progressWithinLap = absoluteProgress - (qFloor(absoluteProgress / segmentCount) * segmentCount);
+        entry.lap = qFloor(absoluteProgress / segmentCount);
+        entry.checkpoint = qFloor(progressWithinLap);
+        entry.progressPercent = qBound(0.0,
+                                       (progressWithinLap / segmentCount) * 100.0,
+                                       100.0);
+        entry.distanceToTarget = 1.0 - (progressWithinLap - qFloor(progressWithinLap));
+    };
+
+    auto appendPlayer = [&](const QString& id, const QVector2D& position, int lap, int checkpoint) {
+        const int boundedCheckpoint = qBound(0, checkpoint, checkpointTotal);
+        RaceHudEntry entry;
+        entry.id = id;
+        entry.lap = qMax(0, lap);
+        entry.checkpoint = boundedCheckpoint;
+        entry.progressPercent = checkpointTotal > 0
+            ? (static_cast<qreal>(boundedCheckpoint) / checkpointTotal) * 100.0
+            : 0.0;
+        entry.distanceToTarget = distanceToCheckpoint(track, boundedCheckpoint, position);
+        entry.insertionOrder = order++;
+        if (useFormalRaceProgress) {
+            applyFormalProgressFields(entry,
+                                      playerRaceAbsoluteProgress(lap,
+                                                                 boundedCheckpoint,
+                                                                 position,
+                                                                 rankingWaypoints,
+                                                                 checkpointTotal));
+        } else {
+            applyFreeRouteProgress(entry, position);
+        }
+        entries.append(entry);
+    };
+
+    appendPlayer(QStringLiteral("P1"), p1Position, p1Lap, p1Checkpoint);
+    if (includeP2) {
+        appendPlayer(QStringLiteral("P2"), p2Position, p2Lap, p2Checkpoint);
+    }
+
+    if (includeAi && aiManager) {
+        const QList<PhantomDrive::AIOpponent*> opponents = aiManager->getAllOpponents();
+        for (PhantomDrive::AIOpponent* ai : opponents) {
+            if (!ai || (!ai->isActive() && !ai->hasFinished()) || ai->getWaypoints().isEmpty()) {
+                continue;
+            }
+
+            RaceHudEntry entry;
+            entry.id = ai->getId();
+            entry.lap = qMax(0, ai->getCurrentLap());
+            entry.checkpoint = qMax(0, ai->getCheckpointsPassed());
+            entry.progressPercent = qBound(0.0, ai->getProgressPercentage(), 100.0);
+            entry.distanceToTarget = distanceToAiTarget(ai);
+            entry.insertionOrder = order++;
+            if (useFormalRaceProgress) {
+                applyFormalProgressFields(entry, aiRaceAbsoluteProgress(ai));
+            } else {
+                entry.absoluteProgress = aiRaceAbsoluteProgress(ai);
+                const int waypointSegmentCount = routeSegmentCountFor(rankingWaypoints);
+                const qreal progressWithinLap = entry.absoluteProgress
+                    - (qFloor(entry.absoluteProgress / waypointSegmentCount) * waypointSegmentCount);
+                entry.lap = qFloor(entry.absoluteProgress / waypointSegmentCount);
+                entry.checkpoint = qFloor(progressWithinLap);
+                entry.progressPercent = qBound(0.0,
+                                               (progressWithinLap / waypointSegmentCount) * 100.0,
+                                               100.0);
+                entry.distanceToTarget = 1.0 - (progressWithinLap - qFloor(progressWithinLap));
+            }
+            entries.append(entry);
+        }
+    }
+
+    std::stable_sort(entries.begin(), entries.end(), [](const RaceHudEntry& left,
+                                                        const RaceHudEntry& right) {
+        if (!qFuzzyCompare(left.absoluteProgress + 1.0, right.absoluteProgress + 1.0)) {
+            return left.absoluteProgress > right.absoluteProgress;
+        }
+        return left.insertionOrder < right.insertionOrder;
+    });
+
+    return entries;
+}
+
+int raceHudPositionFor(const QList<RaceHudEntry>& entries, const QString& id)
+{
+    for (int i = 0; i < entries.size(); ++i) {
+        if (entries.at(i).id == id) {
+            return i + 1;
+        }
+    }
+    return 1;
+}
+
+bool hasHudRankedAiOpponents(PhantomDrive::AIOpponentManager* aiManager)
+{
+    if (!aiManager) {
+        return false;
+    }
+
+    const QList<PhantomDrive::AIOpponent*> opponents = aiManager->getAllOpponents();
+    for (const PhantomDrive::AIOpponent* ai : opponents) {
+        if (ai && (ai->isActive() || ai->hasFinished()) && !ai->getWaypoints().isEmpty()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void dumpCustomTrackLayoutForDebug(PhantomDrive::TrackData* track, const QString& label)
 {
     Q_UNUSED(track);
@@ -425,6 +863,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_reportWidget(nullptr)
     , m_reportPage(nullptr)
     , m_btnFinishDrive(nullptr)
+    , m_btnPause(nullptr)
     , m_aiDifficultyCombo(nullptr)
     , m_btnLoadCustomTrack(nullptr)
     , m_btnCustomTrackMode(nullptr)
@@ -442,6 +881,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_runtimeCustomTrack(nullptr)
     , m_simTimer(nullptr)
     , m_learningSessionTimer(nullptr)
+    , m_countdownFinishTimer(new QTimer(this))
     , m_currentMode("Arcade")
     , m_customTrackPath()
     , m_trackSelectCombo(nullptr)
@@ -455,6 +895,13 @@ MainWindow::MainWindow(QWidget *parent)
     , m_currentTrafficLightState("green")
     , m_driveActive(false)
     , m_countdownActive(false)
+    , m_gamePaused(false)
+    , m_sessionGeneration(0)
+    , m_countdownRemainingMs(0)
+    , m_countdownTimerStartedMs(0)
+    , m_countdownSessionGeneration(0)
+    , m_learningTimerRemainingMs(0)
+    , m_learningTimerStartedMs(0)
     , m_arcadeRaceFinished(false)
     , m_customTrackPlaying(false)
     , m_lapsCompleted(0)
@@ -559,6 +1006,44 @@ MainWindow::MainWindow(QWidget *parent)
         )");
     }
 
+    if (!m_btnPause && ui->hudLayout && ui->btn_Back) {
+        m_btnPause = new QPushButton(QStringLiteral("Pause"), this);
+        m_btnPause->setObjectName(QStringLiteral("btn_PauseGame"));
+        m_btnPause->setFixedHeight(52);
+        m_btnPause->setMinimumWidth(110);
+        m_btnPause->setStyleSheet(R"(
+            QPushButton {
+                background: rgba(10, 38, 72, 220);
+                color: #66F7FF;
+                border: 2px solid #00D6FF;
+                border-radius: 8px;
+                padding: 4px 16px;
+                font-size: 12px;
+                font-weight: bold;
+                letter-spacing: 1px;
+            }
+            QPushButton:hover {
+                background: rgba(16, 58, 105, 240);
+                border-color: #66F7FF;
+            }
+            QPushButton:pressed {
+                background: rgba(8, 26, 58, 240);
+            }
+        )");
+        const int backIndex = ui->hudLayout->indexOf(ui->btn_Back);
+        ui->hudLayout->insertWidget(backIndex >= 0 ? backIndex : ui->hudLayout->count(), m_btnPause);
+        m_btnPause->hide();
+    }
+
+    if (m_countdownFinishTimer) {
+        m_countdownFinishTimer->setSingleShot(true);
+        connect(m_countdownFinishTimer, &QTimer::timeout, this, [this]() {
+            if (m_countdownSessionGeneration == m_sessionGeneration) {
+                onRaceStart();
+            }
+        });
+    }
+
     PhantomDrive::InteractiveFeedback::instance(this);
     PhantomDrive::SoundManager::instance(this);
     // Sound generation is handled once in main() — do not call again here.
@@ -631,6 +1116,9 @@ MainWindow::MainWindow(QWidget *parent)
                 &ScoreManager::qLearningFeedbackReady,
                 this,
                 [this](const PhantomDrive::QLearningFeedback& feedback) {
+                    if (!m_driveActive || m_countdownActive) {
+                        return;
+                    }
                     const QString scoreText = QString::number(feedback.normalizedScore * 100.0, 'f', 0);
                     const QString riskText = QString::number(feedback.safetyRisk, 'f', 2);
                     const QString complianceText = QString::number(feedback.ruleCompliance, 'f', 2);
@@ -643,6 +1131,9 @@ MainWindow::MainWindow(QWidget *parent)
 
         connect(m_scoreManager, &ScoreManager::feedbackReady,
                 this, [this](const QString& text, int, const QString& severity) {
+                    if (!m_driveActive || m_countdownActive) {
+                        return;
+                    }
                     const FeedbackType type = severity == QStringLiteral("positive")
                         ? FeedbackType::Positive
                         : severity == QStringLiteral("danger")
@@ -856,6 +1347,10 @@ void MainWindow::setupDemoControls()
     // Top HUD buttons (from .ui hudLayout): Back, Finish Drive, Exit Game
     if (ui->btn_Back) {
         // Back is already wired to handleReportBackToMenu in the btn_Back click handler above
+    }
+    if (m_btnPause) {
+        connect(m_btnPause, &QPushButton::clicked,
+                this, &MainWindow::toggleGamePaused);
     }
     if (ui->btn_FinishDrive_Top) {
         connect(ui->btn_FinishDrive_Top, &QPushButton::clicked,
@@ -1197,7 +1692,7 @@ void MainWindow::styleMainMenu()
 
     for (QPushButton* button : { ui->btn_Arcade, m_btnCustomTrackMode, ui->btn_Learn }) {
         if (button) {
-            button->setFixedSize(310, 72);
+            button->setFixedSize(310, 82);
         }
     }
     for (QPushButton* button : { m_btnTwoPlayerRace, m_btnAdaptiveDemo }) {
@@ -1211,7 +1706,9 @@ void MainWindow::styleMainMenu()
         }
     }
     if (m_btnGuide && ui->pageMenu) {
-        m_btnGuide->setFixedSize(230, 56);
+        m_btnGuide->setFixedSize(380, 52);
+        m_btnGuide->setMinimumWidth(380);
+        m_btnGuide->setMaximumWidth(380);
         m_btnGuide->move(qMax(24, ui->pageMenu->width() - m_btnGuide->width() - 64), 52);
         m_btnGuide->raise();
     }
@@ -1249,6 +1746,9 @@ void MainWindow::setGameHeaderVisible(bool visible)
     }
     if (ui->btn_Back) {
         ui->btn_Back->setVisible(visible);
+    }
+    if (m_btnPause) {
+        m_btnPause->setVisible(visible);
     }
     if (ui->btn_FinishDrive_Top) {
         ui->btn_FinishDrive_Top->setVisible(visible);
@@ -1293,11 +1793,163 @@ void MainWindow::setGameHeaderVisible(bool visible)
     pageLayout->invalidate();
 }
 
+void MainWindow::clearTransientDrivingFeedback()
+{
+    ++m_sessionGeneration;
+    m_hudRaceProgressById.clear();
+    m_hudRaceRouteSignature.clear();
+    setGamePaused(false);
+    m_countdownActive = false;
+    m_countdownRemainingMs = 0;
+    m_countdownTimerStartedMs = 0;
+    m_countdownSessionGeneration = 0;
+    m_learningTimerRemainingMs = 0;
+    m_learningTimerStartedMs = 0;
+    if (m_countdownFinishTimer) {
+        m_countdownFinishTimer->stop();
+    }
+    PhantomDrive::InteractiveFeedback::instance(this).clearAll();
+    if (m_learningHUD) {
+        m_learningHUD->clearAllWarnings();
+    }
+    if (m_arcadeHUD) {
+        m_arcadeHUD->clearPowerupState();
+    }
+}
+
+void MainWindow::toggleGamePaused()
+{
+    if (!m_driveActive && !m_countdownActive) {
+        return;
+    }
+
+    setGamePaused(!m_gamePaused);
+}
+
+void MainWindow::setGamePaused(bool paused)
+{
+    if (m_gamePaused == paused) {
+        updatePauseButtonState();
+        return;
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    m_gamePaused = paused;
+
+    if (m_gamePaused) {
+        auto releaseVehicleInputs = [](VehiclePhysics* physics) {
+            if (!physics) {
+                return;
+            }
+            const int keys[] = {
+                Qt::Key_W, Qt::Key_A, Qt::Key_S, Qt::Key_D, Qt::Key_Space,
+                Qt::Key_Up, Qt::Key_Down, Qt::Key_Left, Qt::Key_Right
+            };
+            for (int key : keys) {
+                QKeyEvent releaseEvent(QEvent::KeyRelease, key, Qt::NoModifier);
+                physics->handleKeyRelease(&releaseEvent);
+            }
+        };
+        releaseVehicleInputs(m_vehiclePhysics);
+        releaseVehicleInputs(m_player2Physics);
+
+        if (m_countdownFinishTimer && m_countdownFinishTimer->isActive()) {
+            const qint64 elapsed = qMax<qint64>(0, nowMs - m_countdownTimerStartedMs);
+            m_countdownRemainingMs = qMax(1, m_countdownRemainingMs - static_cast<int>(elapsed));
+            m_countdownFinishTimer->stop();
+        }
+        if (m_learningSessionTimer && m_learningSessionTimer->isActive()) {
+            const qint64 elapsed = qMax<qint64>(0, nowMs - m_learningTimerStartedMs);
+            m_learningTimerRemainingMs = qMax(1, m_learningTimerRemainingMs - static_cast<int>(elapsed));
+            m_learningSessionTimer->stop();
+        }
+        PhantomDrive::InteractiveFeedback::instance(this).pause();
+    } else {
+        if (m_countdownActive && m_countdownRemainingMs > 0) {
+            startCountdownFinishTimer(m_countdownRemainingMs);
+        }
+        if (m_learningSessionTimer && m_learningTimerRemainingMs > 0 && m_driveActive
+            && m_currentMode == QStringLiteral("Learning")) {
+            m_learningTimerStartedMs = nowMs;
+            m_learningSessionTimer->start(m_learningTimerRemainingMs);
+        }
+        PhantomDrive::InteractiveFeedback::instance(this).resume();
+    }
+
+    if (m_gameView) {
+        m_gameView->setPaused(m_gamePaused);
+    }
+    if (m_arcadeHUD) {
+        m_arcadeHUD->setPaused(m_gamePaused);
+    }
+    updatePauseButtonState();
+}
+
+void MainWindow::updatePauseButtonState()
+{
+    if (!m_btnPause) {
+        return;
+    }
+
+    m_btnPause->setText(m_gamePaused ? QStringLiteral("Resume") : QStringLiteral("Pause"));
+    m_btnPause->setEnabled(m_driveActive || m_countdownActive);
+    m_btnPause->setStyleSheet(m_gamePaused ? R"(
+        QPushButton {
+            background: rgba(8, 80, 72, 235);
+            color: #DDFFF5;
+            border: 2px solid #00FFA0;
+            border-radius: 8px;
+            padding: 4px 16px;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        QPushButton:hover {
+            background: rgba(12, 104, 92, 245);
+            border-color: #66FFC8;
+        }
+        QPushButton:pressed {
+            background: rgba(6, 55, 54, 245);
+        }
+    )" : R"(
+        QPushButton {
+            background: rgba(10, 38, 72, 220);
+            color: #66F7FF;
+            border: 2px solid #00D6FF;
+            border-radius: 8px;
+            padding: 4px 16px;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        QPushButton:hover {
+            background: rgba(16, 58, 105, 240);
+            border-color: #66F7FF;
+        }
+        QPushButton:pressed {
+            background: rgba(8, 26, 58, 240);
+        }
+    )");
+}
+
+void MainWindow::startCountdownFinishTimer(int remainingMs)
+{
+    if (!m_countdownFinishTimer || remainingMs <= 0) {
+        return;
+    }
+
+    m_countdownRemainingMs = remainingMs;
+    m_countdownTimerStartedMs = QDateTime::currentMSecsSinceEpoch();
+    m_countdownSessionGeneration = m_sessionGeneration;
+    m_countdownFinishTimer->start(m_countdownRemainingMs);
+}
+
 void MainWindow::resizeEvent(QResizeEvent* event)
 {
     QMainWindow::resizeEvent(event);
 
     if (m_btnGuide && ui->pageMenu) {
+        m_btnGuide->setFixedSize(380, 52);
         m_btnGuide->move(qMax(24, ui->pageMenu->width() - m_btnGuide->width() - 64), 52);
         m_btnGuide->raise();
     }
@@ -1338,6 +1990,7 @@ void MainWindow::returnToMainMenuFromGame(bool finishWithReport)
     if (m_driveActive) {
         silentFinishSession();
     }
+    clearTransientDrivingFeedback();
 
     if (m_currentMode == QStringLiteral("Custom Track") && !m_customTrackPlaying) {
         hideCustomTrackEditor();
@@ -1345,7 +1998,6 @@ void MainWindow::returnToMainMenuFromGame(bool finishWithReport)
 
     m_customTrackPlaying = false;
     m_arcadeRaceLogicActive = false;
-    m_countdownActive = false;
 
     if (m_customTrackEditor) {
         m_customTrackEditor->hide();
@@ -1380,6 +2032,7 @@ void MainWindow::exitApplicationFromGame()
     if (m_driveActive) {
         silentFinishSession();
     }
+    clearTransientDrivingFeedback();
     close();
 }
 
@@ -1392,7 +2045,7 @@ void MainWindow::showCustomTrackEditor()
     m_currentMode = QStringLiteral("Custom Track");
     m_customTrackPlaying = false;
     m_arcadeRaceLogicActive = false;
-    m_countdownActive = false;
+    clearTransientDrivingFeedback();
 
     if (m_customTrackMode) {
         m_customTrackMode->onEnter();
@@ -1442,6 +2095,7 @@ void MainWindow::hideCustomTrackEditor()
         m_btnFinishDrive->show();
     }
     setGameHeaderVisible(true);
+    updatePauseButtonState();
     if (m_customTrackMode) {
         m_customTrackMode->setCustomState(CustomTrackModeState::Editing);
     }
@@ -1602,6 +2256,13 @@ void MainWindow::focusGameViewForDriving()
     m_gameView->raise();
     m_gameView->activateWindow();
     m_gameView->setFocus(Qt::OtherFocusReason);
+
+    if (!m_twoPlayerMode
+        && (m_currentMode == QStringLiteral("Learning")
+            || m_currentMode == QStringLiteral("Custom Track"))) {
+        m_gameView->setCameraZoom(0.92);
+        m_gameView->setCameraPosition(m_playerPosition);
+    }
 }
 
 int MainWindow::selectedPlayerCount() const
@@ -2159,13 +2820,29 @@ void MainWindow::setupVehiclePhysics()
 
     if (m_gameView) {
         connect(m_gameView, &GameViewWidget::keyInputReceived,
-                m_vehiclePhysics, &VehiclePhysics::handleKeyPress);
+                this, [this](QKeyEvent* event) {
+                    if (!m_gamePaused && m_vehiclePhysics) {
+                        m_vehiclePhysics->handleKeyPress(event);
+                    }
+                });
         connect(m_gameView, &GameViewWidget::keyReleased,
-                m_vehiclePhysics, &VehiclePhysics::handleKeyRelease);
+                this, [this](QKeyEvent* event) {
+                    if (m_vehiclePhysics) {
+                        m_vehiclePhysics->handleKeyRelease(event);
+                    }
+                });
         connect(m_gameView, &GameViewWidget::keyInputReceived,
-                m_player2Physics, &VehiclePhysics::handleKeyPress);
+                this, [this](QKeyEvent* event) {
+                    if (!m_gamePaused && m_player2Physics) {
+                        m_player2Physics->handleKeyPress(event);
+                    }
+                });
         connect(m_gameView, &GameViewWidget::keyReleased,
-                m_player2Physics, &VehiclePhysics::handleKeyRelease);
+                this, [this](QKeyEvent* event) {
+                    if (m_player2Physics) {
+                        m_player2Physics->handleKeyRelease(event);
+                    }
+                });
     } else {
         qWarning() << "MainWindow: game view is null; keyboard input connections skipped";
     }
@@ -2523,6 +3200,7 @@ void MainWindow::startCustomTrackSession(TrackData* track)
     if (m_driveActive) {
         silentFinishSession();
     }
+    clearTransientDrivingFeedback();
 
     // Stop any previous learning session timer.
     if (m_learningSessionTimer) {
@@ -2557,6 +3235,7 @@ void MainWindow::startCustomTrackSession(TrackData* track)
         m_customTrackEditor->hide();
     }
     setGameHeaderVisible(true);
+    updatePauseButtonState();
     if (ui->stackedWidget) {
         ui->stackedWidget->setCurrentIndex(1);
     }
@@ -2755,6 +3434,10 @@ void MainWindow::handlePowerupCollected(PhantomDrive::PowerupType type)
 
 void MainWindow::handlePowerupCollectedForPlayer(PhantomDrive::PowerupType type, int playerIndex)
 {
+    if (m_gamePaused) {
+        return;
+    }
+
     PowerupType effectiveType = type;
     if (type == PowerupType::Custom) {
         static const PowerupType kCustomPool[] = {
@@ -2870,6 +3553,9 @@ void MainWindow::handlePowerupCollectedForPlayer(PhantomDrive::PowerupType type,
 
 void MainWindow::handleTrafficViolation(const PhantomDrive::ViolationEvent& violation)
 {
+    if (m_gamePaused) {
+        return;
+    }
     // Single unified path: InteractiveFeedback toast only (no duplicate statusBar).
     showInteractiveFeedback(violation.description, PhantomDrive::FeedbackType::Critical);
     playSound(SoundEffect::Violation);
@@ -2877,7 +3563,12 @@ void MainWindow::handleTrafficViolation(const PhantomDrive::ViolationEvent& viol
 
 void MainWindow::updateRaceHud()
 {
-    if (m_aiManager && m_driveActive && !m_countdownActive) {
+    const bool raceRankingActive = m_arcadeRaceLogicActive
+        && (m_currentMode == QStringLiteral("Arcade") || m_customTrackPlaying);
+    const bool includeAiInHudRanking = raceRankingActive
+        || (m_currentMode == QStringLiteral("Learning") && hasHudRankedAiOpponents(m_aiManager));
+
+    if (m_aiManager && raceRankingActive && m_driveActive && !m_countdownActive && !m_gamePaused) {
         const int totalCheckpoints = qMax(1, m_raceCheckpointTotal);
         const int checkpointIndex = qBound(0, m_nextCheckpointIndex, totalCheckpoints);
         const qreal progressPercent = qBound(0.0,
@@ -2901,21 +3592,27 @@ void MainWindow::updateRaceHud()
 
     m_arcadeHUD->setTwoPlayerMode(m_twoPlayerMode);
     m_arcadeHUD->updateSpeed(displaySpeedKmh());
-    if (m_twoPlayerMode) {
-        const int totalCheckpoints = qMax(1, m_raceCheckpointTotal);
-        const int p1Checkpoint = qBound(0, m_nextCheckpointIndex, totalCheckpoints);
-        const int p2Checkpoint = qBound(0, m_player2NextCheckpointIndex, totalCheckpoints);
-        const qreal p1Progress = (m_lapsCompleted * (totalCheckpoints + 1)) + p1Checkpoint;
-        const qreal p2Progress = (m_player2LapsCompleted * (totalCheckpoints + 1)) + p2Checkpoint;
-        int p1Position = 1;
-        int p2Position = 2;
-        if (p2Progress > p1Progress || (qAbs(p2Progress - p1Progress) < 0.001 && m_player2Speed > m_playerSpeed)) {
-            p1Position = 2;
-            p2Position = 1;
-        }
 
-        const int p2Count = 1;
-        const int totalRacers = (m_aiManager ? m_aiManager->getOpponentCount() : 0) + 1 + p2Count;
+    const int raceCheckpointTotal = qMax(0, m_raceCheckpointTotal);
+    const QList<RaceHudEntry> raceEntries = buildRaceHudEntries(includeAiInHudRanking,
+                                                                raceRankingActive,
+                                                                m_playerPosition,
+                                                                m_lapsCompleted,
+                                                                m_nextCheckpointIndex,
+                                                                m_twoPlayerMode,
+                                                                m_player2Position,
+                                                                m_player2LapsCompleted,
+                                                                m_player2NextCheckpointIndex,
+                                                                m_aiManager,
+                                                                m_gameView ? m_gameView->trackData() : nullptr,
+                                                                raceCheckpointTotal,
+                                                                &m_hudRaceProgressById,
+                                                                &m_hudRaceRouteSignature);
+    const int totalRacers = qMax(1, raceEntries.size());
+    const int p1Position = raceHudPositionFor(raceEntries, QStringLiteral("P1"));
+    const int p2Position = raceHudPositionFor(raceEntries, QStringLiteral("P2"));
+
+    if (m_twoPlayerMode) {
         const int totalLaps = m_customTrackPlaying ? 1 : qMax(1, m_totalLaps);
         m_arcadeHUD->updatePlayer1Status(displaySpeedKmh(),
                                          m_currentSpeedLimit,
@@ -2923,14 +3620,14 @@ void MainWindow::updateRaceHud()
                                          qBound(1, m_lapsCompleted + 1, totalLaps),
                                          totalLaps,
                                          p1Position,
-                                         qMax(1, totalRacers));
+                                         totalRacers);
         m_arcadeHUD->updatePlayer2Status(speedToDisplayKmh(m_player2Speed),
                                          m_currentSpeedLimit,
                                          m_currentTrafficLightState,
                                          qBound(1, m_player2LapsCompleted + 1, totalLaps),
                                          totalLaps,
                                          p2Position,
-                                         qMax(1, totalRacers));
+                                         totalRacers);
     } else if (m_customTrackPlaying) {
         const int total = qMax(0, m_raceCheckpointTotal);
         const int passed = qBound(0, m_nextCheckpointIndex, total);
@@ -2944,11 +3641,8 @@ void MainWindow::updateRaceHud()
     m_arcadeHUD->updateTotalTime(formatRaceTime(m_sessionElapsedMs));
     m_arcadeHUD->updateLapTime(formatRaceTime(qMax<qint64>(0, m_sessionElapsedMs - m_currentLapStartMs)));
 
-    // Total racers: P1 + AI count (+ P2 in two-player mode)
     if (!m_twoPlayerMode) {
-        const int totalRacers = (m_aiManager ? m_aiManager->getOpponentCount() : 0) + 1;
-        const int playerPosition = m_aiManager ? m_aiManager->getPlayerRacePosition() : 1;
-        m_arcadeHUD->updatePosition(playerPosition, qMax(1, totalRacers));
+        m_arcadeHUD->updatePosition(p1Position, totalRacers);
     }
 
     const AIOpponent* ai1 = m_aiManager ? m_aiManager->getOpponent(QStringLiteral("ai_1")) : nullptr;
@@ -2980,6 +3674,8 @@ void MainWindow::syncRaceTrackToManager()
 
 void MainWindow::resetArcadeRaceProgress()
 {
+    m_hudRaceProgressById.clear();
+    m_hudRaceRouteSignature.clear();
     m_nextCheckpointIndex = 0;
     m_hasLeftNorthSector = false;
     m_blockCheckpointsUntilLeaveNorth = false;
@@ -3001,7 +3697,7 @@ void MainWindow::resetArcadeRaceProgress()
 
 void MainWindow::updateArcadeRaceProgress(const QVector2D& positionBefore)
 {
-    if (!m_arcadeRaceLogicActive || !m_driveActive || m_countdownActive || m_arcadeRaceFinished) {
+    if (!m_arcadeRaceLogicActive || !m_driveActive || m_countdownActive || m_gamePaused || m_arcadeRaceFinished) {
         return;
     }
 
@@ -3141,7 +3837,7 @@ void MainWindow::finishCustomTrackRoute()
 
 void MainWindow::updatePlayer2RaceProgress(const QVector2D& positionBefore)
 {
-    if (!m_twoPlayerMode || !m_arcadeRaceLogicActive || !m_driveActive || m_countdownActive
+    if (!m_twoPlayerMode || !m_arcadeRaceLogicActive || !m_driveActive || m_countdownActive || m_gamePaused
         || m_arcadeRaceFinished || m_twoPlayerFinishHandled) {
         return;
     }
@@ -3360,7 +4056,16 @@ void MainWindow::simulateGameLoop()
     m_simTimer = new QTimer(this);
 
     connect(m_simTimer, &QTimer::timeout, this, [this]() {
-        if (!m_driveActive || m_countdownActive) {
+        if (!m_driveActive) {
+            return;
+        }
+        if (m_gamePaused) {
+            if (m_gameView) {
+                m_gameView->update();
+            }
+            return;
+        }
+        if (m_countdownActive) {
             return;
         }
 
@@ -3560,6 +4265,7 @@ void MainWindow::startDrivingSession(const QString& mode)
     if (m_driveActive) {
         silentFinishSession();
     }
+    clearTransientDrivingFeedback();
 
     // Stop any previous learning session timer.
     if (m_learningSessionTimer) {
@@ -3598,6 +4304,7 @@ void MainWindow::startDrivingSession(const QString& mode)
         m_customTrackEditor->hide();
     }
     setGameHeaderVisible(true);
+    updatePauseButtonState();
     if (m_btnFinishDrive) {
         m_btnFinishDrive->show();
         m_btnFinishDrive->setEnabled(false);
@@ -3679,6 +4386,7 @@ void MainWindow::startDrivingSession(const QString& mode)
     }
     resetArcadeRaceProgress();
 
+    focusGameViewForDriving();
     initializeAIOpponents();
 
     m_countdownActive = true;
@@ -3700,6 +4408,8 @@ void MainWindow::startDrivingSession(const QString& mode)
                 });
             }
         });
+        m_learningTimerRemainingMs = kLearningMaxMs;
+        m_learningTimerStartedMs = QDateTime::currentMSecsSinceEpoch();
         m_learningSessionTimer->start(kLearningMaxMs);
     }
 
@@ -3734,6 +4444,7 @@ void MainWindow::onGameFinished()
     }
 
     m_driveActive = false;
+    clearTransientDrivingFeedback();
 
     // Cancel the learning session auto-end timer if it is still running.
     if (m_learningSessionTimer) {
@@ -3831,6 +4542,7 @@ void MainWindow::silentFinishSession()
         return;
     }
     m_driveActive = false;
+    clearTransientDrivingFeedback();
 
     if (m_learningSessionTimer) {
         m_learningSessionTimer->stop();
@@ -3955,6 +4667,10 @@ void MainWindow::updateTrafficAndHud(int tick)
 
 void MainWindow::onDrivingDataCollected(const DrivingData& data)
 {
+    if (m_gamePaused) {
+        return;
+    }
+
     if (m_gameView && m_driveActive) {
         if (m_twoPlayerMode) {
             m_gameView->updatePlayerCar(QStringLiteral("P1"),
@@ -3986,6 +4702,10 @@ void MainWindow::onDrivingDataCollected(const DrivingData& data)
 
 void MainWindow::onViolationDetected(const ViolationEvent& violation)
 {
+    if (m_gamePaused) {
+        return;
+    }
+
     // Single unified path: InteractiveFeedback toast only (no duplicate statusBar).
     showInteractiveFeedback(violation.description, PhantomDrive::FeedbackType::Warning);
     playSound(PhantomDrive::SoundEffect::Violation);
@@ -4010,6 +4730,9 @@ void MainWindow::onCoachReportReady(const QString& markdown)
 void MainWindow::updateGameViewFromData(const DrivingData& data)
 {
     if (!m_gameView) {
+        return;
+    }
+    if (m_gamePaused) {
         return;
     }
 
@@ -4068,6 +4791,10 @@ void MainWindow::on_btn_History_clicked()
 
 void MainWindow::showInteractiveFeedback(const QString& message, PhantomDrive::FeedbackType type)
 {
+    if (!m_driveActive || m_gamePaused) {
+        return;
+    }
+
     PhantomDrive::InteractiveFeedback& feedback = PhantomDrive::InteractiveFeedback::instance(this);
     if (m_gameView) {
         feedback.setGameView(m_gameView);
@@ -4082,6 +4809,7 @@ void MainWindow::playSound(PhantomDrive::SoundEffect effect)
 
 void MainWindow::showCountdown()
 {
+    const int sessionGeneration = m_sessionGeneration;
     if (m_arcadeHUD) {
         m_arcadeHUD->show();
         updateRaceHud();
@@ -4093,12 +4821,19 @@ void MainWindow::showCountdown()
     // and in onRaceStart respectively.
     PhantomDrive::SoundManager::instance(this).play(PhantomDrive::SoundEffect::RaceStart);
 
-    QTimer::singleShot(3200, this, &MainWindow::onRaceStart);
+    m_countdownSessionGeneration = sessionGeneration;
+    startCountdownFinishTimer(3200);
 }
 
 void MainWindow::onRaceStart()
 {
+    if (!m_driveActive || !m_countdownActive || m_gamePaused) {
+        return;
+    }
+
     m_countdownActive = false;
+    m_countdownRemainingMs = 0;
+    m_countdownTimerStartedMs = 0;
     m_lapsCompleted = 0;
     m_currentLapStartMs = m_sessionElapsedMs;
     m_bestLapMs = 0;
@@ -4216,6 +4951,10 @@ void MainWindow::onCollision()
 
 void MainWindow::onPowerupCollected(const QString& powerupType)
 {
+    if (!m_driveActive || m_countdownActive || m_gamePaused) {
+        return;
+    }
+
     QString displayText;
     PhantomDrive::FeedbackType type = PhantomDrive::FeedbackType::Powerup;
     const QString normalizedType = powerupType.toLower();

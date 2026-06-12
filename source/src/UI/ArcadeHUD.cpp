@@ -285,16 +285,17 @@ ArcadeHUD::~ArcadeHUD() {}
 static QWidget* makeCard(QWidget* parent)
 {
     QWidget* card = new QWidget(parent);
+    card->setObjectName(QStringLiteral("hudGroupCard"));
     card->setStyleSheet(R"(
-        QWidget {
-            background: rgba(8, 16, 40, 220);
-            border: 1px solid rgba(0, 190, 255, 70);
-            border-radius: 8px;
+        QWidget#hudGroupCard {
+            background: rgba(8, 16, 40, 228);
+            border: 1px solid rgba(0, 190, 255, 58);
+            border-radius: 10px;
         }
     )");
     QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(card);
-    shadow->setBlurRadius(15);
-    shadow->setColor(QColor(0, 180, 255, 60));
+    shadow->setBlurRadius(13);
+    shadow->setColor(QColor(0, 180, 255, 42));
     shadow->setOffset(0, 0);
     card->setGraphicsEffect(shadow);
     return card;
@@ -463,40 +464,41 @@ void ArcadeHUD::setupUI()
 
     // ---- LAP TIME + TOTAL TIME (side by side) ----
     {
-        QHBoxLayout* timeRow = new QHBoxLayout();
-        timeRow->setSpacing(6);
+        QWidget* timeCard = makeCard(this);
+        QHBoxLayout* timeRow = new QHBoxLayout(timeCard);
+        timeRow->setContentsMargins(12, 7, 12, 7);
+        timeRow->setSpacing(10);
 
-        QWidget* lapCard = makeCard(this);
-        QHBoxLayout* lapCl = new QHBoxLayout(lapCard);
-        lapCl->setContentsMargins(10, 8, 10, 8);
-        lapCl->setSpacing(4);
-        QLabel* lapT = new QLabel("LAP TIME", lapCard);
+        QVBoxLayout* lapCl = new QVBoxLayout();
+        lapCl->setSpacing(2);
+        QLabel* lapT = new QLabel("LAP TIME", timeCard);
         lapT->setStyleSheet("QLabel{color:rgba(0,190,255,180);font-size:7px;font-weight:bold;letter-spacing:1px;}");
-        lapCl->addWidget(lapT, 0, Qt::AlignTop);
-        m_lapTimeLabel = new QLabel("00:00.000", lapCard);
+        lapCl->addWidget(lapT);
+        m_lapTimeLabel = new QLabel("00:00.000", timeCard);
         m_lapTimeLabel->setStyleSheet(
-            "QLabel{color:#00E5FF;font-size:12px;font-weight:bold;"
+            "QLabel{color:#00E5FF;font-size:13px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}");
-        m_lapTimeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        lapCl->addWidget(m_lapTimeLabel, 1);
-        timeRow->addWidget(lapCard, 1);
+        lapCl->addWidget(m_lapTimeLabel);
+        timeRow->addLayout(lapCl, 1);
 
-        QWidget* totalCard = makeCard(this);
-        QHBoxLayout* totalCl = new QHBoxLayout(totalCard);
-        totalCl->setContentsMargins(10, 8, 10, 8);
-        totalCl->setSpacing(4);
-        QLabel* totalT = new QLabel("TOTAL", totalCard);
+        QFrame* midLine = new QFrame(timeCard);
+        midLine->setFrameShape(QFrame::VLine);
+        midLine->setStyleSheet("QFrame{color:rgba(0,190,255,35);}");
+        timeRow->addWidget(midLine);
+
+        QVBoxLayout* totalCl = new QVBoxLayout();
+        totalCl->setSpacing(2);
+        QLabel* totalT = new QLabel("TOTAL", timeCard);
         totalT->setStyleSheet("QLabel{color:rgba(180,100,255,180);font-size:7px;font-weight:bold;letter-spacing:1px;}");
-        totalCl->addWidget(totalT, 0, Qt::AlignTop);
-        m_totalTimeLabel = new QLabel("00:00.000", totalCard);
+        totalCl->addWidget(totalT);
+        m_totalTimeLabel = new QLabel("00:00.000", timeCard);
         m_totalTimeLabel->setStyleSheet(
-            "QLabel{color:#CC66FF;font-size:12px;font-weight:bold;"
+            "QLabel{color:#CC66FF;font-size:13px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}");
-        m_totalTimeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        totalCl->addWidget(m_totalTimeLabel, 1);
-        timeRow->addWidget(totalCard, 1);
+        totalCl->addWidget(m_totalTimeLabel);
+        timeRow->addLayout(totalCl, 1);
 
-        root->addLayout(timeRow);
+        root->addWidget(timeCard);
     }
 
     // ---- POSITION ----
@@ -536,33 +538,31 @@ void ArcadeHUD::setupUI()
         // Slot 1
         QHBoxLayout* slot1 = new QHBoxLayout();
         slot1->setSpacing(4);
-        m_powerupSlot1 = new QLabel("--", card);
+        m_powerupSlot1 = new QLabel("ACTIVE: --", card);
         m_powerupSlot1->setStyleSheet(
-            "QLabel{color:#CC88FF;font-size:13px;font-weight:bold;"
+            "QLabel{color:#CC88FF;font-size:12px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}");
-        m_powerupSlot1->setFixedWidth(70);
-        slot1->addWidget(m_powerupSlot1);
+        slot1->addWidget(m_powerupSlot1, 1);
         m_powerupTimer1 = new QLabel("", card);
+        m_powerupTimer1->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_powerupTimer1->setStyleSheet(
             "QLabel{color:#9966CC;font-size:11px;font-family:'Segoe UI',sans-serif;}");
         slot1->addWidget(m_powerupTimer1);
-        slot1->addStretch();
         cl->addLayout(slot1);
 
         // Slot 2
         QHBoxLayout* slot2 = new QHBoxLayout();
         slot2->setSpacing(4);
-        m_powerupSlot2 = new QLabel("--", card);
+        m_powerupSlot2 = new QLabel("SLOT 2: --", card);
         m_powerupSlot2->setStyleSheet(
-            "QLabel{color:#CC88FF;font-size:13px;font-weight:bold;"
+            "QLabel{color:#CC88FF;font-size:12px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}");
-        m_powerupSlot2->setFixedWidth(70);
-        slot2->addWidget(m_powerupSlot2);
+        slot2->addWidget(m_powerupSlot2, 1);
         m_powerupTimer2 = new QLabel("", card);
+        m_powerupTimer2->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_powerupTimer2->setStyleSheet(
             "QLabel{color:#9966CC;font-size:11px;font-family:'Segoe UI',sans-serif;}");
         slot2->addWidget(m_powerupTimer2);
-        slot2->addStretch();
         cl->addLayout(slot2);
 
         root->addWidget(card);
@@ -621,46 +621,54 @@ void ArcadeHUD::setupUI()
         root->addWidget(card);
     }
 
-    // ---- AI 1 SPEED ----
+    // ---- AI SPEED ----
     {
         QWidget* card = makeCard(this);
-        QHBoxLayout* cl = new QHBoxLayout(card);
+        QVBoxLayout* cl = new QVBoxLayout(card);
         cl->setContentsMargins(12, 8, 12, 8);
-        cl->setSpacing(8);
-        QLabel* t = new QLabel("AI 1 SPEED", card);
-        t->setStyleSheet("QLabel{color:rgba(255,140,0,180);font-size:8px;font-weight:bold;letter-spacing:2px;}");
-        cl->addWidget(t);
+        cl->setSpacing(5);
+        QLabel* title = new QLabel("AI SPEED", card);
+        title->setStyleSheet("QLabel{color:rgba(0,190,255,155);font-size:8px;font-weight:bold;letter-spacing:2px;}");
+        cl->addWidget(title);
+
+        QHBoxLayout* ai1 = new QHBoxLayout();
+        ai1->setSpacing(8);
+        QLabel* t = new QLabel("AI 1", card);
+        t->setStyleSheet("QLabel{color:rgba(255,140,0,190);font-size:8px;font-weight:bold;letter-spacing:2px;}");
+        ai1->addWidget(t);
         m_ai1SpeedLabel = new QLabel("--", card);
         m_ai1SpeedLabel->setStyleSheet(
             "QLabel{color:#FF8800;font-size:13px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}");
         m_ai1SpeedLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        cl->addWidget(m_ai1SpeedLabel);
-        root->addWidget(card);
-    }
+        ai1->addWidget(m_ai1SpeedLabel, 1);
+        cl->addLayout(ai1);
 
-    // ---- AI 2 SPEED ----
-    {
-        QWidget* card = makeCard(this);
-        QHBoxLayout* cl = new QHBoxLayout(card);
-        cl->setContentsMargins(12, 8, 12, 8);
-        cl->setSpacing(8);
-        QLabel* t = new QLabel("AI 2 SPEED", card);
-        t->setStyleSheet("QLabel{color:rgba(255,100,200,180);font-size:8px;font-weight:bold;letter-spacing:2px;}");
-        cl->addWidget(t);
+        QFrame* rowLine = new QFrame(card);
+        rowLine->setFrameShape(QFrame::HLine);
+        rowLine->setStyleSheet("QFrame{color:rgba(255,255,255,18);}");
+        cl->addWidget(rowLine);
+
+        QHBoxLayout* ai2 = new QHBoxLayout();
+        ai2->setSpacing(8);
+        QLabel* t2 = new QLabel("AI 2", card);
+        t2->setStyleSheet("QLabel{color:rgba(255,100,200,190);font-size:8px;font-weight:bold;letter-spacing:2px;}");
+        ai2->addWidget(t2);
         m_ai2SpeedLabel = new QLabel("--", card);
         m_ai2SpeedLabel->setStyleSheet(
             "QLabel{color:#FF66CC;font-size:13px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}");
         m_ai2SpeedLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        cl->addWidget(m_ai2SpeedLabel);
+        ai2->addWidget(m_ai2SpeedLabel, 1);
+        cl->addLayout(ai2);
+
         root->addWidget(card);
     }
 
     // ========================================================================
-    // STOP badge (absolute overlay)
+    // Legacy red-light badge kept hidden; Pause now lives in the top control bar.
     // ========================================================================
-    m_stopLabel = new QLabel("STOP", this);
+    m_stopLabel = new QLabel(this);
     m_stopLabel->setAlignment(Qt::AlignCenter);
     m_stopLabel->setStyleSheet(
         "QLabel{color:#FFFFFF;background:#FF0033;font-size:11px;font-weight:bold;"
@@ -678,11 +686,12 @@ QWidget* ArcadeHUD::createPlayerPanel(PlayerHudWidgets& widgets,
                                       const QColor& accent)
 {
     QWidget* panel = new QWidget(m_twoPlayerOverlay);
+    panel->setObjectName(QStringLiteral("playerHudPanel"));
     panel->setStyleSheet(QString(R"(
-        QWidget {
+        QWidget#playerHudPanel {
             background: rgba(5, 11, 27, 238);
             border: 1px solid rgba(%1, %2, %3, 210);
-            border-radius: 7px;
+            border-radius: 9px;
         }
         QLabel { border: none; background: transparent; }
     )").arg(accent.red()).arg(accent.green()).arg(accent.blue()));
@@ -751,24 +760,24 @@ QWidget* ArcadeHUD::createPlayerPanel(PlayerHudWidgets& widgets,
     infoCol->setSpacing(5);
     auto makeInfoCard = [&](const QString& label, QLabel*& valueLabel, const QString& color) {
         QWidget* card = new QWidget(panel);
-        card->setStyleSheet("QWidget{background:rgba(6,18,42,220);border:1px solid rgba(0,190,255,80);border-radius:6px;}");
+        card->setStyleSheet("QWidget{background:transparent;border:none;}");
         QVBoxLayout* cardLayout = new QVBoxLayout(card);
-        cardLayout->setContentsMargins(7, 5, 7, 5);
+        cardLayout->setContentsMargins(2, 3, 2, 3);
         cardLayout->setSpacing(1);
         QLabel* titleLabel = new QLabel(label, card);
         titleLabel->setStyleSheet("QLabel{color:rgba(145,205,255,180);font-size:7px;font-weight:bold;letter-spacing:2px;}");
         cardLayout->addWidget(titleLabel);
         valueLabel = new QLabel("--", card);
-        valueLabel->setStyleSheet(QStringLiteral("QLabel{color:%1;font-size:14px;font-weight:bold;}").arg(color));
+        valueLabel->setStyleSheet(QStringLiteral("QLabel{color:%1;font-size:15px;font-weight:bold;}").arg(color));
         cardLayout->addWidget(valueLabel);
         infoCol->addWidget(card);
     };
     makeInfoCard(QStringLiteral("LAP"), widgets.lapLabel, QStringLiteral("#2FF3FF"));
 
     QWidget* posCard = new QWidget(panel);
-    posCard->setStyleSheet("QWidget{background:rgba(6,18,42,220);border:1px solid rgba(0,190,255,80);border-radius:6px;}");
+    posCard->setStyleSheet("QWidget{background:transparent;border:none;}");
     QHBoxLayout* posLayout = new QHBoxLayout(posCard);
-    posLayout->setContentsMargins(7, 5, 7, 5);
+    posLayout->setContentsMargins(2, 3, 2, 3);
     posLayout->setSpacing(4);
     widgets.positionLabel = new QLabel("1ST", posCard);
     widgets.positionLabel->setStyleSheet("QLabel{color:#FFE000;font-size:18px;font-weight:bold;}");
@@ -779,17 +788,23 @@ QWidget* ArcadeHUD::createPlayerPanel(PlayerHudWidgets& widgets,
     infoCol->addWidget(posCard);
 
     QWidget* powerCard = new QWidget(panel);
-    powerCard->setStyleSheet("QWidget{background:rgba(6,18,42,220);border:1px solid rgba(120,70,255,90);border-radius:6px;}");
-    QHBoxLayout* powerLayout = new QHBoxLayout(powerCard);
-    powerLayout->setContentsMargins(7, 5, 7, 5);
-    powerLayout->setSpacing(4);
+    powerCard->setStyleSheet("QWidget{background:transparent;border:none;}");
+    QVBoxLayout* powerLayout = new QVBoxLayout(powerCard);
+    powerLayout->setContentsMargins(2, 3, 2, 3);
+    powerLayout->setSpacing(1);
+    QLabel* powerTitle = new QLabel("POWERUP", powerCard);
+    powerTitle->setStyleSheet("QLabel{color:rgba(190,120,255,180);font-size:7px;font-weight:bold;letter-spacing:2px;}");
+    powerLayout->addWidget(powerTitle);
+    QHBoxLayout* powerLine = new QHBoxLayout();
+    powerLine->setSpacing(4);
     widgets.powerupLabel = new QLabel("--", powerCard);
     widgets.powerupLabel->setStyleSheet("QLabel{color:#CC88FF;font-size:12px;font-weight:bold;}");
-    powerLayout->addWidget(widgets.powerupLabel, 1);
+    powerLine->addWidget(widgets.powerupLabel, 1);
     widgets.powerupTimerLabel = new QLabel("", powerCard);
     widgets.powerupTimerLabel->setAlignment(Qt::AlignRight);
     widgets.powerupTimerLabel->setStyleSheet("QLabel{color:rgba(255,255,255,150);font-size:10px;font-weight:bold;}");
-    powerLayout->addWidget(widgets.powerupTimerLabel);
+    powerLine->addWidget(widgets.powerupTimerLabel);
+    powerLayout->addLayout(powerLine);
     infoCol->addWidget(powerCard);
 
     bodyRow->addLayout(infoCol, 1);
@@ -819,15 +834,15 @@ void ArcadeHUD::setupTwoPlayerOverlay()
 
     auto makeAiRow = [&](const QString& title, QLabel*& valueLabel, const QString& color) {
         QWidget* row = new QWidget(m_twoPlayerOverlay);
-        row->setStyleSheet("QWidget{background:rgba(6,18,42,220);border:1px solid rgba(0,190,255,85);border-radius:6px;}");
+        row->setStyleSheet("QWidget{background:transparent;border:none;}");
         QHBoxLayout* layout = new QHBoxLayout(row);
-        layout->setContentsMargins(9, 5, 9, 5);
+        layout->setContentsMargins(10, 4, 10, 4);
         QLabel* label = new QLabel(title, row);
         label->setStyleSheet(QStringLiteral("QLabel{color:%1;font-size:8px;font-weight:bold;letter-spacing:2px;}").arg(color));
         layout->addWidget(label);
         valueLabel = new QLabel("--", row);
         valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        valueLabel->setStyleSheet(QStringLiteral("QLabel{color:%1;font-size:12px;font-weight:bold;}").arg(color));
+        valueLabel->setStyleSheet(QStringLiteral("QLabel{color:%1;font-size:13px;font-weight:bold;}").arg(color));
         layout->addWidget(valueLabel, 1);
         root->addWidget(row);
     };
@@ -939,9 +954,6 @@ void ArcadeHUD::setTwoPlayerMode(bool enabled)
     if (enabled) {
         layoutTwoPlayerOverlay();
         m_twoPlayerOverlay->raise();
-        if (m_stopLabel) {
-            m_stopLabel->raise();
-        }
     }
 }
 
@@ -1129,9 +1141,9 @@ void ArcadeHUD::updateTrafficLight(const QString& state)
         m_trafficStateLabel->setStyleSheet(
             QString("QLabel{color:%1;font-size:8px;font-weight:bold;}").arg(stateColor));
     }
-    if (m_stopLabel) m_stopLabel->setVisible(red);
+    if (m_stopLabel) m_stopLabel->setVisible(false);
 
-    if (red) {
+    if (red && !m_paused) {
         m_blinkOn = true;
         m_blinkTimer->start(500);
     } else {
@@ -1143,6 +1155,9 @@ void ArcadeHUD::updateTrafficLight(const QString& state)
 
 void ArcadeHUD::onRedLightBlink()
 {
+    if (m_paused) {
+        return;
+    }
     m_blinkOn = !m_blinkOn;
     updateSpeedDisplay();
 }
@@ -1185,6 +1200,8 @@ void ArcadeHUD::reset()
     m_boostPercent = 0;
     m_trafficState  = "green";
     m_blinkOn       = false;
+    m_paused        = false;
+    m_pauseStartedMs = 0;
     m_totalRacers  = 1;
     m_blinkTimer->stop();
     m_powerupTimer->stop();
@@ -1213,13 +1230,46 @@ void ArcadeHUD::reset()
         m_trafficStateLabel->setStyleSheet("QLabel{color:#00E060;font-size:8px;font-weight:bold;}");
     }
     if (m_speedo) { m_speedo->setSpeed(0); m_speedo->setRedLight(false); }
-    if (m_powerupSlot1) m_powerupSlot1->setText("--");
-    if (m_powerupSlot2) m_powerupSlot2->setText("--");
+    if (m_powerupSlot1) m_powerupSlot1->setText(QStringLiteral("ACTIVE: --"));
+    if (m_powerupSlot2) m_powerupSlot2->setText(QStringLiteral("SLOT 2: --"));
     if (m_powerupTimer1) m_powerupTimer1->setText("");
     if (m_powerupTimer2) m_powerupTimer2->setText("");
     updatePlayerPowerupLabel(m_player1Hud, QStringLiteral("--"), 0);
     updatePlayerPowerupLabel(m_player2Hud, QStringLiteral("--"), 0);
     if (m_objectiveLabel) m_objectiveLabel->setText("Next: CP1");
+    updateSpeedDisplay();
+}
+
+void ArcadeHUD::setPaused(bool paused)
+{
+    if (m_paused == paused) {
+        return;
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    m_paused = paused;
+    if (m_paused) {
+        m_pauseStartedMs = nowMs;
+        m_blinkTimer->stop();
+        m_powerupTimer->stop();
+    } else {
+        const qint64 pausedMs = m_pauseStartedMs > 0 ? nowMs - m_pauseStartedMs : 0;
+        if (pausedMs > 0) {
+            if (m_powerup1ExpiryMs > 0) m_powerup1ExpiryMs += pausedMs;
+            if (m_powerup2ExpiryMs > 0) m_powerup2ExpiryMs += pausedMs;
+        }
+        m_pauseStartedMs = 0;
+        if (m_trafficState == QStringLiteral("red")) {
+            m_blinkOn = true;
+            m_blinkTimer->start(500);
+        }
+        if (m_powerup1ExpiryMs > 0 || m_powerup2ExpiryMs > 0) {
+            m_powerupTimer->start();
+        }
+    }
+    if (m_stopLabel) {
+        m_stopLabel->setVisible(false);
+    }
     updateSpeedDisplay();
 }
 
@@ -1254,9 +1304,11 @@ void ArcadeHUD::updatePowerupState(const QString& type, int remainingSecs)
     else if (type == "Magnet")  slotColor = QColor("#FFAA44");
     else                          slotColor = QColor("#CC88FF");
 
-    slotLabel->setText(type);
+    slotLabel->setText(QStringLiteral("%1: %2").arg(useSlot1 ? QStringLiteral("ACTIVE")
+                                                              : QStringLiteral("SLOT 2"),
+                                                    type));
     slotLabel->setStyleSheet(
-        QString("QLabel{color:%1;font-size:13px;font-weight:bold;"
+        QString("QLabel{color:%1;font-size:12px;font-weight:bold;"
                 "font-family:'Segoe UI',sans-serif;}").arg(slotColor.name()));
 
     if (remainingSecs > 0) {
@@ -1306,8 +1358,8 @@ void ArcadeHUD::updatePlayerPowerupLabel(PlayerHudWidgets& widgets,
 
 void ArcadeHUD::clearPowerupState()
 {
-    if (m_powerupSlot1) m_powerupSlot1->setText("--");
-    if (m_powerupSlot2) m_powerupSlot2->setText("--");
+    if (m_powerupSlot1) m_powerupSlot1->setText(QStringLiteral("ACTIVE: --"));
+    if (m_powerupSlot2) m_powerupSlot2->setText(QStringLiteral("SLOT 2: --"));
     if (m_powerupTimer1) m_powerupTimer1->setText("");
     if (m_powerupTimer2) m_powerupTimer2->setText("");
     m_powerup1ExpiryMs = 0;
@@ -1321,11 +1373,15 @@ void ArcadeHUD::clearPowerupState()
 
 void ArcadeHUD::onPowerupTimerTick()
 {
+    if (m_paused) {
+        return;
+    }
+
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     bool changed = false;
 
     if (m_powerup1ExpiryMs > 0 && nowMs >= m_powerup1ExpiryMs) {
-        if (m_powerupSlot1) m_powerupSlot1->setText("--");
+        if (m_powerupSlot1) m_powerupSlot1->setText(QStringLiteral("ACTIVE: --"));
         if (m_powerupTimer1) m_powerupTimer1->setText("");
         m_powerup1ExpiryMs = 0;
         m_powerup1Type.clear();
@@ -1336,7 +1392,7 @@ void ArcadeHUD::onPowerupTimerTick()
     }
 
     if (m_powerup2ExpiryMs > 0 && nowMs >= m_powerup2ExpiryMs) {
-        if (m_powerupSlot2) m_powerupSlot2->setText("--");
+        if (m_powerupSlot2) m_powerupSlot2->setText(QStringLiteral("SLOT 2: --"));
         if (m_powerupTimer2) m_powerupTimer2->setText("");
         m_powerup2ExpiryMs = 0;
         m_powerup2Type.clear();
