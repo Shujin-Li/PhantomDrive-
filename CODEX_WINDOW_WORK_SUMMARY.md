@@ -2,125 +2,120 @@
 
 Date: 2026-06-12
 
-This file summarizes the work completed in this Codex window for the PhantomDrive project. The workspace was not clean when this window continued; unrelated existing edits were preserved and not reverted.
+This window focused on fixing HUD race ranking mismatches. The user reported several cases where the on-screen race order did not match the right-side HUD position display, especially with AI opponents, two-player mode, lap wrapping, Adaptive AI, and Learning mode.
 
-## Scope
+The working tree had existing unrelated edits when this work began. Those were preserved and not reverted.
 
-This window focused on low-risk UI polish, custom track editor visual/layout fixes, HUD improvements, report presentation, runtime cleanup, and the final Pause / Resume feature. The following areas were intentionally not redesigned:
+## Main Problem
 
-- Scoring formulas and report score calculation.
-- AI API main request logic.
-- Vehicle physics formulas.
-- Custom track JSON save/load schema.
-- Missile core rules beyond previous visual/runtime integration checks.
+The HUD position field was not consistently based on the same race-progress source as the visible race state.
 
-## Major Completed Work
+Observed issues included:
 
-### A-B Driving Report UI
+- HUD showing a fixed or stale rank such as `3RD / 3` or `1ST / 3`.
+- Single-player player-vs-AI ranking lagging behind the actual pass/overtake state.
+- Two-player mode ranking P1/P2 correctly relative to each other, but incorrectly relative to AI.
+- Adaptive AI mode using AI speed/manager state in ways that did not match visible track progress.
+- Learning mode showing AI cars and AI speed rows, but ranking not updating correctly.
+- Lap wrap / lapping cases causing progress to jump backward near the start/finish area.
 
-- Reworked report presentation toward a finished product UI instead of a plain form.
-- Kept existing report data sources, fields, score formulas, API/fallback logic.
-- Added clearer score-card style presentation, section cards, and more readable AI coach text layout.
-- Improved history/chart/report readability without changing scoring behavior.
+## Key Design Decision
 
-### Custom Track Editor Layout
+The final direction was to reuse the formal race-ranking logic for HUD ranking wherever the mode has AI race participants.
 
-- Expanded the 24 x 18 editor grid to use more of the available window area.
-- Kept toolbar buttons available at the top:
-  - Road / Grass / Wall / Start / Finish / CP / Item / Erase.
-  - Play This Track / Save Track / Load Track / Export JSON / Back.
-- Adjusted top toolbar spacing and panel height so `Track Tools` and buttons are not covered by the grid.
-- Preserved custom track data structure, validation, and save/load format.
+For Arcade / Custom / Adaptive AI:
 
-### Custom Track Editor Tile Visibility
+- P1/P2 use real lap and next-checkpoint progress.
+- AI uses real lap, current waypoint index, and segment progress between waypoints.
+- Everyone is converted to a shared `absoluteProgress` value before sorting.
 
-- Investigated why placed custom track tiles looked hollow or too dim.
-- Restored the clearer editor state requested by the user:
-  - Placed objects remain in the current visual style.
-  - Road and Wall outlines are stronger and more neon-visible.
-  - Grass grid cells now have a subtle light-green border so empty/editable cells are easier to read.
-- Did not change the custom track runtime map format.
+For Learning mode:
 
-### Main Menu Button Tweaks
+- Learning now reuses the same HUD ranking path as race modes.
+- Learning updates the same player checkpoint/lap state used by race HUD ranking.
+- Learning does not become a formal race-finish mode; it only borrows race progress for HUD ranking.
 
-- Shortened the `Guide / Powerups` button and kept it in the upper-right menu area.
-- Slightly increased the visual prominence of the main mode buttons:
-  - Arcade Mode.
-  - Custom Track Mode.
-  - Learning Mode.
-- Kept secondary buttons at their existing hierarchy and preserved all click behavior.
+## Important Code Changes
 
-### HUD / Two-Player / Default Track Work
+### `source/src/UI/mainwindow.cpp`
 
-- Extended the Arcade HUD for two-player mode so P1 and P2 can display separate status panels.
-- Preserved single-player HUD behavior.
-- Kept AI 1 / AI 2 speed rows visible.
-- Fixed default map start/finish visual overlap in the relevant default track generation paths.
-- Fixed speedometer needle/numeric speed mismatch by keeping the gauge and displayed speed on the same clamped range.
+Added helper logic near the anonymous namespace:
 
-### Custom Track Runtime / Camera / Feedback Cleanup
+- `RaceHudEntry::absoluteProgress`
+- `progressOnSegment()`
+- `routeHasDuplicateEndpoint()`
+- `routeSegmentCountFor()`
+- `progressAlongWaypointsNear()`
+- `routeSignatureFor()`
+- `routeWaypointsFromTrack()`
+- `hudRankingWaypoints()`
+- `playerRaceAbsoluteProgress()`
+- `aiRaceAbsoluteProgress()`
 
-- Custom Track `Play This Track` uses the shared countdown path.
-- Added session-generation cleanup so stale countdown callbacks do not fire after Back / Finish / Exit.
-- Cleaned transient driving feedback across session transitions:
-  - Countdown overlay.
-  - InteractiveFeedback toast messages.
-  - LearningHUD warnings.
-  - ArcadeHUD powerup slots.
-- Adjusted Learning and Custom Track camera zoom to feel closer to the normal driving view without changing Arcade defaults.
+Updated `buildRaceHudEntries()`:
 
-### Pause / Resume Feature
+- Builds a unified racer list including P1, optional P2, and active AI.
+- Computes `absoluteProgress` for all participants.
+- Sorts only by `absoluteProgress`, then stable insertion order for ties.
+- Formal race modes use checkpoint/lap-aware progress.
+- Non-formal/free fallback still has route-progress support.
 
-- Removed the visible red `STOP` badge from ArcadeHUD. It was not a real button; it was a red-light label that could overlap PLAYER 1.
-- Added a real `Pause` button to the top game control bar near `Back / Finish Drive / Exit Game`.
-- Button changes to `Resume` while paused.
-- Added `MainWindow::m_gamePaused` as the unified pause state.
-- Pause now gates the main simulation tick, freezing:
-  - Player vehicle physics updates.
-  - P2 updates.
-  - AI opponent updates.
-  - AI position/speed progression.
-  - Powerup world updates.
-  - Traffic/pedestrian runtime updates.
-  - Collision and violation checks driven by the simulation tick.
-  - Lap/session elapsed time.
-  - Report speed sampling and safe-driving ticks.
-- Pause also freezes supporting timers:
-  - Countdown finish timer.
-  - Learning mode auto-finish timer.
-  - ArcadeHUD red-light blink timer.
-  - ArcadeHUD powerup countdown timer.
-  - InteractiveFeedback countdown and toast queue.
-- Keyboard input now passes through MainWindow pause checks before reaching VehiclePhysics.
-- On pause, held driving keys are released in the physics objects to prevent stuck acceleration/steering after resume.
-- Added a neon `PAUSED` overlay in `GameViewWidget`.
-- Back / Finish Drive / Exit Game / new session cleanup resets pause state and hides the overlay.
+Updated `updateRaceHud()`:
 
-## Files Touched In This Window
+- Added `learningRaceHudActive`.
+- Added `hudRaceRankingActive`.
+- Learning mode now calls `buildRaceHudEntries(..., hudRaceRankingActive, ...)`, so it uses the same ranking logic as race modes.
+- AI is included in HUD ranking when active/ranked AI opponents exist.
 
-Primary pause-related files:
+Updated simulation loop:
 
-- `source/include/PhantomDrive/UI/mainwindow.h`
-- `source/src/UI/mainwindow.cpp`
-- `source/include/PhantomDrive/UI/GameViewWidget.h`
-- `source/src/UI/GameViewWidget.cpp`
-- `source/include/PhantomDrive/UI/ArcadeHUD.h`
-- `source/src/UI/ArcadeHUD.cpp`
-- `source/src/UI/InteractiveFeedback.cpp`
+- Learning mode now calls `updateArcadeRaceProgress(positionBeforeUpdate)` every tick, just like race modes, so `m_nextCheckpointIndex` and lap state are maintained for HUD ranking.
 
-Other files already modified during earlier parts of this same window:
+Updated `updateArcadeRaceProgress()`:
 
-- `source/src/UI/ABDrivingReportWidget.cpp`
-- `source/src/UI/DrivingReportWidget.cpp`
-- `source/src/UI/CustomTrackEditorWidget.cpp`
-- `source/src/scoring/AIAPIClient.cpp`
+- Allows Learning mode to update player race progress even though `m_arcadeRaceLogicActive` is false.
+- Learning mode does not trigger formal race completion/report through this path.
+- When Learning reaches `m_totalLaps`, lap HUD progress is reset for continued training.
 
-Release outputs synchronized:
+### `source/include/PhantomDrive/UI/mainwindow.h`
 
-- `windows-release/PhantomDriveApp.exe`
-- `windows-release/libPhantomDrive.dll`
+Added lightweight HUD progress state:
 
-## Verification Performed
+- `QHash<QString, qreal> m_hudRaceProgressById`
+- `QString m_hudRaceRouteSignature`
+
+These are mainly used by non-formal/free route fallback progress and are cleared on session/race reset.
+
+## Mode Coverage
+
+Single-player Arcade:
+
+- P1 vs AI now compares shared `absoluteProgress`.
+- AI no longer updates only at waypoint boundaries; segment progress is included.
+
+Two-player Arcade:
+
+- P1 and P2 remain correctly ranked against each other.
+- P1/P2 are also ranked against AI using the same `absoluteProgress` sort.
+- Total racers should be P1 + P2 + active AI.
+
+Adaptive AI:
+
+- Treated as Arcade with adaptive AI difficulty.
+- Uses the same formal HUD ranking path as normal Arcade.
+
+Custom Track:
+
+- Uses formal race-progress path when `m_customTrackPlaying` is active.
+- Falls back to route waypoints from track when needed.
+
+Learning:
+
+- Now reuses race-mode HUD ranking.
+- Maintains player checkpoint/lap state only for HUD ranking.
+- Does not turn Learning into a formal race completion mode.
+
+## Verification
 
 Commands run:
 
@@ -130,47 +125,45 @@ cmake -S source -B source/build-codex-debug
 cmake --build source/build-codex-debug -j
 ```
 
-Initial build note:
-
-- The first build failed because the shell PATH did not include the required MinGW/Qt runtime directories.
-- A minimal `int main(){return 0;}` also failed under that PATH, confirming it was a local compiler environment issue rather than a C++ source diagnostic.
-
-Successful build command:
-
-```powershell
-$env:PATH='C:\Qt\Tools\mingw1310_64\bin;C:\Qt\6.8.3\mingw_64\bin;' + $env:PATH
-cmake --build source/build-codex-debug -j
-```
-
-Results:
+Result:
 
 - CMake configure passed.
-- Build passed.
-- `source/build-codex-debug/bin/PhantomDriveApp.exe` and `libPhantomDrive.dll` were produced.
-- The built exe/dll were copied to `windows-release`.
-- Release smoke launch passed: `windows-release\PhantomDriveApp.exe` started and stayed running for 3 seconds, then was closed.
+- Build still failed in this environment because MinGW's C++ backend is broken.
+- A smoke test compiling a minimal `int main(){return 0;}` also failed.
+- Directly running `cc1plus.exe` returned `exit=-1073741515`.
 
-## Manual Screenshot / Gameplay Checks Still Recommended
+This indicates a local compiler/runtime environment issue rather than a useful project C++ diagnostic.
 
-- Arcade, Learning, Custom Track runtime, and Two-Player Race all show the top `Pause` button.
-- Clicking `Pause` changes it to `Resume`.
-- The `PAUSED` overlay appears centered over the game area and does not cover the right HUD too aggressively.
-- During pause:
-  - Player and AI cars do not move.
-  - Timer/lap time does not advance.
-  - 321GO countdown does not complete.
-  - Powerup duration display does not tick down.
-  - Traffic light does not switch.
-  - No new collision/violation/pickup toast appears.
-- Clicking `Resume` continues from the same state without resetting map, lap, powerup, or AI.
-- Back / Finish Drive / Exit Game clears paused state, countdown, and toast overlays.
-- Two-player HUD is not overlapped by any red `STOP` label.
-- Custom Track editor top toolbar remains fully visible after previous layout fixes.
-- Grass grid border in Custom Track editor is visible but not overpowering.
+## Current Working Tree Notes
 
-## Known Notes For Next Agent
+At the end of this update, `git status -sb` showed:
 
-- `source/src/scoring/AIAPIClient.cpp` is modified in the working tree but was not part of the pause task.
-- `windows-release_backup_20260612_010651/` exists and was not removed.
-- `CODEX_WINDOW_WORK_SUMMARY.md` is intentionally generated as an untracked handoff artifact unless the user decides to stage/commit it.
-- Avoid reverting unrelated dirty files; several were changed by earlier work in this same project window.
+```text
+## master
+ M source/src/UI/mainwindow.cpp
+?? windows-release_backup_20260612_010651/
+```
+
+`CODEX_WINDOW_WORK_SUMMARY.md` is an untracked/working handoff artifact unless the user stages it.
+
+## Recommended Manual Checks
+
+Because the local compiler backend cannot complete a build here, manual runtime checks should be done in an environment where the app builds/runs:
+
+- Learning mode:
+  - HUD rank should no longer stay fixed at `1ST / 3`.
+  - P1 passing AI should update position.
+  - AI passing P1 should update position.
+  - Total should include active AI cars.
+- Single-player Arcade:
+  - P1/AI overtakes update immediately, not only at checkpoints.
+- Two-player Arcade:
+  - P1/P2 rank correctly against each other and against AI.
+- Lap wrap:
+  - A racer near start/finish after completing a lap should not be treated as just starting the race.
+
+## Caution For Next Agent
+
+- Do not revert unrelated files unless explicitly asked.
+- The current ranking implementation is intentionally centralized in `MainWindow::updateRaceHud()` and local helpers; avoid adding separate HUD ranking logic inside `ArcadeHUD`.
+- If Learning mode ranking still misbehaves, inspect whether `updateArcadeRaceProgress()` is actually advancing `m_nextCheckpointIndex` on the active Learning track and whether AI waypoints match the visible route.

@@ -550,16 +550,19 @@ qreal aiRaceAbsoluteProgress(const PhantomDrive::AIOpponent* ai)
     }
 
     const int targetIndex = qBound(0, ai->getCurrentWaypointIndex(), waypointCount - 1);
-    if (targetIndex == 0 && ai->getCurrentLap() == 0 && ai->getCheckpointsPassed() == 0) {
-        return 0.0;
-    }
-
     const int previousIndex = (targetIndex - 1 + waypointCount) % waypointCount;
     qreal progressWithinLap = 0.0;
     if (targetIndex == 0) {
-        progressWithinLap = progressOnSegment(ai->getPosition(),
-                                              waypoints.at(previousIndex).position,
-                                              waypoints.at(targetIndex).position);
+        if (ai->getCurrentLap() == 0 && ai->getCheckpointsPassed() == 0) {
+            progressWithinLap = progressOnSegment(ai->getPosition(),
+                                                  waypoints.at(targetIndex).position,
+                                                  waypoints.at((targetIndex + 1) % waypointCount).position);
+        } else {
+            progressWithinLap = (routeSegmentCount - 1)
+                + progressOnSegment(ai->getPosition(),
+                                    waypoints.at(previousIndex).position,
+                                    waypoints.at(targetIndex).position);
+        }
     } else {
         progressWithinLap = (targetIndex - 1)
             + progressOnSegment(ai->getPosition(),
@@ -3565,8 +3568,9 @@ void MainWindow::updateRaceHud()
 {
     const bool raceRankingActive = m_arcadeRaceLogicActive
         && (m_currentMode == QStringLiteral("Arcade") || m_customTrackPlaying);
-    const bool includeAiInHudRanking = raceRankingActive
-        || (m_currentMode == QStringLiteral("Learning") && hasHudRankedAiOpponents(m_aiManager));
+    const bool learningRaceHudActive = (m_currentMode == QStringLiteral("Learning"));
+    const bool hudRaceRankingActive = raceRankingActive || learningRaceHudActive;
+    const bool includeAiInHudRanking = hudRaceRankingActive && hasHudRankedAiOpponents(m_aiManager);
 
     if (m_aiManager && raceRankingActive && m_driveActive && !m_countdownActive && !m_gamePaused) {
         const int totalCheckpoints = qMax(1, m_raceCheckpointTotal);
@@ -3595,7 +3599,7 @@ void MainWindow::updateRaceHud()
 
     const int raceCheckpointTotal = qMax(0, m_raceCheckpointTotal);
     const QList<RaceHudEntry> raceEntries = buildRaceHudEntries(includeAiInHudRanking,
-                                                                raceRankingActive,
+                                                                hudRaceRankingActive,
                                                                 m_playerPosition,
                                                                 m_lapsCompleted,
                                                                 m_nextCheckpointIndex,
@@ -3697,7 +3701,9 @@ void MainWindow::resetArcadeRaceProgress()
 
 void MainWindow::updateArcadeRaceProgress(const QVector2D& positionBefore)
 {
-    if (!m_arcadeRaceLogicActive || !m_driveActive || m_countdownActive || m_gamePaused || m_arcadeRaceFinished) {
+    const bool learningRaceHudActive = (m_currentMode == QStringLiteral("Learning"));
+    if ((!m_arcadeRaceLogicActive && !learningRaceHudActive)
+        || !m_driveActive || m_countdownActive || m_gamePaused || m_arcadeRaceFinished) {
         return;
     }
 
@@ -3744,6 +3750,10 @@ void MainWindow::updateArcadeRaceProgress(const QVector2D& positionBefore)
 
                 if (lapMs > 0 && (m_bestLapMs == 0 || lapMs < m_bestLapMs)) {
                     m_bestLapMs = lapMs;
+                }
+
+                if (learningRaceHudActive && m_lapsCompleted >= m_totalLaps) {
+                    m_lapsCompleted = 0;
                 }
 
                 if (m_lapsCompleted < m_totalLaps) {
@@ -4082,7 +4092,7 @@ void MainWindow::simulateGameLoop()
             m_player2Physics->update(kSimulationStepMs);
         }
 
-        if (m_arcadeRaceLogicActive) {
+        if (m_arcadeRaceLogicActive || m_currentMode == QStringLiteral("Learning")) {
             updateArcadeRaceProgress(positionBeforeUpdate);
             if (m_twoPlayerMode) {
                 updatePlayer2RaceProgress(player2PositionBeforeUpdate);
