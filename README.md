@@ -81,35 +81,35 @@ Implemented power-up types include Boost, Shield, Missile, Oil Slick, EMP, Invis
 
 ### Main Menu
 
-![Main Menu](docs/images/readme/main-menu.png)
+![Main Menu](source/docs/images/readme/main-menu.png)
 
 ### Arcade Mode
 
-![Arcade Mode](docs/images/readme/arcade-mode.png)
+![Arcade Mode](source/docs/images/readme/arcade-mode.png)
 
 ### Learning Mode
 
-![Learning Mode](docs/images/readme/learning-mode.png)
+![Learning Mode](source/docs/images/readme/learning-mode.png)
 
 ### Custom Track Editor
 
-![Custom Track Editor](docs/images/readme/custom-track-editor.png)
+![Custom Track Editor](source/docs/images/readme/custom-track-editor.png)
 
 ### Custom Track Race
 
-![Custom Track Race](docs/images/readme/custom-track-race.png)
+![Custom Track Race](source/docs/images/readme/custom-track-race.png)
 
 ### Two-Player HUD
 
-![Two-Player HUD](docs/images/readme/two-player-hud.png)
+![Two-Player HUD](source/docs/images/readme/two-player-hud.png)
 
 ### AI Coach Report
 
-![AI Coach Report](docs/images/readme/ai-coach-report.png)
+![AI Coach Report](source/docs/images/readme/ai-coach-report.png)
 
 ### Windows Release Launcher
 
-![Windows Release Launcher](docs/images/readme/windows-release-launcher.png)
+![Windows Release Launcher](source/docs/images/readme/windows-release-launcher.png)
 
 ## Build Requirements
 
@@ -294,3 +294,4 @@ Use this checklist for a live demo or final acceptance pass:
 - `source/docs/` is intentionally a flat documentation directory except for image assets under `source/docs/images/readme/`.
 - `source/packaging/` is the formal packaging directory.
 - Root delivery notes may be copied into `windows-release`, but build directories, zip archives, and source trees should not be copied into the release package.
+
