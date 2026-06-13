@@ -190,6 +190,8 @@ DrivingReportWidget::DrivingReportWidget(QWidget *parent)
     , m_activePlayerIndex(1)
     , m_applyingPlayerReport(false)
     , m_syncingHistorySelection(false)
+    , m_aiCoachMarkdownByPlayer()
+    , m_aiCoachSessionIdByPlayer()
 {
     setupUI();
     setStyleSheet(ThemeManager::reportPanelQss());
@@ -546,12 +548,25 @@ void DrivingReportWidget::setupBottomSection(QVBoxLayout* rootLayout)
     QVBoxLayout* coachLayout = new QVBoxLayout(m_coachAdviceWidget);
     coachLayout->setContentsMargins(0, 0, 0, 0);
 
-    m_aiReportLabel = new QLabel(QStringLiteral("Waiting for AI coach report..."), m_coachAdviceWidget);
+    m_aiReportLabel = new QTextBrowser(m_coachAdviceWidget);
     m_aiReportLabel->setObjectName(QStringLiteral("coachText"));
-    m_aiReportLabel->setWordWrap(true);
-    m_aiReportLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    m_aiReportLabel->setOpenExternalLinks(false);
+    m_aiReportLabel->setFrameShape(QFrame::NoFrame);
+    m_aiReportLabel->setReadOnly(true);
+    m_aiReportLabel->setMarkdown(QStringLiteral("Waiting for AI coach report..."));
     m_aiReportLabel->setMinimumHeight(360);
     m_aiReportLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    m_aiReportLabel->setStyleSheet(QStringLiteral(
+        "QTextBrowser#coachText {"
+        "  background: rgba(5, 12, 28, 150);"
+        "  color: #DCEBFF;"
+        "  border: 1px solid rgba(0,180,255,45);"
+        "  border-radius: 10px;"
+        "  padding: 14px 16px;"
+        "  font-size: 14px;"
+        "  line-height: 150%;"
+        "}"
+        "QTextBrowser#coachText h1, QTextBrowser#coachText h2 { color: #00E5FF; }"));
     coachLayout->addWidget(m_aiReportLabel);
 
     bottom->addWidget(createCard(QStringLiteral("AI 教练建议 / Coach Advice"), m_coachAdviceWidget), 1);
@@ -794,6 +809,7 @@ void DrivingReportWidget::setCurrentReport(const ScoreReport& report)
     }
 
     m_currentReport = report;
+    m_violations = report.violations;
     setMockDataEnabled(false);
 
     updateSummaryLabels();
@@ -815,6 +831,14 @@ void DrivingReportWidget::setPlayerReports(const ScoreReport& p1Report,
                                            const ScoreReport& p2Report,
                                            const QList<DrivingData>& p2Samples)
 {
+    if (m_aiCoachSessionIdByPlayer.value(1) != p1Report.sessionId) {
+        m_aiCoachMarkdownByPlayer.remove(1);
+        m_aiCoachSessionIdByPlayer.remove(1);
+    }
+    if (m_aiCoachSessionIdByPlayer.value(2) != p2Report.sessionId) {
+        m_aiCoachMarkdownByPlayer.remove(2);
+        m_aiCoachSessionIdByPlayer.remove(2);
+    }
     m_player1Report = p1Report;
     m_player1Samples = p1Samples;
     m_player2Report = p2Report;
@@ -844,13 +868,36 @@ void DrivingReportWidget::clearPlayerReports()
 
 void DrivingReportWidget::setCoachReportMarkdown(const QString& markdown)
 {
-    if (!m_aiReportLabel) {
-        return;
+    setCoachReportMarkdownForPlayer(m_activePlayerIndex, markdown);
+}
+
+void DrivingReportWidget::setCoachReportMarkdownForPlayer(int playerIndex, const QString& markdown)
+{
+    const int normalizedPlayerIndex = (playerIndex == 2) ? 2 : 1;
+    QString sessionId = m_currentReport.sessionId;
+    if (m_hasPlayerReports) {
+        sessionId = normalizedPlayerIndex == 2 ? m_player2Report.sessionId : m_player1Report.sessionId;
+    }
+    setCoachReportMarkdownForPlayer(normalizedPlayerIndex, sessionId, markdown);
+}
+
+void DrivingReportWidget::setCoachReportMarkdownForPlayer(int playerIndex,
+                                                          const QString& sessionId,
+                                                          const QString& markdown)
+{
+    const int normalizedPlayerIndex = (playerIndex == 2) ? 2 : 1;
+    const QString text = markdown.trimmed();
+    if (text.isEmpty()) {
+        m_aiCoachMarkdownByPlayer.remove(normalizedPlayerIndex);
+        m_aiCoachSessionIdByPlayer.remove(normalizedPlayerIndex);
+    } else {
+        m_aiCoachMarkdownByPlayer.insert(normalizedPlayerIndex, text);
+        m_aiCoachSessionIdByPlayer.insert(normalizedPlayerIndex, sessionId);
     }
 
-    const QString text = markdown.trimmed();
-    m_aiReportLabel->setTextFormat(Qt::RichText);
-    m_aiReportLabel->setText(coachAdviceHtml(text.isEmpty() ? QStringLiteral("Waiting for AI coach report...") : text));
+    if (normalizedPlayerIndex == m_activePlayerIndex) {
+        updateCoachAdvice();
+    }
 }
 
 void DrivingReportWidget::setMockDataEnabled(bool enabled)
@@ -922,6 +969,8 @@ void DrivingReportWidget::clearData()
     m_speedDataCount = 0;
     m_maxRecordedSpeed = 0.0;
     m_currentReport = ScoreReport();
+    m_aiCoachMarkdownByPlayer.clear();
+    m_aiCoachSessionIdByPlayer.clear();
 
     updateSummaryLabels();
     updateBreakdownBars();
@@ -1051,24 +1100,57 @@ void DrivingReportWidget::updateCoachAdvice()
         return;
     }
 
-    QStringList lines;
+    const int playerIndex = m_hasPlayerReports ? m_activePlayerIndex : 1;
+    const QString cachedMarkdown = m_aiCoachMarkdownByPlayer.value(playerIndex);
+    const QString cachedSessionId = m_aiCoachSessionIdByPlayer.value(playerIndex);
+    if (!cachedMarkdown.isEmpty()
+        && (cachedSessionId.isEmpty() || cachedSessionId == m_currentReport.sessionId)) {
+        m_aiReportLabel->setMarkdown(cachedMarkdown);
+        return;
+    }
+    if (!m_currentReport.aiCoachReportMarkdown.trimmed().isEmpty()) {
+        m_aiReportLabel->setMarkdown(m_currentReport.aiCoachReportMarkdown.trimmed());
+        return;
+    }
+
+    QString markdown;
     if (!m_currentReport.summary.trimmed().isEmpty()) {
-        lines << m_currentReport.summary.trimmed();
+        markdown += QStringLiteral("## 报告说明\n\n");
+        markdown += QStringLiteral("- %1\n").arg(m_currentReport.summary.trimmed());
     }
 
+    if (!m_currentReport.drivingMode.trimmed().isEmpty()
+        || !m_currentReport.reportContext.trimmed().isEmpty()) {
+        if (markdown.isEmpty()) {
+            markdown += QStringLiteral("## 报告说明\n\n");
+        }
+        markdown += QStringLiteral("- 模式：%1\n")
+                        .arg(m_currentReport.drivingMode.trimmed().isEmpty()
+                                 ? QStringLiteral("Unknown")
+                                 : m_currentReport.drivingMode.trimmed());
+        if (!m_currentReport.reportContext.trimmed().isEmpty()) {
+            markdown += QStringLiteral("- 上下文：%1\n").arg(m_currentReport.reportContext.trimmed());
+        }
+    }
+
+    if (!m_currentReport.coachAdvices.isEmpty()) {
+        if (!markdown.isEmpty()) {
+            markdown += QStringLiteral("\n");
+        }
+        markdown += QStringLiteral("## 本地教练建议\n\n");
+    }
     for (const CoachAdvice& advice : m_currentReport.coachAdvices) {
-        lines << QStringLiteral("[%1 / %2] %3")
-                     .arg(advice.category.isEmpty() ? QStringLiteral("Coach") : advice.category,
-                          advice.severity.isEmpty() ? QStringLiteral("info") : advice.severity,
-                          advice.message);
+        markdown += QStringLiteral("- **%1 / %2**：%3\n")
+                        .arg(advice.category.isEmpty() ? QStringLiteral("Coach") : advice.category,
+                             advice.severity.isEmpty() ? QStringLiteral("info") : advice.severity,
+                             advice.message);
     }
 
-    if (lines.isEmpty()) {
-        lines << QStringLiteral("Waiting for AI coach report...");
+    if (markdown.trimmed().isEmpty()) {
+        markdown = QStringLiteral("Waiting for AI coach report...");
     }
 
-    m_aiReportLabel->setTextFormat(Qt::RichText);
-    m_aiReportLabel->setText(coachAdviceHtml(lines.join(QStringLiteral("\n\n"))));
+    m_aiReportLabel->setMarkdown(markdown);
 }
 
 void DrivingReportWidget::updateHistoryChart()

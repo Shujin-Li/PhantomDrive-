@@ -28,7 +28,9 @@ public:
 
     ScoreReport evaluate(const QList<DrivingData>& dataList,
                          const QList<ViolationEvent>& violations,
-                         const QString& vehicleId = QString()) const;
+                         const QString& vehicleId = QString(),
+                         const QString& drivingMode = QString(),
+                         const QString& reportContext = QString()) const;
 
 private:
     ScoreCalculatorConfig m_config;

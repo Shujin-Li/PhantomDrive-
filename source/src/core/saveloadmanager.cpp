@@ -112,10 +112,13 @@ QJsonObject SaveLoadManager::reportToJson(const PhantomDrive::ScoreReport& r) co
     QJsonObject obj;
     obj["sessionId"] = r.sessionId;
     obj["vehicleId"] = r.vehicleId;
+    obj["drivingMode"] = r.drivingMode;
+    obj["reportContext"] = r.reportContext;
     obj["generatedAt"] = r.generatedAt.toString(Qt::ISODate);
     obj["totalScore"] = r.totalScore;
     obj["grade"] = r.grade;
     obj["summary"] = r.summary;
+    obj["aiCoachReportMarkdown"] = r.aiCoachReportMarkdown;
 
     obj["metrics"] = metricsToJson(r.metrics);
     obj["breakdown"] = breakdownToJson(r.breakdown);
@@ -224,10 +227,13 @@ PhantomDrive::ScoreReport SaveLoadManager::jsonToReport(const QJsonObject& obj) 
     PhantomDrive::ScoreReport r;
     r.sessionId = obj["sessionId"].toString();
     r.vehicleId = obj["vehicleId"].toString();
+    r.drivingMode = obj["drivingMode"].toString();
+    r.reportContext = obj["reportContext"].toString();
     r.generatedAt = QDateTime::fromString(obj["generatedAt"].toString(), Qt::ISODate);
     r.totalScore = obj["totalScore"].toDouble();
     r.grade = obj["grade"].toString();
     r.summary = obj["summary"].toString();
+    r.aiCoachReportMarkdown = obj["aiCoachReportMarkdown"].toString();
 
     if (obj.contains("metrics"))
         r.metrics = jsonToMetrics(obj["metrics"].toObject());
@@ -358,6 +364,39 @@ bool SaveLoadManager::saveReport(const PhantomDrive::ScoreReport& report)
         emit historyChanged();
     }
     return ok;
+}
+
+bool SaveLoadManager::updateReportAiCoachReport(const QString& sessionId,
+                                                const QString& vehicleId,
+                                                const QString& markdown)
+{
+    const QString trimmedSessionId = sessionId.trimmed();
+    const QString trimmedMarkdown = markdown.trimmed();
+    if (trimmedSessionId.isEmpty() || trimmedMarkdown.isEmpty()) {
+        qWarning() << "SaveLoadManager::updateReportAiCoachReport: empty sessionId or markdown";
+        return false;
+    }
+
+    QList<PhantomDrive::ScoreReport> reports = loadFromFile();
+    for (int i = reports.size() - 1; i >= 0; --i) {
+        const bool sessionMatches = reports.at(i).sessionId == trimmedSessionId;
+        const bool vehicleMatches = vehicleId.trimmed().isEmpty()
+            || reports.at(i).vehicleId == vehicleId.trimmed();
+        if (sessionMatches && vehicleMatches) {
+            reports[i].aiCoachReportMarkdown = trimmedMarkdown;
+            const bool ok = saveToFile(reports);
+            if (ok) {
+                emit reportUpdated(i, reports.at(i));
+                emit historyChanged();
+            }
+            return ok;
+        }
+    }
+
+    qWarning() << "SaveLoadManager::updateReportAiCoachReport: report not found"
+               << "sessionId=" << trimmedSessionId
+               << "vehicleId=" << vehicleId;
+    return false;
 }
 
 bool SaveLoadManager::saveReportJson(const QJsonObject& reportJson)

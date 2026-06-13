@@ -115,6 +115,10 @@ CustomTrackEditorWidget::CustomTrackEditorWidget(QWidget* parent)
     , m_loadButton(nullptr)
     , m_exportButton(nullptr)
     , m_backButton(nullptr)
+    , m_playersLabel(nullptr)
+    , m_aiLabel(nullptr)
+    , m_playersCombo(nullptr)
+    , m_aiDifficultyCombo(nullptr)
     , m_currentBrush(CustomTrackBrush::Road)
     , m_tileSize(32.0)
 {
@@ -180,6 +184,17 @@ void CustomTrackEditorWidget::resetTrack()
     update();
 }
 
+int CustomTrackEditorWidget::selectedPlayerCount() const
+{
+    return m_playersCombo ? m_playersCombo->currentData().toInt() : 1;
+}
+
+QString CustomTrackEditorWidget::selectedAiDifficulty() const
+{
+    const QString value = m_aiDifficultyCombo ? m_aiDifficultyCombo->currentData().toString() : QString();
+    return value.isEmpty() ? QStringLiteral("medium") : value;
+}
+
 void CustomTrackEditorWidget::setupButtons()
 {
     const QList<CustomTrackBrush> brushes = {
@@ -237,12 +252,59 @@ void CustomTrackEditorWidget::setupButtons()
     m_loadButton = new QPushButton(QStringLiteral("Load Track"), this);
     m_exportButton = new QPushButton(QStringLiteral("Export JSON"), this);
     m_backButton = new QPushButton(QStringLiteral("Back"), this);
+    m_playersLabel = new QLabel(QStringLiteral("Players:"), this);
+    m_aiLabel = new QLabel(QStringLiteral("AI:"), this);
+    m_playersCombo = new QComboBox(this);
+    m_aiDifficultyCombo = new QComboBox(this);
+
+    m_playersCombo->addItem(QStringLiteral("Single Player"), 1);
+    m_playersCombo->addItem(QStringLiteral("Two-Player"), 2);
+    m_playersCombo->setCurrentIndex(0);
+    m_aiDifficultyCombo->addItem(QStringLiteral("Easy"), QStringLiteral("easy"));
+    m_aiDifficultyCombo->addItem(QStringLiteral("Normal"), QStringLiteral("medium"));
+    m_aiDifficultyCombo->addItem(QStringLiteral("Hard"), QStringLiteral("hard"));
+    m_aiDifficultyCombo->addItem(QStringLiteral("Adaptive"), QStringLiteral("adaptive"));
+    m_aiDifficultyCombo->setCurrentIndex(1);
 
     m_playButton->setToolTip(QStringLiteral("Validate and race this custom track"));
     m_saveButton->setToolTip(QStringLiteral("Save .pdtrack"));
     m_loadButton->setToolTip(QStringLiteral("Load .pdtrack or .json"));
     m_exportButton->setToolTip(QStringLiteral("Export current track as JSON"));
     m_backButton->setToolTip(QStringLiteral("Back to main menu"));
+    m_playersCombo->setToolTip(QStringLiteral("Choose one or two local players for this custom track run"));
+    m_aiDifficultyCombo->setToolTip(QStringLiteral("Choose AI opponent difficulty for this custom track run"));
+
+    const QString labelStyle = QStringLiteral(
+        "QLabel {"
+        "  color: #2FF0FF;"
+        "  font-size: 11px;"
+        "  font-weight: 900;"
+        "}");
+    m_playersLabel->setStyleSheet(labelStyle);
+    m_aiLabel->setStyleSheet(labelStyle);
+    const QString comboStyle = QStringLiteral(
+        "QComboBox {"
+        "  color: #EAFBFF;"
+        "  background: rgba(7, 20, 42, 245);"
+        "  border: 1px solid rgba(44, 226, 255, 150);"
+        "  border-radius: 7px;"
+        "  padding: 5px 28px 5px 10px;"
+        "  font-weight: 800;"
+        "}"
+        "QComboBox:hover { border-color: #32F6FF; background: rgba(12, 40, 68, 245); }"
+        "QComboBox::drop-down { width: 24px; border-left: 1px solid rgba(44, 226, 255, 80); }"
+        "QComboBox QAbstractItemView {"
+        "  color: #EAFBFF;"
+        "  background: #071220;"
+        "  selection-background-color: #0A8DA8;"
+        "  border: 1px solid #2FF0FF;"
+        "}");
+    m_playersCombo->setStyleSheet(comboStyle);
+    m_aiDifficultyCombo->setStyleSheet(comboStyle);
+    m_playersCombo->setFocusPolicy(Qt::NoFocus);
+    m_aiDifficultyCombo->setFocusPolicy(Qt::NoFocus);
+    m_playersCombo->setMinimumHeight(ButtonHeight);
+    m_aiDifficultyCombo->setMinimumHeight(ButtonHeight);
 
     const QList<QPushButton*> actionButtons = {m_playButton, m_saveButton, m_loadButton, m_exportButton, m_backButton};
     for (QPushButton* button : actionButtons) {
@@ -311,12 +373,34 @@ void CustomTrackEditorWidget::layoutButtons()
     x = contentLeft;
     y = ActionButtonTop;
     const QList<QPushButton*> actions = {m_playButton, m_saveButton, m_loadButton, m_exportButton, m_backButton};
-    const int actionWidth = qBound(118, (contentWidth - ButtonGap * (actions.size() - 1)) / actions.size(), 250);
+    const int settingsWidth = qBound(330, contentWidth / 4, 430);
+    const bool settingsFitOnActionRow = contentWidth >= 840;
+    const int actionAreaWidth = settingsFitOnActionRow ? contentWidth - settingsWidth - ButtonGap * 2 : contentWidth;
+    const int actionWidth = qBound(90, (actionAreaWidth - ButtonGap * (actions.size() - 1)) / actions.size(), 250);
     for (int i = 0; i < actions.size(); ++i) {
         actions.at(i)->setGeometry(x, y, actionWidth, ButtonHeight);
         actions.at(i)->raise();
         x += actionWidth + ButtonGap;
     }
+
+    const int labelWidth = 58;
+    const int comboWidth = settingsFitOnActionRow ? qMax(95, (settingsWidth - labelWidth * 2 - ButtonGap * 3) / 2) : 150;
+    const int settingsY = settingsFitOnActionRow ? ActionButtonTop : ActionButtonTop;
+    int settingsX = settingsFitOnActionRow ? contentLeft + actionAreaWidth + ButtonGap * 2
+                                           : contentLeft + contentWidth - (labelWidth + comboWidth) * 2 - ButtonGap * 3;
+    settingsX = qMax(contentLeft, settingsX);
+
+    m_playersLabel->setGeometry(settingsX, settingsY, labelWidth, ButtonHeight);
+    m_playersCombo->setGeometry(settingsX + labelWidth, settingsY, comboWidth, ButtonHeight);
+    m_aiLabel->setGeometry(settingsX + labelWidth + comboWidth + ButtonGap, settingsY, labelWidth / 2, ButtonHeight);
+    m_aiDifficultyCombo->setGeometry(settingsX + labelWidth + comboWidth + ButtonGap + labelWidth / 2,
+                                     settingsY,
+                                     comboWidth,
+                                     ButtonHeight);
+    m_playersLabel->raise();
+    m_playersCombo->raise();
+    m_aiLabel->raise();
+    m_aiDifficultyCombo->raise();
 }
 
 QRectF CustomTrackEditorWidget::gridRect() const

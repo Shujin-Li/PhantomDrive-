@@ -106,11 +106,24 @@ QString powerupIconPath(const QString& powerupType)
     return QString();
 }
 
+int nearestSpeedLimitSignValue(int limit)
+{
+    static const QList<int> supportedLimits = {20, 30, 40, 50, 60, 70, 80, 90, 100, 120};
+    int nearest = supportedLimits.first();
+    int nearestDelta = qAbs(limit - nearest);
+    for (const int supported : supportedLimits) {
+        const int delta = qAbs(limit - supported);
+        if (delta < nearestDelta || (delta == nearestDelta && supported > nearest)) {
+            nearest = supported;
+            nearestDelta = delta;
+        }
+    }
+    return nearest;
+}
+
 QString speedLimitImagePath(int limit)
 {
-    static const QSet<int> supportedLimits = {20, 30, 40, 50, 60, 70, 80, 90, 100, 120};
-    const int normalized = supportedLimits.contains(limit) ? limit : 60;
-    return QStringLiteral("traffic/pd_speed_limit_%1.png").arg(normalized);
+    return QStringLiteral("traffic/pd_speed_limit_%1.png").arg(nearestSpeedLimitSignValue(limit));
 }
 
 bool isRoadVisualTile(const TrackTile* tile)
@@ -1412,7 +1425,8 @@ void GameViewWidget::drawSpeedLimitSign(QPainter& painter, const GameRenderObjec
 
     QRectF signRect(visualCenter.x() - halfW, visualCenter.y() - halfH * 2, halfW * 2, halfH * 2);
     const int limit = sign.extraData.value(QStringLiteral("limit"), sign.label).toInt();
-    const QPixmap& signImage = visualPixmap(speedLimitImagePath(limit));
+    const int displayLimit = nearestSpeedLimitSignValue(limit);
+    const QPixmap& signImage = visualPixmap(speedLimitImagePath(displayLimit));
     if (!signImage.isNull()) {
         painter.drawPixmap(signRect, signImage, signImage.rect());
     } else {
@@ -1423,7 +1437,7 @@ void GameViewWidget::drawSpeedLimitSign(QPainter& painter, const GameRenderObjec
 
     painter.setPen(QColor(44, 62, 80));
     painter.setFont(QFont("Arial", 12, QFont::Bold));
-    painter.drawText(signRect, Qt::AlignCenter, sign.label);
+    painter.drawText(signRect, Qt::AlignCenter, QString::number(displayLimit));
     painter.restore();
 }
 

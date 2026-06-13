@@ -23,6 +23,7 @@ public:
     explicit ScoreManager(QObject* parent = nullptr);
 
     void setVehicleId(const QString& vehicleId);
+    void setSessionContext(const QString& drivingMode, const QString& reportContext = QString());
     void setTrafficObjectManager(TrafficObjectManager* manager);
 
     void startSession(const QString& vehicleId = QString());
@@ -46,6 +47,7 @@ public slots:
 signals:
     void scoreReady(const PhantomDrive::ScoreReport& report);
     void coachReportReady(const QString& markdown);
+    void coachReportReadyForVehicle(const QString& vehicleId, const QString& sessionId, const QString& markdown);
     void scoringFailed(const QString& reason);
     void feedbackReady(QString text, int pointsDelta, QString severity);
     void reportReady(PhantomDrive::ScoreReport report);
@@ -58,6 +60,8 @@ private:
                             bool emitFailure);
 
     QString m_vehicleId;
+    QString m_sessionDrivingMode;
+    QString m_sessionReportContext;
     TrafficObjectManager* m_trafficManager;
     DrivingScoreCalculator m_calculator;
     TrafficRuleEnforcer m_ruleEnforcer;

@@ -61,10 +61,13 @@ struct QLearningFeedback {
 struct ScoreReport {
     QString sessionId;
     QString vehicleId;
+    QString drivingMode;
+    QString reportContext;
     QDateTime generatedAt;
     qreal totalScore = 0.0;
     QString grade;
     QString summary;
+    QString aiCoachReportMarkdown;
     QList<ViolationEvent> violations;
     ScoreMetrics metrics;
     ScoreBreakdown breakdown;

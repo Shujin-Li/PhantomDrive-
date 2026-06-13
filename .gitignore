@@ -2,6 +2,8 @@ build/
 build*/
 cmake-build-*/
 windows-release/
+*.local.bat
+windows-release/*.local.bat
 *.exe
 *.dll
 *.pdb

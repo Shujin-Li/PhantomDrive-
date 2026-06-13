@@ -10,6 +10,103 @@ qreal clamp01(qreal v)
 {
     return qBound(0.0, v, 1.0);
 }
+
+bool hasSpeedViolationEvent(const QList<ViolationEvent>& violations)
+{
+    for (const ViolationEvent& violation : violations) {
+        if (violation.type == ViolationType::SpeedOverLimit) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool usesTrafficRuleSpeedScoring(const QString& drivingMode, const QString& reportContext)
+{
+    const QString mode = drivingMode.trimmed().toLower();
+    const QString context = reportContext.trimmed().toLower();
+
+    if (mode.contains(QStringLiteral("learning"))
+        || context.contains(QStringLiteral("learning traffic"))
+        || context.contains(QStringLiteral("traffic rules"))) {
+        return true;
+    }
+
+    if (mode.contains(QStringLiteral("arcade"))
+        || mode.contains(QStringLiteral("custom"))
+        || context.contains(QStringLiteral("two-player"))
+        || context.contains(QStringLiteral("custom track"))) {
+        return false;
+    }
+
+    return true;
+}
+
+QList<ViolationEvent> filterModeSpecificViolations(const QList<ViolationEvent>& violations,
+                                                   bool useSpeedLimitScoring)
+{
+    if (useSpeedLimitScoring) {
+        return violations;
+    }
+
+    QList<ViolationEvent> filtered;
+    for (const ViolationEvent& violation : violations) {
+        if (violation.type != ViolationType::SpeedOverLimit) {
+            filtered.append(violation);
+        }
+    }
+    return filtered;
+}
+
+QList<ViolationEvent> buildOverspeedDisplayEvents(const QList<DrivingData>& dataList,
+                                                  int penaltyPoints)
+{
+    QList<ViolationEvent> events;
+    bool inSegment = false;
+    ViolationEvent current;
+    int frameCount = 0;
+
+    auto flushSegment = [&]() {
+        if (!inSegment) {
+            return;
+        }
+        if (frameCount >= 3) {
+            current.description = QStringLiteral("Speed %1 exceeded limit %2 for %3 samples")
+                                      .arg(current.speedAtViolation, 0, 'f', 1)
+                                      .arg(current.speedLimit, 0, 'f', 0)
+                                      .arg(frameCount);
+            events.append(current);
+        }
+        inSegment = false;
+        frameCount = 0;
+        current = ViolationEvent();
+    };
+
+    for (const DrivingData& data : dataList) {
+        const bool overLimit = data.currentSpeedLimit > 0.0 && data.speed > data.currentSpeedLimit;
+        if (!overLimit) {
+            flushSegment();
+            continue;
+        }
+
+        if (!inSegment) {
+            inSegment = true;
+            frameCount = 0;
+            current.timestamp = data.timestamp;
+            current.type = ViolationType::SpeedOverLimit;
+            current.position = data.position;
+            current.speedAtViolation = data.speed;
+            current.speedLimit = data.currentSpeedLimit;
+            current.penaltyPoints = penaltyPoints;
+        } else if (data.speed > current.speedAtViolation) {
+            current.speedAtViolation = data.speed;
+            current.position = data.position;
+        }
+        ++frameCount;
+    }
+    flushSegment();
+    return events;
+}
 }
 
 DrivingScoreCalculator::DrivingScoreCalculator()
@@ -29,13 +126,21 @@ ScoreCalculatorConfig DrivingScoreCalculator::config() const
 
 ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
                                              const QList<ViolationEvent>& violations,
-                                             const QString& vehicleId) const
+                                             const QString& vehicleId,
+                                             const QString& drivingMode,
+                                             const QString& reportContext) const
 {
+    const bool useSpeedLimitScoring = usesTrafficRuleSpeedScoring(drivingMode, reportContext);
+    const QList<ViolationEvent> scoringViolations =
+        filterModeSpecificViolations(violations, useSpeedLimitScoring);
+
     ScoreReport report;
     report.sessionId = QStringLiteral("session_%1").arg(QDateTime::currentMSecsSinceEpoch());
     report.vehicleId = vehicleId;
+    report.drivingMode = drivingMode.trimmed();
+    report.reportContext = reportContext.trimmed();
     report.generatedAt = QDateTime::currentDateTimeUtc();
-    report.violations = violations;
+    report.violations = scoringViolations;
 
     report.metrics.dataPointCount = dataList.size();
     if (!dataList.isEmpty()) {
@@ -46,7 +151,7 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
     for (const DrivingData& data : dataList) {
         speedSum += data.speed;
         report.metrics.maxSpeed = qMax(report.metrics.maxSpeed, data.speed);
-        if (data.currentSpeedLimit > 0.0 && data.speed > data.currentSpeedLimit) {
+        if (useSpeedLimitScoring && data.currentSpeedLimit > 0.0 && data.speed > data.currentSpeedLimit) {
             report.metrics.overspeedFrameCount++;
         }
         if (data.acceleration >= m_config.harshAccelerationThreshold) {
@@ -64,7 +169,13 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
         report.metrics.overspeedRatio = static_cast<qreal>(report.metrics.overspeedFrameCount) / dataList.size();
     }
 
-    for (const ViolationEvent& v : violations) {
+    if (useSpeedLimitScoring
+        && !hasSpeedViolationEvent(scoringViolations)
+        && report.metrics.overspeedFrameCount > 0) {
+        report.violations.append(buildOverspeedDisplayEvents(dataList, m_config.speedViolationPenalty));
+    }
+
+    for (const ViolationEvent& v : report.violations) {
         switch (v.type) {
         case ViolationType::Collision:
             report.metrics.collisionCount++;
@@ -88,8 +199,10 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
 
     report.breakdown.collisionPenalty = report.metrics.collisionCount * m_config.collisionPenalty;
     report.breakdown.speedPenalty =
-            report.metrics.speedViolationCount * m_config.speedViolationPenalty
-            + report.metrics.overspeedRatio * 10.0;
+            useSpeedLimitScoring
+                ? report.metrics.speedViolationCount * m_config.speedViolationPenalty
+                      + report.metrics.overspeedRatio * 10.0
+                : 0.0;
     report.breakdown.redLightPenalty = report.metrics.redLightViolationCount * m_config.redLightPenalty;
     report.breakdown.pedestrianPenalty = report.metrics.pedestrianViolationCount * m_config.pedestrianPenalty;
     report.breakdown.smoothnessPenalty =
@@ -104,7 +217,7 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
             + report.metrics.harshBrakingCount * 2.0 + report.metrics.harshAccelerationCount * 1.5;
     qreal rulePenalty =
             report.breakdown.speedPenalty + report.breakdown.redLightPenalty + wrongWayPenalty
-            + report.metrics.overspeedRatio * 8.0;
+            + (useSpeedLimitScoring ? report.metrics.overspeedRatio * 8.0 : 0.0);
     qreal smoothnessPenalty = report.breakdown.smoothnessPenalty;
     qreal efficiencyPenalty = 0.0;
     if (report.metrics.dataPointCount < 20) {
@@ -154,8 +267,10 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
 
     report.qLearningFeedback.normalizedScore = report.totalScore / 100.0;
     report.qLearningFeedback.collisionPenalty = clamp01((report.metrics.collisionCount * m_config.collisionPenalty) / 100.0);
-    report.qLearningFeedback.speedPenalty = clamp01((report.metrics.speedViolationCount * m_config.speedViolationPenalty
-                                                    + report.metrics.overspeedRatio * 10.0) / 100.0);
+    report.qLearningFeedback.speedPenalty = useSpeedLimitScoring
+        ? clamp01((report.metrics.speedViolationCount * m_config.speedViolationPenalty
+                   + report.metrics.overspeedRatio * 10.0) / 100.0)
+        : 0.0;
     report.qLearningFeedback.smoothnessPenalty = clamp01(report.breakdown.smoothnessPenalty / 100.0);
     report.qLearningFeedback.safetyRisk = clamp01(
             report.metrics.collisionCount * 0.25
@@ -165,7 +280,7 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
             1.0 - (report.metrics.speedViolationCount * 0.08
                    + report.metrics.redLightViolationCount * 0.12
                    + report.metrics.wrongWayViolationCount * 0.1
-                   + report.metrics.overspeedRatio * 0.5));
+                   + (useSpeedLimitScoring ? report.metrics.overspeedRatio * 0.5 : 0.0)));
     report.qLearningFeedback.terminalPenalty =
             (report.metrics.collisionCount > 0 ? 0.2 : 0.0)
             + (report.metrics.pedestrianViolationCount > 0 ? 0.35 : 0.0);
@@ -193,4 +308,3 @@ ScoreReport DrivingScoreCalculator::evaluate(const QList<DrivingData>& dataList,
 }
 
 }
-

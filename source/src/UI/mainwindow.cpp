@@ -846,6 +846,20 @@ QString lightColorToString(PhantomDrive::TrafficLightObject::LightColor color)
     }
 }
 
+bool isRealAiCoachReportMarkdown(const QString& markdown)
+{
+    const QString text = markdown.trimmed();
+    if (text.isEmpty()) {
+        return false;
+    }
+    if (text.contains(QStringLiteral("Local Fallback"), Qt::CaseInsensitive)
+        || text.contains(QStringLiteral("AI API fallback reason"), Qt::CaseInsensitive)
+        || text.contains(QStringLiteral("mode=mock"), Qt::CaseInsensitive)) {
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -924,6 +938,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_player2LapsCompleted(0)
     , m_player2NextCheckpointIndex(0)
     , m_player2WasInsideNextGate(false)
+    , m_player1Finished(false)
+    , m_player2Finished(false)
     , m_twoPlayerFinishHandled(false)
     , m_player1PendingReport()
     , m_player2PendingReport()
@@ -1314,11 +1330,36 @@ void MainWindow::setupDataBindings()
         m_scoreManager->setTrafficObjectManager(m_trafficObjectManager);
         connect(m_scoreManager, &ScoreManager::scoreReady,
                 this, &MainWindow::onScoreReady, Qt::UniqueConnection);
-        connect(m_scoreManager, &ScoreManager::coachReportReady,
-                this, &MainWindow::onCoachReportReady, Qt::UniqueConnection);
+        disconnect(m_scoreManager, &ScoreManager::coachReportReadyForVehicle, this, nullptr);
+        connect(m_scoreManager, &ScoreManager::coachReportReadyForVehicle,
+                this, [this](const QString& vehicleId, const QString& sessionId, const QString& markdown) {
+                    if (isRealAiCoachReportMarkdown(markdown)) {
+                        SaveLoadManager::instance().updateReportAiCoachReport(sessionId, vehicleId, markdown);
+                    }
+                    if (m_reportWidget) {
+                        const int playerIndex = vehicleId == QStringLiteral("player_2") ? 2 : 1;
+                        m_reportWidget->setCoachReportMarkdownForPlayer(playerIndex, sessionId, markdown);
+                        m_reportWidget->hideLoading();
+                    }
+                });
         connect(m_scoreManager, &ScoreManager::scoringFailed,
                 this, [this](const QString& reason) {
                     statusBar()->showMessage(QStringLiteral("Scoring failed: %1").arg(reason), 5000);
+                });
+    }
+
+    if (m_player2ScoreManager) {
+        disconnect(m_player2ScoreManager, &ScoreManager::coachReportReadyForVehicle, this, nullptr);
+        connect(m_player2ScoreManager, &ScoreManager::coachReportReadyForVehicle,
+                this, [this](const QString& vehicleId, const QString& sessionId, const QString& markdown) {
+                    if (isRealAiCoachReportMarkdown(markdown)) {
+                        SaveLoadManager::instance().updateReportAiCoachReport(sessionId, vehicleId, markdown);
+                    }
+                    if (m_reportWidget) {
+                        const int playerIndex = vehicleId == QStringLiteral("player_1") ? 1 : 2;
+                        m_reportWidget->setCoachReportMarkdownForPlayer(playerIndex, sessionId, markdown);
+                        m_reportWidget->hideLoading();
+                    }
                 });
     }
 }
@@ -1818,6 +1859,7 @@ void MainWindow::clearTransientDrivingFeedback()
     if (m_arcadeHUD) {
         m_arcadeHUD->clearPowerupState();
     }
+
 }
 
 void MainWindow::toggleGamePaused()
@@ -2123,6 +2165,10 @@ void MainWindow::playCurrentCustomTrack()
     }
 
     playSound(PhantomDrive::SoundEffect::ButtonClick);
+    if (m_customTrackEditor) {
+        m_twoPlayerMode = m_customTrackEditor->selectedPlayerCount() == 2;
+        m_selectedAIDifficulty = m_customTrackEditor->selectedAiDifficulty();
+    }
     dumpCustomTrackLayoutForDebug(track, QStringLiteral("Editor before Play snapshot"));
     if (m_runtimeCustomTrack) {
         m_runtimeCustomTrack->deleteLater();
@@ -2280,6 +2326,9 @@ bool MainWindow::isTwoPlayerSelected() const
 
 QString MainWindow::selectedAIDifficulty() const
 {
+    if (m_currentMode == QStringLiteral("Custom Track") || m_customTrackPlaying) {
+        return m_selectedAIDifficulty.isEmpty() ? QStringLiteral("medium") : m_selectedAIDifficulty;
+    }
     if (m_aiDifficultyCombo) {
         const QString value = m_aiDifficultyCombo->currentData().toString();
         if (!value.isEmpty()) {
@@ -2319,6 +2368,23 @@ void MainWindow::updateArcadeSetupTrackInfo()
 
 void MainWindow::preparePlayerReportSystems()
 {
+    QStringList contextParts;
+    if (m_twoPlayerMode) {
+        contextParts << QStringLiteral("Two-Player");
+    }
+    if (m_customTrackPlaying || m_currentMode == QStringLiteral("Custom Track")) {
+        contextParts << QStringLiteral("Custom Track");
+    }
+    if (m_currentMode == QStringLiteral("Learning")) {
+        contextParts << QStringLiteral("Learning traffic rules");
+    }
+    if (m_selectedAIDifficulty == QStringLiteral("adaptive")) {
+        contextParts << QStringLiteral("Adaptive AI");
+    }
+    const QString baseContext = contextParts.isEmpty()
+        ? QStringLiteral("Standard single-player drive")
+        : contextParts.join(QStringLiteral(" / "));
+
     if (m_drivingDataCollector) {
         m_drivingDataCollector->stopCollection();
         m_drivingDataCollector->clearData();
@@ -2331,6 +2397,9 @@ void MainWindow::preparePlayerReportSystems()
         m_drivingDataCollector->startCollection();
     }
     if (m_scoreManager) {
+        m_scoreManager->setSessionContext(m_currentMode, m_twoPlayerMode
+            ? baseContext + QStringLiteral(" / Player 1")
+            : baseContext);
         m_scoreManager->startSession(QStringLiteral("player_1"));
     }
 
@@ -2354,6 +2423,8 @@ void MainWindow::preparePlayerReportSystems()
         m_player2DataCollector->startCollection();
     }
     if (m_player2ScoreManager) {
+        m_player2ScoreManager->setSessionContext(m_currentMode,
+                                                 baseContext + QStringLiteral(" / Player 2"));
         m_player2ScoreManager->startSession(QStringLiteral("player_2"));
     }
 }
@@ -2364,6 +2435,7 @@ void MainWindow::applyPlayer2SpawnAtStartLine()
         return;
     }
 
+    TrackData* track = m_gameView ? m_gameView->trackData() : nullptr;
     const QVector2D base = m_playerPosition;
     const qreal radians = qDegreesToRadians(m_playerRotation);
     const QVector2D right(qCos(radians), -qSin(radians));
@@ -2376,10 +2448,14 @@ void MainWindow::applyPlayer2SpawnAtStartLine()
     };
 
     QVector2D spawn = base + right * 52.0;
-    for (const QVector2D& candidate : candidates) {
-        if (m_player2Physics->isPositionFree(candidate)) {
-            spawn = candidate;
-            break;
+    if (track && track->getStartPositions().size() > 1) {
+        spawn = track->getStartPositions().at(1);
+    } else {
+        for (const QVector2D& candidate : candidates) {
+            if (m_player2Physics->isPositionFree(candidate)) {
+                spawn = candidate;
+                break;
+            }
         }
     }
 
@@ -2790,7 +2866,7 @@ void MainWindow::setupEBRuntimeObjects()
 
     auto* sign = new SpeedLimitSignObject(QStringLiteral("eb_speed_zone_1"), m_trafficObjectManager);
     sign->setPosition(east + QVector2D(-70.0f, 0.0f));
-    sign->setSpeedLimit(45.0);
+    sign->setSpeedLimit(50.0);
     sign->setDetectionRadius(180.0);
     sign->setZoneId(QStringLiteral("eb_east_speed_zone"));
     m_trafficObjectManager->registerTrafficObject(sign);
@@ -3026,15 +3102,25 @@ void MainWindow::initializeAIOpponents()
 
     AIStyle primaryStyle = AIStyle::Normal;
     AIStyle secondaryStyle = AIStyle::Defensive;
+    qreal speedScale = 1.0;
+    qreal accelerationScale = 1.0;
     if (difficulty == QStringLiteral("easy")) {
         primaryStyle = AIStyle::Conservative;
         secondaryStyle = AIStyle::Normal;
+        speedScale = 0.86;
+        accelerationScale = 0.9;
     } else if (difficulty == QStringLiteral("hard")) {
         primaryStyle = AIStyle::Aggressive;
         secondaryStyle = AIStyle::Defensive;
+        speedScale = 1.14;
+        accelerationScale = 1.08;
     } else if (difficulty == QStringLiteral("adaptive")) {
+        // Adaptive reuses the existing adaptive demo mapping: Normal + Aggressive
+        // styles with a mild speed lift, leaving the AI API/core algorithm intact.
         primaryStyle = AIStyle::Normal;
         secondaryStyle = AIStyle::Aggressive;
+        speedScale = 1.06;
+        accelerationScale = 1.03;
     }
 
     AIOpponent* ai1 = m_aiManager->createOpponent("ai_1", primaryStyle);
@@ -3046,6 +3132,11 @@ void MainWindow::initializeAIOpponents()
         if (!ai) {
             continue;
         }
+        AIConfig config = ai->getConfig();
+        config.maxSpeed *= speedScale;
+        config.acceleration *= accelerationScale;
+        ai->setConfig(config);
+        ai->setMaxSpeed(config.maxSpeed);
         ai->setWaypoints(aiWaypoints);
         const QVector2D spawnPos = aiWaypoints.first().position + QVector2D(35.0f * i, 42.0f * i);
         ai->setPosition(spawnPos);
@@ -3213,8 +3304,9 @@ void MainWindow::startCustomTrackSession(TrackData* track)
     }
 
     m_currentMode = QStringLiteral("Custom Track");
-    m_twoPlayerMode = isTwoPlayerSelected();
     m_twoPlayerFinishHandled = false;
+    m_player1Finished = false;
+    m_player2Finished = false;
     m_customTrackPlaying = true;
     m_arcadeRaceLogicActive = true;
     m_driveActive = true;
@@ -3227,6 +3319,9 @@ void MainWindow::startCustomTrackSession(TrackData* track)
     m_bestLapMs = 0;
     m_playerSpeed = 0.0;
     m_player2Speed = 0.0;
+    m_player2LapsCompleted = 0;
+    m_player2NextCheckpointIndex = 0;
+    m_player2WasInsideNextGate = false;
     track->setMaxLaps(1);
 
     if (m_customTrackMode) {
@@ -3308,6 +3403,7 @@ void MainWindow::startCustomTrackSession(TrackData* track)
     if (m_arcadeHUD) {
         m_arcadeHUD->setGameMode("Custom Track");
         m_arcadeHUD->reset();
+        m_arcadeHUD->setTwoPlayerMode(m_twoPlayerMode);
         m_arcadeHUD->show();
     }
     if (ui->label_ModeTitle) {
@@ -3812,7 +3908,7 @@ void MainWindow::finishCustomTrackRoute()
         return;
     }
     if (m_twoPlayerMode) {
-        finishTwoPlayerRace(1);
+        markTwoPlayerFinished(1);
         return;
     }
 
@@ -3864,6 +3960,9 @@ void MainWindow::updatePlayer2RaceProgress(const QVector2D& positionBefore)
     }
 
     const QVector2D pos = m_player2Position;
+    if (m_player2Finished) {
+        return;
+    }
     if (m_player2NextCheckpointIndex < total) {
         Checkpoint* nextCp = checkpoints.at(m_player2NextCheckpointIndex);
         const bool insideNext = nextCp && nextCp->containsPoint(pos);
@@ -3884,12 +3983,12 @@ void MainWindow::updatePlayer2RaceProgress(const QVector2D& positionBefore)
 
     if (m_player2NextCheckpointIndex >= total && tileAtIsStartFinish(track, pos)) {
         if (m_customTrackPlaying) {
-            finishTwoPlayerRace(2);
+            markTwoPlayerFinished(2);
             return;
         }
         ++m_player2LapsCompleted;
         if (m_player2LapsCompleted >= m_totalLaps) {
-            finishTwoPlayerRace(2);
+            markTwoPlayerFinished(2);
             return;
         }
         m_player2NextCheckpointIndex = 0;
@@ -3903,7 +4002,43 @@ void MainWindow::updatePlayer2RaceProgress(const QVector2D& positionBefore)
     }
 }
 
-void MainWindow::finishTwoPlayerRace(int winnerIndex)
+void MainWindow::markTwoPlayerFinished(int playerIndex)
+{
+    if (m_twoPlayerFinishHandled) {
+        return;
+    }
+
+    bool& finishedFlag = playerIndex == 2 ? m_player2Finished : m_player1Finished;
+    if (finishedFlag) {
+        return;
+    }
+    finishedFlag = true;
+
+    if (playerIndex == 1) {
+        m_lapsCompleted = m_totalLaps;
+        m_nextCheckpointIndex = m_raceCheckpointTotal;
+    } else {
+        m_player2LapsCompleted = m_totalLaps;
+        m_player2NextCheckpointIndex = m_raceCheckpointTotal;
+    }
+
+    const QString playerName = playerIndex == 2 ? QStringLiteral("Player 2") : QStringLiteral("Player 1");
+    if (m_arcadeHUD) {
+        m_arcadeHUD->showRaceBanner(
+            m_player1Finished && m_player2Finished
+                ? QStringLiteral("Both Players Finished")
+                : QStringLiteral("%1 Finished - waiting for other player").arg(playerName));
+        updateRaceHud();
+    }
+
+    playSound(PhantomDrive::SoundEffect::RaceFinish);
+
+    if (m_player1Finished && m_player2Finished) {
+        finishTwoPlayerRace();
+    }
+}
+
+void MainWindow::finishTwoPlayerRace()
 {
     if (m_twoPlayerFinishHandled) {
         return;
@@ -3911,13 +4046,11 @@ void MainWindow::finishTwoPlayerRace(int winnerIndex)
     m_twoPlayerFinishHandled = true;
     m_arcadeRaceFinished = true;
 
-    const QString winner = winnerIndex == 2 ? QStringLiteral("Player 2") : QStringLiteral("Player 1");
     if (m_arcadeHUD) {
-        m_arcadeHUD->showRaceBanner(QStringLiteral("%1 Wins").arg(winner));
-        m_arcadeHUD->showRaceFinished(winnerIndex, formatRaceTime(m_sessionElapsedMs));
+        m_arcadeHUD->showRaceBanner(QStringLiteral("Both Players Finished"));
+        m_arcadeHUD->showRaceFinished(1, formatRaceTime(m_sessionElapsedMs));
     }
-    playSound(PhantomDrive::SoundEffect::RaceFinish);
-    // Winner banner is already shown via ArcadeHUD above.
+    // Final banner is already shown via ArcadeHUD above.
 
     QTimer::singleShot(2000, this, [this]() {
         if (m_driveActive) {
@@ -4287,6 +4420,8 @@ void MainWindow::startDrivingSession(const QString& mode)
     m_currentMode = mode;
     m_twoPlayerMode = (mode == QStringLiteral("Arcade")) && (m_twoPlayerMode || isTwoPlayerSelected());
     m_twoPlayerFinishHandled = false;
+    m_player1Finished = false;
+    m_player2Finished = false;
     m_arcadeRaceLogicActive = (mode == QStringLiteral("Arcade"));
     m_customTrackPlaying = false;
     m_driveActive = true;
@@ -4731,7 +4866,7 @@ void MainWindow::onScoreReady(const ScoreReport& report)
 void MainWindow::onCoachReportReady(const QString& markdown)
 {
     if (m_reportWidget) {
-        m_reportWidget->setCoachReportMarkdown(markdown);
+        m_reportWidget->setCoachReportMarkdownForPlayer(1, markdown);
         // Coach report is the last async piece – ensure skeleton is dismissed.
         m_reportWidget->hideLoading();
     }
@@ -4901,7 +5036,7 @@ void MainWindow::onLapCompleted(int lapNumber)
     }
 
     if (m_twoPlayerMode) {
-        finishTwoPlayerRace(1);
+        markTwoPlayerFinished(1);
         return;
     }
 

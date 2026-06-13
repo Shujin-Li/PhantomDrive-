@@ -41,10 +41,13 @@ QJsonObject ScoreReport::toJson() const
     QJsonObject root;
     root["sessionId"] = sessionId;
     root["vehicleId"] = vehicleId;
+    root["drivingMode"] = drivingMode;
+    root["reportContext"] = reportContext;
     root["generatedAt"] = generatedAt.toString(Qt::ISODate);
     root["totalScore"] = totalScore;
     root["grade"] = grade;
     root["summary"] = summary;
+    root["aiCoachReportMarkdown"] = aiCoachReportMarkdown;
 
     QJsonObject metricsObj;
     metricsObj["dataPointCount"] = metrics.dataPointCount;
@@ -164,4 +167,3 @@ QString ScoreReport::toMarkdown() const
 }
 
 }
-

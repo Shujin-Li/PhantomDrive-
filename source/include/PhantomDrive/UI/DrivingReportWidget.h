@@ -6,7 +6,9 @@
 #include <QFrame>
 #include <QProgressBar>
 #include <QListWidget>
+#include <QHash>
 #include <QTableWidget>
+#include <QTextBrowser>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -43,6 +45,8 @@ public:
     void setCurrentReport(const ScoreReport& report);
     void setReport(const ScoreReport& report);
     void setCoachReportMarkdown(const QString& markdown);
+    void setCoachReportMarkdownForPlayer(int playerIndex, const QString& markdown);
+    void setCoachReportMarkdownForPlayer(int playerIndex, const QString& sessionId, const QString& markdown);
     void setPlayerReports(const ScoreReport& p1Report,
                           const QList<DrivingData>& p1Samples,
                           const ScoreReport& p2Report,
@@ -149,7 +153,7 @@ private:
 
     // ---- coach advice ----
     QWidget* m_coachAdviceWidget;
-    QLabel*  m_aiReportLabel;
+    QTextBrowser* m_aiReportLabel;
 
     // ---- history chart / list ----
     QListWidget* m_historyList;
@@ -184,6 +188,8 @@ private:
     int                m_activePlayerIndex;
     bool               m_applyingPlayerReport;
     bool               m_syncingHistorySelection;
+    QHash<int, QString> m_aiCoachMarkdownByPlayer;
+    QHash<int, QString> m_aiCoachSessionIdByPlayer;
 };
 
 } // namespace PhantomDrive

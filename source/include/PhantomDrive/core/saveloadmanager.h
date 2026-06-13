@@ -16,6 +16,9 @@ public:
 
     // 使用 PhantomDrive::ScoreReport (即 PracticeReport 的别名)
     bool saveReport(const PhantomDrive::ScoreReport& report);
+    bool updateReportAiCoachReport(const QString& sessionId,
+                                   const QString& vehicleId,
+                                   const QString& markdown);
     QList<PhantomDrive::ScoreReport> loadHistory();
 
     bool deleteReport(int index);

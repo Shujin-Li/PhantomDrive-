@@ -146,6 +146,8 @@ private:
     int m_player2LapsCompleted;
     int m_player2NextCheckpointIndex;
     bool m_player2WasInsideNextGate;
+    bool m_player1Finished;
+    bool m_player2Finished;
     bool m_twoPlayerFinishHandled;
     PhantomDrive::ScoreReport m_player1PendingReport;
     PhantomDrive::ScoreReport m_player2PendingReport;
@@ -224,7 +226,8 @@ private:
     void updateArcadeRaceProgress(const QVector2D& positionBefore);
     void updatePlayer2RaceProgress(const QVector2D& positionBefore);
     void finishCustomTrackRoute();
-    void finishTwoPlayerRace(int winnerIndex);
+    void markTwoPlayerFinished(int playerIndex);
+    void finishTwoPlayerRace();
     void resolvePlayerAiVehicleContact(PhantomDrive::AIOpponent* ai);
     void applyPlayer2SpawnAtStartLine();
     void updateTwoPlayerCamera();

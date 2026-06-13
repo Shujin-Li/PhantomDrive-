@@ -5,6 +5,8 @@
 
 #include <QButtonGroup>
 #include <QColor>
+#include <QComboBox>
+#include <QLabel>
 #include <QMap>
 #include <QPushButton>
 #include <QRectF>
@@ -34,6 +36,8 @@ public:
     TrackData* trackData() const { return m_track; }
     void setTrackData(TrackData* track);
     void resetTrack();
+    int selectedPlayerCount() const;
+    QString selectedAiDifficulty() const;
 
 signals:
     void trackChanged(PhantomDrive::TrackData* track);
@@ -79,6 +83,10 @@ private:
     QPushButton* m_loadButton;
     QPushButton* m_exportButton;
     QPushButton* m_backButton;
+    QLabel* m_playersLabel;
+    QLabel* m_aiLabel;
+    QComboBox* m_playersCombo;
+    QComboBox* m_aiDifficultyCombo;
     CustomTrackBrush m_currentBrush;
     qreal m_tileSize;
 

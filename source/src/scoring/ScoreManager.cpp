@@ -70,6 +70,8 @@ int defaultPenaltyForType(ViolationType type)
 ScoreManager::ScoreManager(QObject* parent)
     : QObject(parent)
     , m_vehicleId()
+    , m_sessionDrivingMode()
+    , m_sessionReportContext()
     , m_trafficManager(nullptr)
     , m_calculator()
     , m_ruleEnforcer()
@@ -88,6 +90,12 @@ ScoreManager::ScoreManager(QObject* parent)
 void ScoreManager::setVehicleId(const QString& vehicleId)
 {
     m_vehicleId = vehicleId;
+}
+
+void ScoreManager::setSessionContext(const QString& drivingMode, const QString& reportContext)
+{
+    m_sessionDrivingMode = drivingMode.trimmed();
+    m_sessionReportContext = reportContext.trimmed();
 }
 
 void ScoreManager::setTrafficObjectManager(TrafficObjectManager* manager)
@@ -180,6 +188,8 @@ ScoreReport ScoreManager::finishSession(const IDrivingDataCollector* collector)
     } else {
         report = evaluate({}, {});
     }
+    report.drivingMode = m_sessionDrivingMode;
+    report.reportContext = m_sessionReportContext;
 
     m_lastReport = report;
     emit scoreReady(report);
@@ -206,9 +216,12 @@ void ScoreManager::generateCoachReportAsync(const ScoreReport& report)
             return;
         }
 
-        QMetaObject::invokeMethod(self.data(), [self, markdown]() {
+        const QString vehicleId = report.vehicleId;
+        const QString sessionId = report.sessionId;
+        QMetaObject::invokeMethod(self.data(), [self, vehicleId, sessionId, markdown]() {
             if (!self.isNull()) {
                 emit self->coachReportReady(markdown);
+                emit self->coachReportReadyForVehicle(vehicleId, sessionId, markdown);
             }
         }, Qt::QueuedConnection);
     });
@@ -228,6 +241,8 @@ ScoreReport ScoreManager::buildReport(const QList<DrivingData>& data,
         ScoreReport emptyReport;
         emptyReport.sessionId = QStringLiteral("session_%1").arg(QDateTime::currentMSecsSinceEpoch());
         emptyReport.vehicleId = m_vehicleId;
+        emptyReport.drivingMode = m_sessionDrivingMode;
+        emptyReport.reportContext = m_sessionReportContext;
         emptyReport.generatedAt = QDateTime::currentDateTimeUtc();
         emptyReport.totalScore = 0.0;
         emptyReport.grade = ScoreReport::gradeFromScore(0.0);
@@ -240,7 +255,11 @@ ScoreReport ScoreManager::buildReport(const QList<DrivingData>& data,
     allViolations = m_ruleEnforcer.filterDuplicates(allViolations);
     m_pendingViolations.clear();
 
-    return m_calculator.evaluate(data, allViolations, m_vehicleId);
+    return m_calculator.evaluate(data,
+                                 allViolations,
+                                 m_vehicleId,
+                                 m_sessionDrivingMode,
+                                 m_sessionReportContext);
 }
 
 ScoreReport ScoreManager::evaluate(const QList<DrivingData>& data,
