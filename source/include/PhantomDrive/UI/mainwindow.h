@@ -166,8 +166,11 @@ private:
     QPushButton* m_coinChallengeExitButton;
     QTimer* m_coinChallengeSummaryAnimTimer;
     QString m_selectedTrackId;
+    QString m_arcadeTrackId;
+    QString m_twoPlayerTrackId;
     QString m_selectedAIDifficulty;
     bool m_twoPlayerMode;
+    bool m_twoPlayerSetupActive;
     int m_currentSpeedLimit;
     QString m_currentTrafficLightState;
     bool m_driveActive;
@@ -325,6 +328,7 @@ private:
     void playCurrentCustomTrack();
     void startCustomTrackSession(PhantomDrive::TrackData* track);
     void showArcadeSetupDialog();
+    void showTwoPlayerSetupDialog();
     void showCoinChallengeTrackDialog();
     void showGaragePage();
     void startCoinChallengeMode();
