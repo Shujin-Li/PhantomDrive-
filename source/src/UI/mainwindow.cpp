@@ -44,6 +44,7 @@
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFrame>
 #include <QHash>
 #include <QHBoxLayout>
 #include <QKeyEvent>
@@ -1633,8 +1634,11 @@ MainWindow::MainWindow(QWidget *parent)
     , m_coinChallengeExitButton(nullptr)
     , m_coinChallengeSummaryAnimTimer(nullptr)
     , m_selectedTrackId(QStringLiteral("neon_loop"))
+    , m_arcadeTrackId(QStringLiteral("neon_loop"))
+    , m_twoPlayerTrackId(QStringLiteral("neon_loop"))
     , m_selectedAIDifficulty(QStringLiteral("medium"))
     , m_twoPlayerMode(false)
+    , m_twoPlayerSetupActive(false)
     , m_currentSpeedLimit(60)
     , m_currentTrafficLightState("green")
     , m_driveActive(false)
@@ -2307,12 +2311,7 @@ void MainWindow::setupRaceSetupControls()
 
         connect(m_btnTwoPlayerRace, &QPushButton::clicked, this, [this]() {
             playSound(PhantomDrive::SoundEffect::ButtonClick);
-            m_twoPlayerMode = true;
-            if (m_playerCountCombo) {
-                const int twoPlayerIndex = m_playerCountCombo->findData(2);
-                m_playerCountCombo->setCurrentIndex(twoPlayerIndex >= 0 ? twoPlayerIndex : 1);
-            }
-            startBuiltInTrackSession(QStringLiteral("Arcade"));
+            showTwoPlayerSetupDialog();
         });
     }
 
@@ -2357,7 +2356,11 @@ void MainWindow::setupRaceSetupControls()
 
 void MainWindow::showArcadeSetupDialog()
 {
+    m_twoPlayerSetupActive = false;
+    m_twoPlayerMode = false;
+
     if (!ui->stackedWidget) {
+        m_selectedTrackId = m_arcadeTrackId;
         startBuiltInTrackSession(QStringLiteral("Arcade"));
         return;
     }
@@ -2367,79 +2370,147 @@ void MainWindow::showArcadeSetupDialog()
         setupPage = new QWidget(ui->stackedWidget);
         setupPage->setObjectName(QStringLiteral("pageArcadeSetup"));
         setupPage->setStyleSheet(QStringLiteral(
-            "QWidget#pageArcadeSetup{background:#06101F;color:#EAFBFF;}"
-            "QLabel#label_ArcadeSetupTitle,QLabel.arcadeSetupSection{"
-            "color:#38F6FF;font-size:20px;font-weight:800;letter-spacing:7px;}"
-            "QLabel#label_TrackDifficulty{color:#FFD84D;font-size:16px;font-weight:800;letter-spacing:2px;}"
-            "QLabel#label_TrackDescription{color:#BCEEFF;font-size:15px;line-height:130%;}"
-            "QComboBox{background:#071126;color:#F3FBFF;border:2px solid #00CFE8;"
-            "border-radius:10px;padding:0 28px;font-size:26px;font-weight:700;min-height:78px;}"
-            "QComboBox::drop-down{width:74px;border-left:1px solid #008FB0;}"
-            "QPushButton{background:#071126;color:#F3FBFF;border:2px solid #00CFE8;"
-            "border-radius:10px;min-height:64px;font-size:22px;font-weight:800;}"
-            "QPushButton:hover{background:#0A1C38;border-color:#38F6FF;}"
-            "QPushButton#btn_StartArcade{background:#0B2734;border-color:#35F6FF;color:#FFFFFF;}"));
+            "QWidget#pageArcadeSetup{background:#050B16;color:#F4FAFF;}"
+            "QFrame#setupPanel{background:#091426;border:1px solid #1D405D;border-radius:24px;}"
+            "QFrame.setupCard{background:#0C1A2D;border:1px solid #1C3B58;border-radius:16px;}"
+            "QFrame#trackCard{border:1px solid #23718A;}"
+            "QLabel#label_ArcadeSetupTitle{color:#F7FBFF;font-size:30px;font-weight:900;letter-spacing:4px;}"
+            "QLabel#label_ArcadeSetupEyebrow{color:#37D9F2;font-size:12px;font-weight:800;letter-spacing:4px;}"
+            "QLabel#label_ArcadeSetupSubtitle{color:#7892AA;font-size:14px;}"
+            "QLabel.arcadeSetupSection{color:#8DA6BC;font-size:12px;font-weight:800;letter-spacing:2px;}"
+            "QLabel#label_TrackDifficulty{color:#FFD166;font-size:14px;font-weight:800;letter-spacing:1px;}"
+            "QLabel#label_TrackDescription{color:#AFC6D8;font-size:14px;}"
+            "QComboBox{background:#07111F;color:#F5FBFF;border:1px solid #2A4A64;"
+            "border-radius:11px;padding:0 18px;font-size:18px;font-weight:750;min-height:52px;}"
+            "QComboBox:hover{border-color:#37D9F2;background:#0A1828;}"
+            "QComboBox:focus{border:2px solid #37D9F2;}"
+            "QComboBox::drop-down{width:52px;border:0;border-left:1px solid #203C53;}"
+            "QComboBox::down-arrow{image:url(assets/ui/chevron_down.svg);width:18px;height:18px;}"
+            "QComboBox QAbstractItemView{background:#0B1728;color:#F5FBFF;border:1px solid #2A536E;"
+            "selection-background-color:#126178;selection-color:#FFFFFF;padding:6px;outline:0;}"
+            "QPushButton{background:#0A1627;color:#C9D8E5;border:1px solid #29445C;"
+            "border-radius:11px;min-height:52px;font-size:16px;font-weight:800;padding:0 24px;}"
+            "QPushButton:hover{background:#10243A;color:#FFFFFF;border-color:#4A7595;}"
+            "QPushButton:pressed{background:#07101D;}"
+            "QPushButton#btn_StartArcade{background:#16C7DF;border:1px solid #4BE8F7;color:#031018;"
+            "font-size:17px;}"
+            "QPushButton#btn_StartArcade:hover{background:#4BE8F7;border-color:#89F5FF;}"));
 
-        auto* outer = new QVBoxLayout(setupPage);
-        outer->setContentsMargins(18, 22, 18, 22);
-        outer->setSpacing(18);
+        auto* pageLayout = new QVBoxLayout(setupPage);
+        pageLayout->setContentsMargins(42, 28, 42, 34);
+        pageLayout->addStretch(1);
 
-        auto* title = new QLabel(QStringLiteral("Race Setup"), setupPage);
+        auto* panel = new QFrame(setupPage);
+        panel->setObjectName(QStringLiteral("setupPanel"));
+        panel->setMinimumWidth(980);
+        panel->setMaximumWidth(1180);
+        auto* outer = new QVBoxLayout(panel);
+        outer->setContentsMargins(46, 34, 46, 38);
+        outer->setSpacing(0);
+
+        auto* eyebrow = new QLabel(QStringLiteral("PHANTOM DRIVE  /  ARCADE"), panel);
+        eyebrow->setObjectName(QStringLiteral("label_ArcadeSetupEyebrow"));
+        eyebrow->setAlignment(Qt::AlignCenter);
+        outer->addWidget(eyebrow);
+        outer->addSpacing(8);
+
+        auto* title = new QLabel(QStringLiteral("RACE SETUP"), panel);
         title->setObjectName(QStringLiteral("label_ArcadeSetupTitle"));
         title->setAlignment(Qt::AlignCenter);
         outer->addWidget(title);
+        outer->addSpacing(7);
 
-        m_trackSelectCombo = new QComboBox(setupPage);
+        auto* subtitle = new QLabel(QStringLiteral("Configure your grid, then take the line."), panel);
+        subtitle->setObjectName(QStringLiteral("label_ArcadeSetupSubtitle"));
+        subtitle->setAlignment(Qt::AlignCenter);
+        outer->addWidget(subtitle);
+        outer->addSpacing(28);
+
+        auto* trackCard = new QFrame(panel);
+        trackCard->setObjectName(QStringLiteral("trackCard"));
+        trackCard->setProperty("class", QStringLiteral("setupCard"));
+        auto* trackLayout = new QVBoxLayout(trackCard);
+        trackLayout->setContentsMargins(22, 18, 22, 20);
+        trackLayout->setSpacing(10);
+
+        auto* trackSection = new QLabel(QStringLiteral("01  SELECT CIRCUIT"), trackCard);
+        trackSection->setProperty("class", QStringLiteral("arcadeSetupSection"));
+        trackLayout->addWidget(trackSection);
+
+        m_trackSelectCombo = new QComboBox(trackCard);
         m_trackSelectCombo->setObjectName(QStringLiteral("combo_BuiltInTrack"));
         for (const BuiltInTrackInfo& info : BuiltInTrackFactory::tracks()) {
             m_trackSelectCombo->addItem(info.name, info.id);
         }
-        outer->addWidget(m_trackSelectCombo);
+        trackLayout->addWidget(m_trackSelectCombo);
 
-        m_trackDifficultyLabel = new QLabel(setupPage);
+        m_trackDifficultyLabel = new QLabel(trackCard);
         m_trackDifficultyLabel->setObjectName(QStringLiteral("label_TrackDifficulty"));
-        m_trackDifficultyLabel->setAlignment(Qt::AlignCenter);
-        outer->addWidget(m_trackDifficultyLabel);
+        trackLayout->addWidget(m_trackDifficultyLabel);
 
-        m_trackDescriptionLabel = new QLabel(setupPage);
+        m_trackDescriptionLabel = new QLabel(trackCard);
         m_trackDescriptionLabel->setObjectName(QStringLiteral("label_TrackDescription"));
-        m_trackDescriptionLabel->setAlignment(Qt::AlignCenter);
         m_trackDescriptionLabel->setWordWrap(true);
-        m_trackDescriptionLabel->setMinimumHeight(44);
-        outer->addWidget(m_trackDescriptionLabel);
+        m_trackDescriptionLabel->setMinimumHeight(24);
+        trackLayout->addWidget(m_trackDescriptionLabel);
+        outer->addWidget(trackCard);
+        outer->addSpacing(16);
 
-        m_playerCountCombo = new QComboBox(setupPage);
+        auto* settingsRow = new QHBoxLayout();
+        settingsRow->setSpacing(16);
+
+        auto* playerCard = new QFrame(panel);
+        playerCard->setProperty("class", QStringLiteral("setupCard"));
+        auto* playerLayout = new QVBoxLayout(playerCard);
+        playerLayout->setContentsMargins(22, 18, 22, 20);
+        playerLayout->setSpacing(10);
+        auto* playerLabel = new QLabel(QStringLiteral("02  GRID"), playerCard);
+        playerLabel->setProperty("class", QStringLiteral("arcadeSetupSection"));
+        playerLayout->addWidget(playerLabel);
+
+        m_playerCountCombo = new QComboBox(playerCard);
         m_playerCountCombo->setObjectName(QStringLiteral("combo_PlayerCount"));
         m_playerCountCombo->addItem(QStringLiteral("1 Player + AI"), 1);
         m_playerCountCombo->addItem(QStringLiteral("2 Players + AI"), 2);
-        outer->addWidget(m_playerCountCombo);
+        playerLayout->addWidget(m_playerCountCombo);
+        settingsRow->addWidget(playerCard, 1);
 
-        auto* difficultyLabel = new QLabel(QStringLiteral("AI Difficulty"), setupPage);
+        auto* difficultyCard = new QFrame(panel);
+        difficultyCard->setProperty("class", QStringLiteral("setupCard"));
+        auto* difficultyLayout = new QVBoxLayout(difficultyCard);
+        difficultyLayout->setContentsMargins(22, 18, 22, 20);
+        difficultyLayout->setSpacing(10);
+        auto* difficultyLabel = new QLabel(QStringLiteral("03  AI DIFFICULTY"), difficultyCard);
         difficultyLabel->setProperty("class", QStringLiteral("arcadeSetupSection"));
-        difficultyLabel->setAlignment(Qt::AlignCenter);
-        outer->addWidget(difficultyLabel);
+        difficultyLayout->addWidget(difficultyLabel);
 
-        m_aiDifficultyCombo = new QComboBox(setupPage);
+        m_aiDifficultyCombo = new QComboBox(difficultyCard);
         m_aiDifficultyCombo->setObjectName(QStringLiteral("combo_AIDifficulty"));
         m_aiDifficultyCombo->addItem(QStringLiteral("Easy"), QStringLiteral("easy"));
         m_aiDifficultyCombo->addItem(QStringLiteral("Medium"), QStringLiteral("medium"));
         m_aiDifficultyCombo->addItem(QStringLiteral("Hard"), QStringLiteral("hard"));
         m_aiDifficultyCombo->addItem(QStringLiteral("Adaptive AI"), QStringLiteral("adaptive"));
         m_aiDifficultyCombo->setCurrentIndex(1);
-        outer->addWidget(m_aiDifficultyCombo);
+        difficultyLayout->addWidget(m_aiDifficultyCombo);
+        settingsRow->addWidget(difficultyCard, 1);
+        outer->addLayout(settingsRow);
+        outer->addSpacing(22);
 
         auto* buttonRow = new QHBoxLayout();
-        buttonRow->setContentsMargins(0, 8, 0, 0);
-        buttonRow->setSpacing(14);
+        buttonRow->setSpacing(12);
 
-        auto* backButton = new QPushButton(QStringLiteral("Back"), setupPage);
+        auto* backButton = new QPushButton(QStringLiteral("BACK"), panel);
         backButton->setObjectName(QStringLiteral("btn_BackArcadeSetup"));
-        auto* startButton = new QPushButton(QStringLiteral("Start Game"), setupPage);
+        backButton->setMaximumWidth(180);
+        auto* startButton = new QPushButton(QStringLiteral("START RACE  >"), panel);
         startButton->setObjectName(QStringLiteral("btn_StartArcade"));
         buttonRow->addWidget(backButton);
-        buttonRow->addWidget(startButton);
+        buttonRow->addStretch(1);
+        buttonRow->addWidget(startButton, 1);
         outer->addLayout(buttonRow);
-        outer->addStretch(1);
+
+        pageLayout->addWidget(panel, 0, Qt::AlignHCenter);
+        pageLayout->addStretch(1);
 
         connect(backButton, &QPushButton::clicked, this, [this]() {
             if (ui->stackedWidget) {
@@ -2450,8 +2521,13 @@ void MainWindow::showArcadeSetupDialog()
             if (m_trackSelectCombo) {
                 m_selectedTrackId = m_trackSelectCombo->currentData().toString();
             }
+            if (m_twoPlayerSetupActive) {
+                m_twoPlayerTrackId = m_selectedTrackId;
+            } else {
+                m_arcadeTrackId = m_selectedTrackId;
+            }
             m_selectedAIDifficulty = selectedAIDifficulty();
-            m_twoPlayerMode = selectedPlayerCount() == 2;
+            m_twoPlayerMode = m_twoPlayerSetupActive || selectedPlayerCount() == 2;
             startBuiltInTrackSession(QStringLiteral("Arcade"));
         });
 
@@ -2464,19 +2540,68 @@ void MainWindow::showArcadeSetupDialog()
     }
 
     if (m_trackSelectCombo) {
-        const int trackIndex = m_trackSelectCombo->findData(m_selectedTrackId);
+        const QString setupTrackId = m_twoPlayerSetupActive
+            ? m_twoPlayerTrackId
+            : m_arcadeTrackId;
+        const int trackIndex = m_trackSelectCombo->findData(setupTrackId);
         m_trackSelectCombo->setCurrentIndex(trackIndex >= 0 ? trackIndex : 0);
     }
     if (m_playerCountCombo) {
-        m_playerCountCombo->setCurrentIndex(m_twoPlayerMode ? 1 : 0);
+        m_playerCountCombo->setCurrentIndex(m_twoPlayerSetupActive ? 1 : 0);
+        m_playerCountCombo->setEnabled(!m_twoPlayerSetupActive);
     }
     if (m_aiDifficultyCombo) {
         const int difficultyIndex = m_aiDifficultyCombo->findData(m_selectedAIDifficulty);
         m_aiDifficultyCombo->setCurrentIndex(difficultyIndex >= 0 ? difficultyIndex : 1);
     }
+    if (QLabel* title =
+            setupPage->findChild<QLabel*>(QStringLiteral("label_ArcadeSetupTitle"))) {
+        title->setText(QStringLiteral("RACE SETUP"));
+    }
+    if (QLabel* eyebrow =
+            setupPage->findChild<QLabel*>(QStringLiteral("label_ArcadeSetupEyebrow"))) {
+        eyebrow->setText(QStringLiteral("PHANTOM DRIVE  /  ARCADE"));
+    }
     updateArcadeSetupTrackInfo();
     ui->stackedWidget->setCurrentWidget(setupPage);
     statusBar()->clearMessage();
+}
+
+void MainWindow::showTwoPlayerSetupDialog()
+{
+    m_twoPlayerSetupActive = true;
+    m_twoPlayerMode = true;
+
+    showArcadeSetupDialog();
+
+    // showArcadeSetupDialog initializes the shared setup page as single-player.
+    // Switch it into the dedicated two-player context after creation.
+    m_twoPlayerSetupActive = true;
+    m_twoPlayerMode = true;
+    if (m_trackSelectCombo) {
+        const int trackIndex = m_trackSelectCombo->findData(m_twoPlayerTrackId);
+        m_trackSelectCombo->setCurrentIndex(trackIndex >= 0 ? trackIndex : 0);
+    }
+    if (m_playerCountCombo) {
+        const int twoPlayerIndex = m_playerCountCombo->findData(2);
+        m_playerCountCombo->setCurrentIndex(twoPlayerIndex >= 0 ? twoPlayerIndex : 1);
+        m_playerCountCombo->setEnabled(false);
+    }
+    if (ui->stackedWidget) {
+        QWidget* setupPage =
+            ui->stackedWidget->findChild<QWidget*>(QStringLiteral("pageArcadeSetup"));
+        if (setupPage) {
+            if (QLabel* title =
+                    setupPage->findChild<QLabel*>(QStringLiteral("label_ArcadeSetupTitle"))) {
+                title->setText(QStringLiteral("TWO-PLAYER SETUP"));
+            }
+            if (QLabel* eyebrow =
+                    setupPage->findChild<QLabel*>(QStringLiteral("label_ArcadeSetupEyebrow"))) {
+                eyebrow->setText(QStringLiteral("PHANTOM DRIVE  /  TWO-PLAYER"));
+            }
+        }
+    }
+    updateArcadeSetupTrackInfo();
 }
 
 void MainWindow::showCoinChallengeTrackDialog()
@@ -2811,19 +2936,7 @@ void MainWindow::styleMainMenu()
         });
         connect(m_mainMenuWidget, &MainMenuWidget::aiDemoRequested, this, [this]() {
             playSound(PhantomDrive::SoundEffect::ButtonClick);
-            m_twoPlayerMode = false;
-            m_selectedAIDifficulty = QStringLiteral("adaptive");
-            if (m_playerCountCombo) {
-                const int singlePlayerIndex = m_playerCountCombo->findData(1);
-                m_playerCountCombo->setCurrentIndex(singlePlayerIndex >= 0 ? singlePlayerIndex : 0);
-            }
-            if (m_aiDifficultyCombo) {
-                const int adaptiveIndex = m_aiDifficultyCombo->findData(QStringLiteral("adaptive"));
-                if (adaptiveIndex >= 0) {
-                    m_aiDifficultyCombo->setCurrentIndex(adaptiveIndex);
-                }
-            }
-            startBuiltInTrackSession(QStringLiteral("Arcade"));
+            showTwoPlayerSetupDialog();
         });
         connect(m_mainMenuWidget, &MainMenuWidget::garageRequested, this, [this]() {
             playSound(PhantomDrive::SoundEffect::ButtonClick);
@@ -5904,6 +6017,22 @@ void MainWindow::startDrivingSession(const QString& mode)
     m_player2LapsCompleted = 0;
     m_player2NextCheckpointIndex = 0;
     m_player2WasInsideNextGate = false;
+
+    // Learning mode always uses its canonical default track. Never inherit a
+    // circuit selected by Arcade, Two-Player, or Coin Challenge.
+    if (mode == QStringLiteral("Learning")) {
+        if (m_selectedBuiltInTrack) {
+            m_selectedBuiltInTrack->deleteLater();
+            m_selectedBuiltInTrack = nullptr;
+        }
+        m_selectedBuiltInTrack =
+            BuiltInTrackFactory::createTrack(QStringLiteral("neon_loop"), this);
+        m_defaultRaceTrack = m_selectedBuiltInTrack;
+        TrackManager* trackMgr = TrackManager::instance(this);
+        if (trackMgr && m_defaultRaceTrack) {
+            trackMgr->setCurrentTrack(m_defaultRaceTrack);
+        }
+    }
 
     if (m_gameView) {
         m_gameView->clearAllAICars();

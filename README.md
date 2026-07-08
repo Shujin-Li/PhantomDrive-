@@ -2,7 +2,7 @@
 
 PhantomDrive is a Qt 6 desktop racing game built around arcade racing, traffic-rule training, custom track creation, two-player racing, and AI-assisted driving reports.
 
-The current Windows delivery entry point is `windows-release/PhantomDriveApp.exe`. The source entry point is `source/CMakeLists.txt`.
+The current Windows delivery entry point is `PhantomDrive_Windows_Release/PhantomDrive.exe`. The source entry point is `source/CMakeLists.txt`. End-user launch instructions are in `PhantomDrive_Windows_Release/README.md`.
 
 ## Project Overview
 
@@ -49,6 +49,7 @@ The vehicle model is data-driven: movement state is maintained by `VehiclePhysic
 ### Two-Player Race
 
 - Dedicated main-menu entry for two-player race sessions.
+- Independent pre-race circuit and AI difficulty selection; choices do not affect Arcade or Learning maps.
 - P1 and P2 are shown with distinct vehicle colors and HUD state.
 - Finish flow waits for both players before ending the session.
 - Reports can show player-specific score and AI coach content.
@@ -81,7 +82,35 @@ Implemented power-up types include Boost, Shield, Missile, Oil Slick, EMP, Invis
 
 ### Main Menu
 
-![Main Menu](source/docs/images/readme/main-menu.png)
+![PhantomDrive Main Menu](source/docs/images/readme/main-menu-2026-07.png)
+
+### Game Mode Selection
+
+![Game Mode Selection](source/docs/images/readme/mode-select-2026-07.png)
+
+### Race Setup
+
+Choose the built-in circuit, player grid, and AI difficulty from the redesigned pre-race control panel.
+
+![Race Setup](source/docs/images/readme/race-setup-2026-07.png)
+
+### Coin Challenge
+
+The Coin Challenge combines a live telemetry panel, integrity and goal meters, collectible routes, checkpoints, obstacles, and a timed finish. Reaching the Balloon Rush trigger opens a short bonus scene while the main challenge timer is paused.
+
+![Coin Challenge HUD](source/docs/images/readme/coin-challenge-hud.png)
+
+### Balloon Rush Bonus
+
+![Balloon Rush Intro](source/docs/images/readme/balloon-rush-intro.png)
+
+![Balloon Rush Gameplay](source/docs/images/readme/balloon-rush-gameplay.png)
+
+### Challenge Results
+
+The result panel summarizes the payout, collected coins, integrity, collisions, damage, speed, efficiency, and power-up usage before banking the run reward.
+
+![Coin Challenge Results](source/docs/images/readme/coin-challenge-results.png)
 
 ### Arcade Mode
 
@@ -160,10 +189,10 @@ By default, test and demo targets are disabled. Enable them with:
 Use the packaged Windows release directory:
 
 ```text
-windows-release/PhantomDriveApp.exe
+PhantomDrive_Windows_Release/PhantomDrive.exe
 ```
 
-Run it from inside `windows-release` so the executable can find:
+Run it from inside `PhantomDrive_Windows_Release` so the executable can find:
 
 - `assets/`
 - Qt DLLs
@@ -173,28 +202,22 @@ Run it from inside `windows-release` so the executable can find:
 - `multimedia/`
 - `translations/`
 
-The release package also includes:
-
-- `README_DELIVERY_2026-06-11.md`
-- `RELEASE_SYNC_REPORT.md`
-- `README_AI_LAUNCHER_SETUP.md`
-- `run_with_ai.example.bat`
-- `run_with_deepseek.local.bat` for local-only use
-
-Do not commit real local API launcher files.
+The release package includes an end-user `README.md` and the safe optional
+`run_with_ai.example.bat` template. Do not place real API keys or private local
+launcher files in the submitted package.
 
 ## DeepSeek API Setup
 
 The safe template is:
 
 ```text
-windows-release/run_with_ai.example.bat
+PhantomDrive_Windows_Release/run_with_ai.example.bat
 ```
 
 Copy it to a local file:
 
 ```text
-windows-release/run_with_deepseek.local.bat
+PhantomDrive_Windows_Release/run_with_deepseek.local.bat
 ```
 
 Then set your key only in the local file:
@@ -245,8 +268,8 @@ source/
     physics/
   tests/
 
-windows-release/
-  PhantomDriveApp.exe
+PhantomDrive_Windows_Release/
+  PhantomDrive.exe
   libPhantomDrive.dll
   assets/
   docs/
@@ -270,13 +293,13 @@ windows-release/
 | Scoring | `src/scoring/DrivingScoreCalculator.cpp`, `src/scoring/ScoreManager.cpp` | Score formula, violations, report generation |
 | AI API | `src/scoring/AIAPIClient.cpp` | DeepSeek/Zhipu config, request handling, local fallback |
 | Report UI | `src/UI/DrivingReportWidget.cpp` | Score cards, charts, history, AI coach markdown |
-| Packaging | `source/packaging/`, `windows-release/` | Windows release assets and deployment |
+| Packaging | `source/packaging/`, `PhantomDrive_Windows_Release/` | Windows release assets and deployment |
 
 ## Demo Checklist
 
 Use this checklist for a live demo or final acceptance pass:
 
-1. Launch `windows-release/PhantomDriveApp.exe`.
+1. Launch `PhantomDrive_Windows_Release/PhantomDrive.exe`.
 2. Confirm the main menu background, title, and entries are visible.
 3. Enter Arcade Mode through Race Setup and confirm countdown, HUD, AI cars, checkpoints, power-ups, lap/time, and ranking.
 4. Enter Learning Mode and confirm speed limit, traffic light state, safety feedback, and report generation.
@@ -293,5 +316,5 @@ Use this checklist for a live demo or final acceptance pass:
 
 - `source/docs/` is intentionally a flat documentation directory except for image assets under `source/docs/images/readme/`.
 - `source/packaging/` is the formal packaging directory.
-- Root delivery notes may be copied into `windows-release`, but build directories, zip archives, and source trees should not be copied into the release package.
+- Root delivery notes may be copied into `PhantomDrive_Windows_Release`, but build directories, zip archives, and source trees should not be copied into the release package.
 

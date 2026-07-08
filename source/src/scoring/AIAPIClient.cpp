@@ -128,6 +128,11 @@ QString buildReportPrompt(const ScoreReport& report)
     prompt += QStringLiteral("Write a professional driving coach report in Simplified Chinese.\n");
     prompt += QStringLiteral("Use Markdown. Include these level-2 sections exactly: 总览, 驾驶亮点, 主要问题, 改进建议, 规则遵守分析, 速度控制分析, 下一次训练目标.\n");
     prompt += QStringLiteral("Each section must contain at least two concrete bullet points. If the score is high, explain how to keep the good habits instead of only praising.\n");
+    prompt += QStringLiteral(
+        "IMPORTANT: Ignore any malformed section names above. Do not create an overview or summary section. "
+        "Use these exact section names: 驾驶亮点, 主要问题, 改进建议, 规则遵守分析, 速度控制分析, 下次训练目标. "
+        "Keep each section to 2-3 concise bullets. Every recommendation must cite report evidence "
+        "and give one concrete action for the next drive.\n");
     prompt += QStringLiteral("Analyze score, grade, violations, average speed, max speed, and qLearningFeedback fields such as safetyRisk, ruleCompliance, reward, terminalPenalty, and recommendedActionHint.\n");
     if (!report.drivingMode.trimmed().isEmpty() || !report.reportContext.trimmed().isEmpty()) {
         prompt += QStringLiteral("Mode context:\n");
@@ -314,6 +319,55 @@ QString AIAPIClient::generateShortSummary(const ScoreReport& report) const
 
 QString AIAPIClient::generateMockCoachReport(const ScoreReport& report, const QString& fallbackReason) const
 {
+    Q_UNUSED(fallbackReason);
+    QString local;
+    local += QStringLiteral("# AI 驾驶教练报告\n\n");
+    local += QStringLiteral("> 当前使用本地驾驶分析，核心评分与训练建议仍然有效。\n\n");
+    local += QStringLiteral("## 驾驶亮点\n");
+    local += QStringLiteral("- 安全 %1 分、规则 %2 分；表现较高的维度应继续保持。\n")
+                 .arg(report.breakdown.safetyScore, 0, 'f', 0)
+                 .arg(report.breakdown.ruleComplianceScore, 0, 'f', 0);
+    local += QStringLiteral("- 平顺性 %1 分、效率 %2 分，反映了车辆控制与推进节奏。\n\n")
+                 .arg(report.breakdown.smoothnessScore, 0, 'f', 0)
+                 .arg(report.breakdown.efficiencyScore, 0, 'f', 0);
+    local += QStringLiteral("## 主要问题\n");
+    if (report.violations.isEmpty()) {
+        local += QStringLiteral("- 本次没有明显违规，下一步重点是稳定复现良好驾驶习惯。\n");
+        local += QStringLiteral("- 最高速度代表风险峰值，进入弯道或路口前仍要提前收油。\n\n");
+    } else {
+        local += QStringLiteral("- 本次记录到 %1 次风险事件，建议复盘事件前 3 秒的速度与制动输入。\n")
+                     .arg(report.violations.size());
+        local += QStringLiteral("- 优先处理重复出现的违规类型，再追求更高速度。\n\n");
+    }
+    local += QStringLiteral("## 改进建议\n");
+    if (report.coachAdvices.isEmpty()) {
+        local += QStringLiteral("- 使用“提前观察、轻踩油门、分段制动”的稳定节奏。\n");
+        local += QStringLiteral("- 进入路口、限速区或检查点前，先确认路线与规则再加速。\n\n");
+    } else {
+        for (const CoachAdvice& advice : report.coachAdvices) {
+            local += QStringLiteral("- %1：%2%3\n")
+                         .arg(advice.category.isEmpty() ? QStringLiteral("驾驶建议") : advice.category,
+                              advice.message,
+                              advice.evidence.isEmpty()
+                                  ? QString()
+                                  : QStringLiteral("（依据：%1）").arg(advice.evidence));
+        }
+        local += QStringLiteral("\n");
+    }
+    local += QStringLiteral("## 规则遵守分析\n");
+    local += QStringLiteral("- 规则遵守反馈值为 %1；将红灯、限速、逆行与行人避让纳入提前预判。\n\n")
+                 .arg(report.qLearningFeedback.ruleCompliance, 0, 'f', 2);
+    local += QStringLiteral("## 速度控制分析\n");
+    local += QStringLiteral("- 直道稳定加速、弯前提前减速、出弯平顺恢复速度，避免速度峰值失控。\n\n");
+    local += QStringLiteral("## 下次训练目标\n");
+    local += QStringLiteral("- 总分保持在 %1 分以上，同时减少急加速与急刹车。\n")
+                 .arg(qMax(80.0, report.totalScore - 2.0), 0, 'f', 0);
+    local += QStringLiteral("- 下一步动作：`%1`。\n")
+                 .arg(report.qLearningFeedback.recommendedActionHint.isEmpty()
+                          ? QStringLiteral("keep_smooth_and_stable")
+                          : report.qLearningFeedback.recommendedActionHint);
+    return local;
+
     QString text;
     text += QStringLiteral("# AI Coach Report (Local Fallback)\n\n");
     if (!fallbackReason.trimmed().isEmpty()) {

@@ -55,6 +55,28 @@ QString cleanCoachLine(QString line)
     return line.trimmed();
 }
 
+QString coachMarkdownForDisplay(const QString& markdown)
+{
+    const QStringList lines = markdown.trimmed().split(QLatin1Char('\n'));
+    QStringList filtered;
+    bool skippingOverview = false;
+
+    for (const QString& line : lines) {
+        const QString trimmed = line.trimmed();
+        if (trimmed == QStringLiteral("## 总览")) {
+            skippingOverview = true;
+            continue;
+        }
+        if (skippingOverview && trimmed.startsWith(QStringLiteral("## "))) {
+            skippingOverview = false;
+        }
+        if (!skippingOverview) {
+            filtered.append(line);
+        }
+    }
+    return filtered.join(QLatin1Char('\n')).trimmed();
+}
+
 QString coachAdviceHtml(const QString& markdown)
 {
     QString text = markdown.trimmed();
@@ -553,7 +575,8 @@ void DrivingReportWidget::setupBottomSection(QVBoxLayout* rootLayout)
     m_aiReportLabel->setOpenExternalLinks(false);
     m_aiReportLabel->setFrameShape(QFrame::NoFrame);
     m_aiReportLabel->setReadOnly(true);
-    m_aiReportLabel->setMarkdown(QStringLiteral("Waiting for AI coach report..."));
+    m_aiReportLabel->setMarkdown(QStringLiteral(
+        "## 分析中\n\n正在生成本次驾驶建议，请稍候。"));
     m_aiReportLabel->setMinimumHeight(360);
     m_aiReportLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
     m_aiReportLabel->setStyleSheet(QStringLiteral(
@@ -1105,11 +1128,12 @@ void DrivingReportWidget::updateCoachAdvice()
     const QString cachedSessionId = m_aiCoachSessionIdByPlayer.value(playerIndex);
     if (!cachedMarkdown.isEmpty()
         && (cachedSessionId.isEmpty() || cachedSessionId == m_currentReport.sessionId)) {
-        m_aiReportLabel->setMarkdown(cachedMarkdown);
+        m_aiReportLabel->setMarkdown(coachMarkdownForDisplay(cachedMarkdown));
         return;
     }
     if (!m_currentReport.aiCoachReportMarkdown.trimmed().isEmpty()) {
-        m_aiReportLabel->setMarkdown(m_currentReport.aiCoachReportMarkdown.trimmed());
+        m_aiReportLabel->setMarkdown(
+            coachMarkdownForDisplay(m_currentReport.aiCoachReportMarkdown));
         return;
     }
 
@@ -1150,7 +1174,7 @@ void DrivingReportWidget::updateCoachAdvice()
         markdown = QStringLiteral("Waiting for AI coach report...");
     }
 
-    m_aiReportLabel->setMarkdown(markdown);
+    m_aiReportLabel->setMarkdown(coachMarkdownForDisplay(markdown));
 }
 
 void DrivingReportWidget::updateHistoryChart()
