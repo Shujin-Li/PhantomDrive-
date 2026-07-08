@@ -6,8 +6,11 @@
 #include "track/Checkpoint.h"
 
 #include <QObject>
+#include <QList>
 #include <QVector2D>
 #include <QKeyEvent>
+#include <QRectF>
+#include <QSizeF>
 
 namespace PhantomDrive {
 
@@ -35,6 +38,13 @@ public:
     void setControlScheme(ControlScheme scheme) { m_controlScheme = scheme; }
     ControlScheme controlScheme() const { return m_controlScheme; }
     void handleCollision(const QVector2D& normal, qreal impactForce);
+    bool resolveHazardCollision(const QRectF& hazardBounds,
+                                const QList<QRectF>& blockedAreas,
+                                const QVector2D& positionBeforeUpdate,
+                                const QVector2D& fallbackPosition,
+                                qreal fallbackRotation,
+                                const QSizeF& collisionSize,
+                                qreal impactForce);
     void activateSpeedBoost(qreal multiplier, qint64 durationMs);
     void activateShield(qint64 durationMs);
     void activateRepair();
@@ -55,6 +65,7 @@ public:
 
     void setPosition(const QVector2D& pos) { m_position = pos; }
     void setRotation(qreal rot) { m_rotation = rot; }
+    void setSpeed(qreal speed) { m_speed = speed; }
     void setMaxSpeed(qreal maxSpeed) { m_maxSpeed = maxSpeed; }
     void setAccelerationRate(qreal rate) { m_accelerationRate = rate; }
     void setDriveInput(qreal throttle, qreal brake, qreal steering);

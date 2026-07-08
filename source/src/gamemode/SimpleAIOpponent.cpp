@@ -3,11 +3,60 @@
 #include "track/TrackManager.h"
 
 #include <QtMath>
+#include <QDebug>
 #include <QJsonArray>
 #include <QTimer>
 #include <limits>
 
 namespace PhantomDrive {
+
+namespace {
+
+constexpr qreal ProgressDistanceEpsilon = 6.0;
+constexpr qreal MinimumMovementForProgress = 10.0;
+constexpr qreal RouteRecoveryOffset = 18.0;
+constexpr qint64 EnterRecoveryThresholdMs = 900;
+constexpr qint64 TeleportRecoveryThresholdMs = 2800;
+constexpr qint64 RecoveryCooldownMs = 1200;
+
+qreal normalizedAngleDifference(qreal targetRotation, qreal currentRotation)
+{
+    qreal angleDiff = targetRotation - currentRotation;
+    while (angleDiff > 180.0) {
+        angleDiff -= 360.0;
+    }
+    while (angleDiff < -180.0) {
+        angleDiff += 360.0;
+    }
+    return angleDiff;
+}
+
+qreal rotationForDirection(const QVector2D& direction)
+{
+    return qRadiansToDegrees(std::atan2(direction.x(), direction.y()));
+}
+
+QVector2D perpendicularLeft(const QVector2D& direction)
+{
+    return QVector2D(-direction.y(), direction.x());
+}
+
+qreal distanceToSegment(const QVector2D& point, const QVector2D& start, const QVector2D& end)
+{
+    const QVector2D segment = end - start;
+    const qreal lengthSquared = segment.lengthSquared();
+    if (lengthSquared < 1.0) {
+        return (point - start).length();
+    }
+
+    const qreal t = qBound<qreal>(0.0,
+                                  QVector2D::dotProduct(point - start, segment) / lengthSquared,
+                                  1.0);
+    const QVector2D projection = start + segment * t;
+    return (point - projection).length();
+}
+
+} // namespace
 
 SimpleAIOpponent::SimpleAIOpponent(const QString& id, QObject* parent)
     : AIOpponent(id, parent)
@@ -22,6 +71,10 @@ SimpleAIOpponent::SimpleAIOpponent(const QString& id, QObject* parent)
     , m_state(AIState::Idle)
     , m_stateDuration(0)
     , m_stuckTimerMs(0)
+    , m_noProgressTimerMs(0)
+    , m_recoveryCooldownMs(0)
+    , m_lastProgressPosition(0, 0)
+    , m_lastWaypointDistance(std::numeric_limits<qreal>::max())
     , m_currentLap(0)
     , m_lapTime(0)
     , m_bestLapTime(0)
@@ -111,6 +164,35 @@ void SimpleAIOpponent::applyOilSlip(qint64 durationMs)
         m_physics->activateOilSlip(durationMs, 0.28, 0.45);
     }
     setState(AIState::Recovering);
+}
+
+void SimpleAIOpponent::setWaypoints(const QList<Waypoint>& waypoints)
+{
+    m_waypoints = waypoints;
+    if (m_waypoints.isEmpty()) {
+        m_currentWaypointIndex = 0;
+    } else {
+        m_currentWaypointIndex = qBound(0, m_currentWaypointIndex, m_waypoints.size() - 1);
+        m_currentWaypointIndex = findForwardWaypointIndex(m_currentWaypointIndex);
+    }
+    resetProgressTracking();
+}
+
+void SimpleAIOpponent::setCurrentWaypointIndex(int index)
+{
+    if (m_waypoints.isEmpty()) {
+        m_currentWaypointIndex = 0;
+        resetProgressTracking();
+        return;
+    }
+
+    const int waypointCount = m_waypoints.size();
+    int normalizedIndex = index % waypointCount;
+    if (normalizedIndex < 0) {
+        normalizedIndex += waypointCount;
+    }
+    m_currentWaypointIndex = normalizedIndex;
+    resetProgressTracking();
 }
 
 void SimpleAIOpponent::setPosition(const QVector2D& position)
@@ -226,6 +308,146 @@ bool SimpleAIOpponent::hasPassedCurrentWaypoint(const Waypoint& waypoint) const
     return lateralDistance <= waypointReachRadius() * 1.25;
 }
 
+int SimpleAIOpponent::findForwardWaypointIndex(int startIndex) const
+{
+    if (m_waypoints.isEmpty()) {
+        return 0;
+    }
+
+    const int waypointCount = m_waypoints.size();
+    int index = startIndex % waypointCount;
+    if (index < 0) {
+        index += waypointCount;
+    }
+
+    if (waypointCount < 2) {
+        return index;
+    }
+
+    const int previousIndex = (index - 1 + waypointCount) % waypointCount;
+    const QVector2D segment = m_waypoints.at(index).position - m_waypoints.at(previousIndex).position;
+    if (segment.lengthSquared() < 1.0) {
+        return index;
+    }
+
+    const QVector2D routeDirection = segment.normalized();
+    const QVector2D waypointToVehicle = m_position - m_waypoints.at(index).position;
+    const qreal forwardDistance = QVector2D::dotProduct(waypointToVehicle, routeDirection);
+    if (forwardDistance > waypointReachRadius() * 0.5) {
+        return (index + 1) % waypointCount;
+    }
+
+    return index;
+}
+
+bool SimpleAIOpponent::isFarFromCurrentRoute() const
+{
+    if (m_waypoints.isEmpty()) {
+        return false;
+    }
+
+    const int nearestIndex = findNearestWaypointIndex();
+    if (m_waypoints.size() < 2) {
+        return calculateDistanceToWaypoint(m_waypoints.at(nearestIndex)) > 110.0;
+    }
+
+    const int previousIndex = (nearestIndex - 1 + m_waypoints.size()) % m_waypoints.size();
+    const int nextIndex = (nearestIndex + 1) % m_waypoints.size();
+    const QVector2D previousPoint = m_waypoints.at(previousIndex).position;
+    const QVector2D currentPoint = m_waypoints.at(nearestIndex).position;
+    const QVector2D nextPoint = m_waypoints.at(nextIndex).position;
+
+    const qreal incomingDistance = distanceToSegment(m_position, previousPoint, currentPoint);
+    const qreal outgoingDistance = distanceToSegment(m_position, currentPoint, nextPoint);
+    const qreal lateralDistance = qMin(incomingDistance, outgoingDistance);
+    const qreal routeSpacing = qMax<qreal>(56.0,
+                                           qMin((currentPoint - previousPoint).length(),
+                                                (nextPoint - currentPoint).length()));
+    const qreal allowedDistance = qBound<qreal>(68.0, routeSpacing * 0.9, 148.0);
+    return lateralDistance > allowedDistance;
+}
+
+void SimpleAIOpponent::resetProgressTracking()
+{
+    m_stuckTimerMs = 0;
+    m_noProgressTimerMs = 0;
+    m_recoveryCooldownMs = 0;
+    m_lastProgressPosition = m_position;
+    if (!m_waypoints.isEmpty()
+        && m_currentWaypointIndex >= 0
+        && m_currentWaypointIndex < m_waypoints.size()) {
+        m_lastWaypointDistance = calculateDistanceToWaypoint(m_waypoints.at(m_currentWaypointIndex));
+    } else {
+        m_lastWaypointDistance = std::numeric_limits<qreal>::max();
+    }
+}
+
+bool SimpleAIOpponent::recoverToRoute(bool forceReposition)
+{
+    if (m_waypoints.isEmpty()) {
+        return false;
+    }
+
+    const int nearestIndex = findNearestWaypointIndex();
+    const int targetIndex = findForwardWaypointIndex(nearestIndex);
+    const int waypointCount = m_waypoints.size();
+    const int previousIndex = (targetIndex - 1 + waypointCount) % waypointCount;
+
+    QVector2D targetPosition = m_waypoints.at(targetIndex).position;
+    QVector2D direction;
+    if (waypointCount > 1) {
+        direction = m_waypoints.at(targetIndex).position - m_waypoints.at(previousIndex).position;
+        if (direction.lengthSquared() < 1.0) {
+            direction = m_waypoints.at((targetIndex + 1) % waypointCount).position - m_waypoints.at(targetIndex).position;
+        }
+    }
+
+    if (direction.lengthSquared() >= 1.0) {
+        const QVector2D normalizedDirection = direction.normalized();
+        targetPosition -= normalizedDirection * RouteRecoveryOffset;
+        m_rotation = rotationForDirection(normalizedDirection);
+    }
+
+    m_currentWaypointIndex = targetIndex;
+    setState(AIState::Recovering);
+
+    const bool shouldReposition = forceReposition
+        || isFarFromCurrentRoute()
+        || !isPositionFree(m_position)
+        || m_stuckTimerMs >= TeleportRecoveryThresholdMs;
+    if (shouldReposition) {
+        if (m_physics) {
+            m_physics->reset();
+            m_physics->setRaceLogicEnabled(false);
+            m_physics->setMaxSpeed(m_config.maxSpeed);
+            m_physics->setAccelerationRate(m_config.acceleration);
+            m_physics->setPosition(targetPosition);
+            m_physics->setRotation(m_rotation);
+            m_physics->clearDriveInput();
+            syncFromPhysics();
+        } else {
+            m_position = targetPosition;
+        }
+        m_position = targetPosition;
+    }
+
+    if (direction.lengthSquared() >= 1.0) {
+        setRotation(m_rotation);
+    }
+    m_speed = 0.0;
+    m_velocity = QVector2D(0.0, 0.0);
+    m_stuckTimerMs = 0;
+    m_noProgressTimerMs = 0;
+    m_recoveryCooldownMs = RecoveryCooldownMs;
+    m_lastProgressPosition = m_position;
+    m_lastWaypointDistance = calculateDistanceToWaypoint(m_waypoints.at(m_currentWaypointIndex));
+    qDebug() << "[AI]" << m_id
+             << "recover targetIndex" << m_currentWaypointIndex
+             << "teleport" << shouldReposition
+             << "position" << m_position;
+    return true;
+}
+
 void SimpleAIOpponent::setState(AIState state)
 {
     AIState oldState = m_state;
@@ -271,36 +493,32 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
     }
 
     m_stateDuration += elapsedMs;
-    AIStyle style = m_config.style;
-
-    if (m_speed < 20.0)
-    {
-        m_stuckTimerMs += elapsedMs;
-        setState(AIState::Recovering);
-    }
-    else if (getDistanceToPlayer() < 120.0)
-    {
-        m_stuckTimerMs = 0;
-        if (style == AIStyle::Aggressive)
-        {
-            setState(AIState::Overtaking);
-        }
-        else if (style == AIStyle::Defensive)
-        {
-            setState(AIState::Defending);
-        }
-        else
-        {
-            setState(AIState::Racing);
-        }
-    }
-    else
-    {
-        m_stuckTimerMs = 0;
-        setState(AIState::Racing);
+    if (m_recoveryCooldownMs > 0) {
+        m_recoveryCooldownMs = qMax<qint64>(0, m_recoveryCooldownMs - elapsedMs);
     }
 
     if (!m_waypoints.isEmpty() && m_active && !m_finished) {
+        Waypoint currentWP = getCurrentWaypoint();
+        const qreal distanceBeforeMove = calculateDistanceToWaypoint(currentWP);
+        const bool offDrivableSurface = !isPositionFree(m_position);
+        const bool farFromRoute = isFarFromCurrentRoute() || offDrivableSurface;
+        const bool likelyStuck = m_noProgressTimerMs >= EnterRecoveryThresholdMs || farFromRoute;
+
+        AIStyle style = m_config.style;
+        if (likelyStuck) {
+            setState(AIState::Recovering);
+        } else if (!offDrivableSurface && getDistanceToPlayer() < 120.0) {
+            if (style == AIStyle::Aggressive) {
+                setState(AIState::Overtaking);
+            } else if (style == AIStyle::Defensive) {
+                setState(AIState::Defending);
+            } else {
+                setState(AIState::Racing);
+            }
+        } else {
+            setState(AIState::Racing);
+        }
+
         AIDecision decision = makeDecision();
 
         qreal throttle = decision.throttle;
@@ -308,7 +526,7 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
         qreal steering = decision.steering;
 
         if (m_state == AIState::Overtaking) {
-            throttle *= 1.2;
+            throttle *= 1.08;
         }
 
         if (m_state == AIState::Recovering) {
@@ -342,8 +560,35 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
             m_position += m_velocity * (elapsedMs / 1000.0);
         }
 
-        Waypoint currentWP = getCurrentWaypoint();
-        qreal distToWP = (currentWP.position - m_position).length();
+        qreal distToWP = calculateDistanceToWaypoint(getCurrentWaypoint());
+        const qreal movedDistance = (m_position - m_lastProgressPosition).length();
+        const bool madeProgress = distToWP + ProgressDistanceEpsilon < m_lastWaypointDistance
+            || movedDistance >= MinimumMovementForProgress;
+
+        if (madeProgress) {
+            m_noProgressTimerMs = 0;
+        } else if (distToWP > waypointReachRadius() * 1.1 || isPhysicsColliding()) {
+            m_noProgressTimerMs += elapsedMs;
+        }
+
+        if (farFromRoute) {
+            m_stuckTimerMs += elapsedMs;
+        } else if (m_noProgressTimerMs >= EnterRecoveryThresholdMs) {
+            m_stuckTimerMs += elapsedMs;
+        } else {
+            m_stuckTimerMs = 0;
+        }
+
+        m_lastProgressPosition = m_position;
+        m_lastWaypointDistance = distToWP;
+
+        if ((farFromRoute && m_recoveryCooldownMs == 0)
+            || (m_stuckTimerMs >= TeleportRecoveryThresholdMs && m_recoveryCooldownMs == 0)) {
+            recoverToRoute(farFromRoute || distanceBeforeMove > waypointReachRadius() * 3.0);
+            currentWP = getCurrentWaypoint();
+            distToWP = calculateDistanceToWaypoint(currentWP);
+        }
+
         if (distToWP <= waypointReachRadius() || hasPassedCurrentWaypoint(currentWP)) {
             const int reachedIndex = m_currentWaypointIndex;
             m_checkpointsPassed = qMax(m_checkpointsPassed, reachedIndex + 1);
@@ -361,6 +606,7 @@ void SimpleAIOpponent::update(qint64 elapsedMs)
                 emit lapCompleted(m_currentLap, m_lapTime);
                 m_lapTime = 0;
             }
+            resetProgressTracking();
         }
     }
 
@@ -372,29 +618,36 @@ QVector2D SimpleAIOpponent::calculateSteering()
 {
     if (m_waypoints.isEmpty()) return QVector2D(0, 0);
 
-    Waypoint targetWP = getCurrentWaypoint();
-    QVector2D toTarget = targetWP.position - m_position;
-    if (m_state == AIState::Overtaking)
-    {
-        const QVector2D nextDirection = (getNextWaypoint().position - targetWP.position).normalized();
-        QVector2D lateral(-nextDirection.y(), nextDirection.x());
-        if (lateral.isNull()) {
-            lateral = QVector2D(1.0, 0.0);
+    const Waypoint targetWP = getCurrentWaypoint();
+    const Waypoint nextWP = getNextWaypoint();
+    QVector2D routeDirection = nextWP.position - targetWP.position;
+    if (routeDirection.lengthSquared() < 1.0) {
+        routeDirection = targetWP.position - m_position;
+    }
+
+    const qreal distanceToWaypoint = (targetWP.position - m_position).length();
+    QVector2D targetPoint = targetWP.position;
+    if (routeDirection.lengthSquared() >= 1.0) {
+        const QVector2D normalizedRouteDirection = routeDirection.normalized();
+        const qreal lookAhead = qBound<qreal>(24.0, distanceToWaypoint * 0.45, 96.0);
+        targetPoint += normalizedRouteDirection * lookAhead;
+
+        if (m_state == AIState::Overtaking || m_state == AIState::Defending) {
+            QVector2D lateral = perpendicularLeft(normalizedRouteDirection);
+            if (lateral.lengthSquared() < 0.01) {
+                lateral = QVector2D(1.0, 0.0);
+            }
+            const qreal side = m_state == AIState::Defending ? -1.0 : 1.0;
+            const qreal offsetAmount = qBound<qreal>(0.0, distanceToWaypoint * 0.12, 16.0);
+            targetPoint += lateral * side * offsetAmount;
         }
-        const qreal side = (m_config.style == AIStyle::Defensive) ? -1.0 : 1.0;
-        toTarget += lateral * side * 70.0;
     }
 
-    qreal targetRotation = qRadiansToDegrees(std::atan2(toTarget.x(), toTarget.y()));
-    qreal angleDiff = targetRotation - m_rotation;
-    while (angleDiff > 180.0) {
-        angleDiff -= 360.0;
-    }
-    while (angleDiff < -180.0) {
-        angleDiff += 360.0;
-    }
+    const QVector2D toTarget = targetPoint - m_position;
+    const qreal targetRotation = rotationForDirection(toTarget);
+    const qreal angleDiff = normalizedAngleDifference(targetRotation, m_rotation);
 
-    qreal steeringValue = angleDiff / 45.0;
+    qreal steeringValue = angleDiff / 34.0;
     steeringValue = qBound(-1.0, steeringValue, 1.0);
 
     switch (m_config.style)
@@ -426,7 +679,8 @@ qreal SimpleAIOpponent::calculateThrottle()
     if (m_waypoints.isEmpty()) return 0.5;
 
     Waypoint currentWP = getCurrentWaypoint();
-    qreal distToWP = (currentWP.position - m_position).length();
+    const QVector2D toWaypoint = currentWP.position - m_position;
+    const qreal distToWP = toWaypoint.length();
 
     if (currentWP.isCorner)
     {
@@ -455,25 +709,40 @@ qreal SimpleAIOpponent::calculateThrottle()
         slowdownDistance = qBound<qreal>(40.0, routeSpacing * 0.7, 100.0);
     }
 
-    if (distToWP < slowdownDistance) {
-        return 0.5;
+    qreal baseThrottle = 0.5;
+    if (distToWP >= slowdownDistance) {
+        switch (style)
+        {
+        case AIStyle::Aggressive:
+            baseThrottle = 1.0;
+            break;
+
+        case AIStyle::Conservative:
+            baseThrottle = 0.7;
+            break;
+
+        case AIStyle::Defensive:
+            baseThrottle = 0.5;
+            break;
+
+        case AIStyle::Normal:
+        default:
+            baseThrottle = 0.85;
+            break;
+        }
     }
 
-    switch (style)
-    {
-    case AIStyle::Aggressive:
-        return 1.0;
-
-    case AIStyle::Conservative:
-        return 0.7;
-
-    case AIStyle::Defensive:
-        return 0.5;
-
-    case AIStyle::Normal:
-    default:
-        return 0.85;
+    if (!toWaypoint.isNull()) {
+        const qreal targetRotation = rotationForDirection(toWaypoint);
+        const qreal headingError = qAbs(normalizedAngleDifference(targetRotation, m_rotation));
+        if (headingError > 85.0) {
+            baseThrottle = qMin<qreal>(baseThrottle, 0.35);
+        } else if (headingError > 55.0) {
+            baseThrottle = qMin<qreal>(baseThrottle, 0.6);
+        }
     }
+
+    return baseThrottle;
 }
 
 qreal SimpleAIOpponent::calculateBraking()
@@ -481,31 +750,43 @@ qreal SimpleAIOpponent::calculateBraking()
     if (m_waypoints.isEmpty()) return 0;
 
     Waypoint currentWP = getCurrentWaypoint();
+    const QVector2D toWaypoint = currentWP.position - m_position;
+    qreal additionalBrake = 0.0;
+    if (!toWaypoint.isNull()) {
+        const qreal targetRotation = rotationForDirection(toWaypoint);
+        const qreal headingError = qAbs(normalizedAngleDifference(targetRotation, m_rotation));
+        if (headingError > 90.0) {
+            additionalBrake = 0.35;
+        } else if (headingError > 60.0) {
+            additionalBrake = 0.18;
+        }
+    }
+
     if (currentWP.isCorner) {
         qreal distToWP = (currentWP.position - m_position).length();
         if (distToWP < 150.0) {
-            return currentWP.cornerSeverity / 3.0 * 0.8;
+            return qMax(additionalBrake, currentWP.cornerSeverity / 3.0 * 0.8);
         }
     }
 
     if (m_speed > currentWP.preferredSpeed && currentWP.preferredSpeed > 0) {
-        return (m_speed - currentWP.preferredSpeed) / m_config.maxSpeed;
+        return qMax(additionalBrake, (m_speed - currentWP.preferredSpeed) / m_config.maxSpeed);
     }
 
     switch (m_config.style)
     {
     case AIStyle::Aggressive:
-        return 0.1;
+        return qMax(additionalBrake, 0.1);
 
     case AIStyle::Conservative:
-        return 0.5;
+        return qMax(additionalBrake, 0.5);
 
     case AIStyle::Defensive:
-        return 0.7;
+        return qMax(additionalBrake, 0.7);
 
     case AIStyle::Normal:
     default:
-        return 0.3;
+        return qMax(additionalBrake, 0.3);
     }
 }
 
@@ -627,6 +908,10 @@ qreal SimpleAIOpponent::calculateAngleToWaypoint(const Waypoint& waypoint) const
 
 int SimpleAIOpponent::findNearestWaypointIndex() const
 {
+    if (m_waypoints.isEmpty()) {
+        return 0;
+    }
+
     int nearestIndex = 0;
     qreal minDist = std::numeric_limits<qreal>::max();
 

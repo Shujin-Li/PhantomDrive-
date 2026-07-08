@@ -346,13 +346,7 @@ void AIOpponentManager::update(qint64 elapsedMs)
 
         if (opponent->isActive() && !opponent->hasFinished()) {
             opponent->update(elapsedMs);
-            if (auto* simple = qobject_cast<SimpleAIOpponent*>(opponent)) {
-                if (!simple->usesVehiclePhysics()) {
-                    applyBoundaryRecovery(opponent);
-                }
-            } else {
-                applyBoundaryRecovery(opponent);
-            }
+            applyBoundaryRecovery(opponent);
             RaceEntry entry = m_aiRace.value(it.key());
             entry.totalTime += elapsedMs / 1000.0;
             m_aiRace.insert(it.key(), entry);
@@ -375,6 +369,13 @@ void AIOpponentManager::applyBoundaryRecovery(AIOpponent* opponent)
         return;
     }
 
+    if (auto* simple = qobject_cast<SimpleAIOpponent*>(opponent)) {
+        if (simple->recoverToRoute(true)) {
+            opponent->onCollision(QStringLiteral("track_boundary"), opponent->getPosition());
+            return;
+        }
+    }
+
     const QRectF safeBounds = m_trackBounds.adjusted(BoundaryInset,
                                                     BoundaryInset,
                                                     -BoundaryInset,
@@ -387,7 +388,7 @@ void AIOpponentManager::applyBoundaryRecovery(AIOpponent* opponent)
 
     opponent->setPosition(clamped);
     if (!toCenter.isNull()) {
-        opponent->setRotation(qRadiansToDegrees(std::atan2(toCenter.y(), toCenter.x())));
+        opponent->setRotation(qRadiansToDegrees(std::atan2(toCenter.x(), toCenter.y())));
     }
     opponent->onCollision(QStringLiteral("track_boundary"), clamped);
 }

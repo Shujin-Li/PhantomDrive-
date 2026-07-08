@@ -120,22 +120,6 @@ AIClientConfig loadConfig()
     return config;
 }
 
-void logEffectiveConfig(const AIClientConfig& config)
-{
-    qInfo().noquote()
-        << QStringLiteral("[AIAPIClient] effective config: mode=%1 deepseekKey=%2 deepseekKeyLen=%3 deepseekBaseUrl=%4 deepseekModel=%5 zhipuKey=%6 zhipuKeyLen=%7 zhipuBaseUrl=%8 zhipuModel=%9 timeoutMs=%10")
-               .arg(config.mode,
-                    isUsableApiKey(config.deepseekApiKey) ? QStringLiteral("true") : QStringLiteral("false"))
-               .arg(config.deepseekApiKey.trimmed().size())
-               .arg(config.deepseekBaseUrl,
-                    config.deepseekModel,
-                    isUsableApiKey(config.zhipuApiKey) ? QStringLiteral("true") : QStringLiteral("false"))
-               .arg(config.zhipuApiKey.trimmed().size())
-               .arg(config.zhipuBaseUrl,
-                    config.zhipuModel)
-               .arg(config.timeoutMs);
-}
-
 QString buildReportPrompt(const ScoreReport& report)
 {
     const QByteArray reportJson = QJsonDocument(report.toJson()).toJson(QJsonDocument::Compact);
@@ -241,11 +225,6 @@ QString callChatCompletions(const QString& providerName,
     });
     payload.insert(QStringLiteral("messages"), messages);
 
-    qInfo().noquote()
-        << QStringLiteral("[AIAPIClient] Requesting coach report %1 url=%2 model=%3 timeoutMs=%4")
-               .arg(providerName, endpoint.toString(), model)
-               .arg(timeoutMs);
-
     QNetworkAccessManager manager;
     QNetworkReply* reply = manager.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
 
@@ -302,6 +281,7 @@ QString callChatCompletions(const QString& providerName,
     QString parseError;
     QString finishReason;
     const QString content = extractContentFromReply(rawBody, parseError, finishReason);
+    Q_UNUSED(finishReason);
     if (content.isEmpty()) {
         error = providerName
                 + QStringLiteral(": url=%1, http_status=%2, parse_error=%3, body=%4")
@@ -313,14 +293,6 @@ QString callChatCompletions(const QString& providerName,
         return QString();
     }
 
-    qInfo() << "[AIAPIClient] Coach report received from" << providerName
-            << "chars=" << content.size()
-            << "finishReason=" << (finishReason.isEmpty() ? QStringLiteral("<missing>") : finishReason);
-    if (finishReason == QStringLiteral("length")) {
-        qWarning() << "[AIAPIClient] Coach report may be truncated by provider token limit"
-                   << "provider=" << providerName
-                   << "chars=" << content.size();
-    }
     error.clear();
     return content;
 }
@@ -423,8 +395,6 @@ QString AIAPIClient::generateMockCoachReport(const ScoreReport& report, const QS
 QString AIAPIClient::generateCoachReport(const ScoreReport& report) const
 {
     const AIClientConfig config = loadConfig();
-
-    logEffectiveConfig(config);
 
     if (config.mode == QStringLiteral("mock")) {
         return generateMockCoachReport(report, QStringLiteral("mode=mock"));

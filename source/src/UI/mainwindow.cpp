@@ -2,8 +2,13 @@
 #include "ui_mainwindow.h"
 
 #include "UI/DrivingReportWidget.h"
+#include "UI/GarageWidget.h"
+#include "UI/MainMenuWidget.h"
 #include "UI/CustomTrackEditorWidget.h"
 #include "UI/ThemeManager.h"
+#include "collectible/BlockerVehicleManager.h"
+#include "collectible/ChallengeObstacleManager.h"
+#include "collectible/CollectibleManager.h"
 #include "gamemode/CustomTrackMode.h"
 #include "gamemode/VehicleSensor.h"
 #include "gamemode/PowerupBox.h"
@@ -27,6 +32,9 @@
 #include "scoring/ScoreReport.h"
 #include "core/saveloadmanager.h"
 #include "core/VehiclePhysics.h"
+#include "economy/CurrencyManager.h"
+#include "profile/PlayerProfileStore.h"
+#include "shop/SkinManager.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -44,9 +52,12 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QScreen>
+#include <QSizePolicy>
 #include <QSpacerItem>
 #include <QStatusBar>
 #include <QStringList>
@@ -73,6 +84,701 @@ constexpr qreal kVehicleContactReleaseDistance = 52.0;
 constexpr qint64 kFinishedAiContactCooldownMs = 1000;
 constexpr qint64 kVehicleImpactVisualCooldownMs = 350;
 constexpr qint64 kRaceStartCollisionImpactGuardMs = 1000;
+constexpr int kCoinChallengeDefaultDurationMs = 60 * 1000;
+constexpr int kCoinChallengeGoalCoins = 70;
+constexpr int kCoinChallengeCountdownGoWindowMs = 350;
+constexpr int kCoinChallengeMagnetDurationMs = 4000;
+constexpr int kCoinChallengeBalloonRushTriggerDurationMs = 1300;
+constexpr int kCoinChallengeBalloonRushSceneDurationMs = 7000;
+constexpr int kCoinChallengeBalloonRushReturnTransitionDurationMs = 1050;
+constexpr int kCoinChallengeBalloonRushIntroCountdownTotalMs = 3000;
+constexpr int kCoinChallengeIntegrityMax = 100;
+constexpr int kCoinChallengeDamageCooldownMs = 480;
+constexpr int kCoinChallengeDamageFlashDurationMs = 560;
+constexpr int kCoinChallengeDamagePopupDurationMs = 1150;
+constexpr int kCoinChallengeLowIntegrityWarningDurationMs = 380;
+constexpr int kCoinChallengeForcedEndDurationMs = 1650;
+constexpr int kCoinChallengeBlockerCollisionDamage = 18;
+constexpr qreal kCoinChallengeMagnetRadius = 210.0;
+constexpr qreal kCoinChallengeMagnetPullSpeed = 460.0;
+constexpr float kCoinChallengePowerupRespawnSeconds = 999.0f;
+constexpr int kCoinChallengeBalloonRushMilestone = 30;
+constexpr qreal kCoinChallengeBalloonRushCoinSpeedPerSecond = 1.05;
+constexpr qreal kCoinChallengeBalloonRushCoinSpawnIntervalMs = 255.0;
+constexpr int kCoinChallengeCriticalIntegrityThreshold = 25;
+
+int coinChallengeObstacleDamage(ChallengeObstacleType type)
+{
+    switch (type) {
+    case ChallengeObstacleType::Rock:
+        return 5;
+    case ChallengeObstacleType::ConeBarrier:
+    case ChallengeObstacleType::ConstructionBarrel:
+        return 8;
+    case ChallengeObstacleType::Tree:
+        return 12;
+    case ChallengeObstacleType::ConstructionWall:
+        return 15;
+    default:
+        return 10;
+    }
+}
+
+QString coinChallengeObstacleDamageDetail(ChallengeObstacleType type)
+{
+    switch (type) {
+    case ChallengeObstacleType::Rock:
+        return QStringLiteral("Rock impact");
+    case ChallengeObstacleType::ConeBarrier:
+        return QStringLiteral("Barrier hit");
+    case ChallengeObstacleType::ConstructionBarrel:
+        return QStringLiteral("Barrel hit");
+    case ChallengeObstacleType::Tree:
+        return QStringLiteral("Tree impact");
+    case ChallengeObstacleType::ConstructionWall:
+        return QStringLiteral("Heavy wall hit");
+    default:
+        return QStringLiteral("Vehicle damaged");
+    }
+}
+
+QString coinChallengeIntegrityStatusLabel(int integrity)
+{
+    if (integrity <= 0) {
+        return QStringLiteral("DESTROYED");
+    }
+    if (integrity <= 20) {
+        return QStringLiteral("CRITICAL");
+    }
+    if (integrity <= 40) {
+        return QStringLiteral("HEAVY DAMAGE");
+    }
+    if (integrity <= 70) {
+        return QStringLiteral("DAMAGED");
+    }
+    return QStringLiteral("GOOD");
+}
+
+QString coinChallengeEndReasonLabel(CoinChallengeEndReason reason, bool goalComplete)
+{
+    switch (reason) {
+    case CoinChallengeEndReason::GoalComplete:
+        return QStringLiteral("Goal Complete");
+    case CoinChallengeEndReason::ForcedFinish:
+        return QStringLiteral("Forced Finish");
+    case CoinChallengeEndReason::VehicleDestroyed:
+        return QStringLiteral("Vehicle Destroyed");
+    case CoinChallengeEndReason::FatalCrash:
+        return QStringLiteral("Fatal Crash");
+    case CoinChallengeEndReason::Timeout:
+        return goalComplete ? QStringLiteral("Goal Complete") : QStringLiteral("Time Up");
+    case CoinChallengeEndReason::None:
+    default:
+        return goalComplete ? QStringLiteral("Goal Complete") : QStringLiteral("Challenge Complete");
+    }
+}
+
+SoundEffect coinChallengeCountdownSoundForStage(int stage)
+{
+    switch (stage) {
+    case 3:
+        return SoundEffect::CountdownThree;
+    case 2:
+        return SoundEffect::CountdownTwo;
+    case 1:
+        return SoundEffect::CountdownOne;
+    default:
+        return SoundEffect::CountdownGo;
+    }
+}
+
+int balloonRushIntroCountdownStage(int remainingMs)
+{
+    if (remainingMs <= 0 || remainingMs > kCoinChallengeBalloonRushIntroCountdownTotalMs) {
+        return -1;
+    }
+    if (remainingMs > 2000) {
+        return 3;
+    }
+    if (remainingMs > 1000) {
+        return 2;
+    }
+    return 1;
+}
+
+QString balloonRushIntroCountdownLabel(int remainingMs)
+{
+    switch (balloonRushIntroCountdownStage(remainingMs)) {
+    case 3:
+        return QStringLiteral("3");
+    case 2:
+        return QStringLiteral("2");
+    case 1:
+        return QStringLiteral("1");
+    default:
+        return QString();
+    }
+}
+
+qreal balloonRushIntroCountdownStageProgress(int remainingMs)
+{
+    const int stage = balloonRushIntroCountdownStage(remainingMs);
+    switch (stage) {
+    case 3:
+        return qBound<qreal>(0.0,
+                             static_cast<qreal>(kCoinChallengeBalloonRushIntroCountdownTotalMs - remainingMs) / 1000.0,
+                             1.0);
+    case 2:
+        return qBound<qreal>(0.0,
+                             static_cast<qreal>(2000 - remainingMs) / 1000.0,
+                             1.0);
+    case 1:
+        return qBound<qreal>(0.0,
+                             static_cast<qreal>(1000 - remainingMs) / 1000.0,
+                             1.0);
+    default:
+        return 0.0;
+    }
+}
+
+constexpr qreal kCoinChallengeSpawnTileSize = TrackData::DefaultTileSize;
+
+bool isCoinChallengeDrivableSurface(TileType type)
+{
+    switch (type) {
+    case TileType::Road:
+    case TileType::Asphalt:
+    case TileType::StartLine:
+    case TileType::FinishLine:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool snapToNearestCoinChallengeRoadPoint(TrackData* track, const QVector2D& source, QVector2D& snapped, int maxTileRadius = 3)
+{
+    if (!track) {
+        return false;
+    }
+
+    const QPoint tileCoord = TrackData::worldToTile(source, kCoinChallengeSpawnTileSize);
+    qreal bestDistanceSquared = std::numeric_limits<qreal>::max();
+    bool found = false;
+
+    for (int radius = 0; radius <= maxTileRadius; ++radius) {
+        for (int row = tileCoord.y() - radius; row <= tileCoord.y() + radius; ++row) {
+            for (int col = tileCoord.x() - radius; col <= tileCoord.x() + radius; ++col) {
+                TrackTile* tile = track->getTileAt(row, col);
+                if (!tile || !isCoinChallengeDrivableSurface(tile->getType())) {
+                    continue;
+                }
+
+                const QVector2D center = TrackData::tileToWorldCenter(row, col, kCoinChallengeSpawnTileSize);
+                const qreal distanceSquared = (center - source).lengthSquared();
+                if (!found || distanceSquared < bestDistanceSquared) {
+                    snapped = center;
+                    bestDistanceSquared = distanceSquared;
+                    found = true;
+                }
+            }
+        }
+        if (found) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+QPointF quadraticPoint(const QPointF& start, const QPointF& control, const QPointF& end, qreal t)
+{
+    const qreal invT = 1.0 - t;
+    return start * (invT * invT) + control * (2.0 * invT * t) + end * (t * t);
+}
+
+qreal easeOutCubic(qreal t)
+{
+    const qreal clamped = qBound<qreal>(0.0, t, 1.0);
+    const qreal inv = 1.0 - clamped;
+    return 1.0 - inv * inv * inv;
+}
+
+void drawTinyRewardCar(QPainter& painter, const QRectF& bounds, const QColor& accent)
+{
+    painter.save();
+    painter.setBrush(QColor(10, 18, 36, 190));
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(bounds.adjusted(0.0, bounds.height() * 0.30, 0.0, 0.0), 6.0, 6.0);
+
+    QLinearGradient bodyFill(bounds.topLeft(), bounds.bottomRight());
+    bodyFill.setColorAt(0.0, accent.lighter(155));
+    bodyFill.setColorAt(0.65, accent);
+    bodyFill.setColorAt(1.0, QColor(34, 16, 78));
+    painter.setBrush(bodyFill);
+    painter.setPen(QPen(QColor(214, 248, 255, 180), 1.4));
+    painter.drawRoundedRect(bounds, 7.0, 7.0);
+
+    painter.setBrush(QColor(12, 28, 52, 210));
+    painter.setPen(QPen(QColor(86, 224, 255, 180), 1.0));
+    painter.drawRoundedRect(QRectF(bounds.left() + bounds.width() * 0.18,
+                                   bounds.top() + bounds.height() * 0.18,
+                                   bounds.width() * 0.64,
+                                   bounds.height() * 0.28),
+                            4.0,
+                            4.0);
+
+    painter.setBrush(QColor(24, 24, 28));
+    painter.setPen(QPen(QColor(118, 118, 130), 0.9));
+    painter.drawEllipse(QPointF(bounds.left() + bounds.width() * 0.24, bounds.bottom()), bounds.width() * 0.12, bounds.width() * 0.12);
+    painter.drawEllipse(QPointF(bounds.right() - bounds.width() * 0.24, bounds.bottom()), bounds.width() * 0.12, bounds.width() * 0.12);
+    painter.restore();
+}
+
+QString resolveCoinChallengeRewardArtPath()
+{
+    const QStringList assetRelatives = {
+        QStringLiteral("ui/coinspic.png"),
+        QStringLiteral("coinspic.png")
+    };
+    const QStringList roots = {
+        QCoreApplication::applicationDirPath() + QStringLiteral("/assets"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../assets"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../../assets"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../../../assets"),
+        QDir::currentPath() + QStringLiteral("/assets"),
+        QDir::currentPath() + QStringLiteral("/source/assets")
+    };
+
+    for (const QString& root : roots) {
+        for (const QString& assetRelative : assetRelatives) {
+            const QString candidate = QDir(root).filePath(assetRelative);
+            const QFileInfo info(candidate);
+            if (info.exists() && info.isFile()) {
+                return info.absoluteFilePath();
+            }
+        }
+    }
+
+    return QString();
+}
+
+QPixmap loadCoinChallengeRewardArt()
+{
+    static QString cachedPath;
+    static qint64 cachedStampMs = -1;
+    static QPixmap cachedPixmap;
+
+    const QString path = resolveCoinChallengeRewardArtPath();
+    if (path.isEmpty()) {
+        cachedPath.clear();
+        cachedStampMs = -1;
+        cachedPixmap = QPixmap();
+        return cachedPixmap;
+    }
+
+    const QFileInfo info(path);
+    const qint64 stampMs = info.lastModified().toMSecsSinceEpoch();
+    if (path != cachedPath || stampMs != cachedStampMs || cachedPixmap.isNull()) {
+        cachedPath = path;
+        cachedStampMs = stampMs;
+        cachedPixmap.load(path);
+    }
+
+    return cachedPixmap;
+}
+
+qreal rewardPixmapDevicePixelRatio()
+{
+    if (QScreen* screen = QApplication::primaryScreen()) {
+        return qMax<qreal>(1.0, screen->devicePixelRatio());
+    }
+    return 1.0;
+}
+
+QPixmap makeCoinChallengeChestVisual(const QSize& size, int runCoins, bool goalComplete, qreal animationProgress)
+{
+    const qreal dpr = rewardPixmapDevicePixelRatio();
+    QPixmap pixmap(qRound(size.width() * dpr), qRound(size.height() * dpr));
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    const QRectF bounds(QPointF(0.0, 0.0), QSizeF(size));
+    const QRectF safeBounds = bounds.adjusted(10.0, 16.0, -10.0, -10.0);
+    const QRectF base(safeBounds.left() + 18.0, safeBounds.top() + 70.0, safeBounds.width() * 0.60, safeBounds.height() * 0.42);
+    const QRectF lid(base.left() + 18.0, base.top() - base.height() * 0.40, base.width() * 0.84, base.height() * 0.44);
+    const qreal anim = easeOutCubic(animationProgress);
+    const QColor frameGold = goalComplete ? QColor(255, 225, 118) : QColor(255, 200, 66);
+    const QColor deepGold = goalComplete ? QColor(231, 162, 22) : QColor(218, 142, 14);
+    const QColor purpleA(88, 34, 118);
+    const QColor purpleB(44, 22, 92);
+
+    QRadialGradient glow(safeBounds.center() + QPointF(-12.0, 6.0), safeBounds.width() * 0.48);
+    glow.setColorAt(0.0, QColor(255, 224, 108, goalComplete ? 130 + qRound(anim * 48.0) : 92 + qRound(anim * 36.0)));
+    glow.setColorAt(0.68, QColor(255, 180, 60, 36));
+    glow.setColorAt(1.0, QColor(255, 180, 60, 0));
+    painter.setBrush(glow);
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(safeBounds.adjusted(-8.0, -6.0, 12.0, 10.0));
+
+    painter.setBrush(QColor(12, 16, 24, 88));
+    painter.drawEllipse(QRectF(base.left() + 8.0, base.bottom() - 12.0, base.width() * 1.18, 26.0));
+
+    QLinearGradient baseFrame(base.topLeft(), base.bottomRight());
+    baseFrame.setColorAt(0.0, frameGold.lighter(135));
+    baseFrame.setColorAt(0.55, frameGold);
+    baseFrame.setColorAt(1.0, deepGold.darker(130));
+    painter.setBrush(baseFrame);
+    painter.setPen(QPen(QColor(255, 245, 180, 220), 3.0));
+    painter.drawRoundedRect(base, 18.0, 18.0);
+
+    QRectF frontPanel = base.adjusted(18.0, 16.0, -18.0, -18.0);
+    QLinearGradient frontFill(frontPanel.topLeft(), frontPanel.bottomRight());
+    frontFill.setColorAt(0.0, purpleA);
+    frontFill.setColorAt(1.0, purpleB);
+    painter.setBrush(frontFill);
+    painter.setPen(QPen(QColor(255, 215, 104, 220), 2.2));
+    painter.drawRoundedRect(frontPanel, 12.0, 12.0);
+
+    painter.setPen(QPen(QColor(255, 228, 132, 220), 6.0));
+    painter.drawLine(QPointF(frontPanel.left() + 8.0, frontPanel.top() + 12.0),
+                     QPointF(frontPanel.right() - 8.0, frontPanel.top() + 12.0));
+    painter.drawLine(QPointF(frontPanel.left() + frontPanel.width() * 0.14, frontPanel.bottom() - 8.0),
+                     QPointF(frontPanel.left() + frontPanel.width() * 0.86, frontPanel.bottom() - 8.0));
+
+    QRectF lockRect(frontPanel.center().x() - 15.0, frontPanel.top() + 14.0, 30.0, 36.0);
+    painter.setBrush(QColor(248, 190, 48));
+    painter.setPen(QPen(QColor(126, 68, 8), 2.0));
+    painter.drawRoundedRect(lockRect, 8.0, 8.0);
+    painter.drawArc(QRectF(lockRect.left() + 6.0, lockRect.top() - 12.0, 18.0, 18.0), 0, 180 * 16);
+    painter.drawEllipse(QRectF(lockRect.center().x() - 3.5, lockRect.center().y() - 3.0, 7.0, 7.0));
+
+    painter.save();
+    painter.translate(lid.center());
+    painter.rotate(-24.0);
+    QLinearGradient lidFrame(QPointF(-lid.width() * 0.5, -lid.height() * 0.5),
+                             QPointF(lid.width() * 0.5, lid.height() * 0.5));
+    lidFrame.setColorAt(0.0, frameGold.lighter(140));
+    lidFrame.setColorAt(0.55, frameGold);
+    lidFrame.setColorAt(1.0, deepGold);
+    painter.setBrush(lidFrame);
+    painter.setPen(QPen(QColor(255, 242, 188, 220), 3.0));
+    painter.drawRoundedRect(QRectF(-lid.width() * 0.5, -lid.height() * 0.5, lid.width(), lid.height()), 18.0, 18.0);
+    painter.setBrush(QColor(76, 28, 112));
+    painter.setPen(QPen(QColor(255, 220, 118), 2.0));
+    painter.drawRoundedRect(QRectF(-lid.width() * 0.32, -lid.height() * 0.28, lid.width() * 0.64, lid.height() * 0.56), 12.0, 12.0);
+    painter.restore();
+
+    const int displayCoins = qMax(0, runCoins);
+    const int coinCount = qBound(4, 5 + displayCoins / 14, 10);
+    for (int i = 0; i < coinCount; ++i) {
+        const qreal angle = -24.0 + i * 13.0;
+        const qreal x = base.left() + base.width() * (0.18 + (i % 4) * 0.15);
+        const qreal y = base.top() - 6.0 - (i / 4) * 16.0 - (i % 2) * 6.0;
+        painter.save();
+        painter.translate(x, y);
+        painter.rotate(angle);
+        painter.setBrush(QColor(255, 214, 92));
+        painter.setPen(QPen(QColor(255, 245, 184), 2.0));
+        painter.drawEllipse(QRectF(-18.0, -18.0, 36.0, 36.0));
+        painter.setPen(QPen(QColor(163, 98, 8), 1.8));
+        painter.setFont(QFont(QStringLiteral("Segoe UI"), 16, QFont::Black));
+        painter.drawText(QRectF(-13.0, -15.0, 26.0, 30.0), Qt::AlignCenter, QStringLiteral("$"));
+        painter.restore();
+    }
+
+    const QPointF chestTarget(base.left() + base.width() * 0.52, base.top() - 10.0);
+    const int flyCoins = qBound(4, 4 + displayCoins / 16, 7);
+    for (int i = 0; i < flyCoins; ++i) {
+        const qreal localT = qBound<qreal>(0.0, anim * 1.28 - i * 0.13, 1.0);
+        if (localT <= 0.0) {
+            continue;
+        }
+
+        const QPointF start(safeBounds.right() - 26.0 - i * 18.0,
+                            safeBounds.top() + 38.0 + (i % 3) * 26.0);
+        const QPointF control(safeBounds.center().x() + 40.0 - i * 10.0,
+                              safeBounds.top() - 12.0 - i * 6.0);
+        const QPointF point = quadraticPoint(start, control, chestTarget, easeOutCubic(localT));
+        const qreal scale = 1.10 - localT * 0.58;
+        const qreal alpha = 255.0 * (1.0 - qMax<qreal>(0.0, localT - 0.86) / 0.14);
+
+        painter.save();
+        painter.translate(point);
+        painter.rotate(22.0 + i * 12.0 + localT * 280.0);
+        painter.setBrush(QColor(255, 214, 92, qRound(alpha)));
+        painter.setPen(QPen(QColor(255, 245, 184, qRound(alpha * 0.88)), 1.8));
+        painter.drawEllipse(QRectF(-13.0 * scale, -13.0 * scale, 26.0 * scale, 26.0 * scale));
+        painter.setPen(QPen(QColor(163, 98, 8, qRound(alpha * 0.72)), 1.2));
+        painter.setFont(QFont(QStringLiteral("Segoe UI"), qMax(8, qRound(11 * scale)), QFont::Black));
+        painter.drawText(QRectF(-10.0 * scale, -10.0 * scale, 20.0 * scale, 20.0 * scale),
+                         Qt::AlignCenter,
+                         QStringLiteral("$"));
+        painter.restore();
+    }
+
+    drawTinyRewardCar(painter,
+                      QRectF(bounds.left() + 26.0, bounds.bottom() - 54.0, 62.0, 24.0),
+                      goalComplete ? QColor(88, 255, 182) : QColor(68, 220, 255));
+
+    painter.setPen(goalComplete ? QColor(125, 255, 184) : QColor(255, 236, 184));
+    painter.setFont(QFont(QStringLiteral("Segoe UI"), 14, QFont::Black));
+    painter.drawText(QRectF(safeBounds.left(), safeBounds.bottom() - 24.0, safeBounds.width(), 18.0),
+                     Qt::AlignCenter,
+                     goalComplete ? QStringLiteral("TREASURE SECURED") : QStringLiteral("CHEST FILLED"));
+    return pixmap;
+}
+
+QPixmap makeCoinChallengeBagVisual(const QSize& size, int totalCoins, int runCoins, qreal animationProgress)
+{
+    const qreal dpr = rewardPixmapDevicePixelRatio();
+    QPixmap pixmap(qRound(size.width() * dpr), qRound(size.height() * dpr));
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    const qreal anim = easeOutCubic(animationProgress);
+    const QRectF bounds(QPointF(0.0, 0.0), QSizeF(size));
+    const QRectF safeBounds = bounds.adjusted(12.0, 16.0, -12.0, -10.0);
+    const QPixmap rewardArt = loadCoinChallengeRewardArt();
+    if (!rewardArt.isNull()) {
+        const QRectF artArea = safeBounds.adjusted(0.0, -2.0, 0.0, -28.0);
+        const QSize scaledSize = rewardArt.size().scaled(artArea.size().toSize(),
+                                                         Qt::KeepAspectRatio);
+        const QRectF artRect(artArea.left() + (artArea.width() - scaledSize.width()) * 0.5,
+                             artArea.top() + (artArea.height() - scaledSize.height()) * 0.44,
+                             scaledSize.width(),
+                             scaledSize.height());
+
+        QRadialGradient artGlow(artRect.center() + QPointF(artRect.width() * 0.06, artRect.height() * 0.02),
+                                artRect.width() * 0.56);
+        artGlow.setColorAt(0.0, QColor(255, 222, 104, 116 + qRound(anim * 52.0)));
+        artGlow.setColorAt(0.52, QColor(255, 180, 58, 38));
+        artGlow.setColorAt(1.0, QColor(255, 180, 58, 0));
+        painter.setBrush(artGlow);
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(artRect.adjusted(-28.0, -14.0, 24.0, 28.0));
+
+        painter.setBrush(QColor(8, 12, 22, 96));
+        painter.drawEllipse(QRectF(artRect.left() + artRect.width() * 0.10,
+                                   artRect.bottom() - 14.0,
+                                   artRect.width() * 0.78,
+                                   26.0));
+
+        painter.drawPixmap(artRect.toAlignedRect(),
+                           rewardArt.scaled(scaledSize,
+                                            Qt::KeepAspectRatio,
+                                            Qt::SmoothTransformation));
+
+        const QPointF bagTarget(artRect.left() + artRect.width() * 0.70,
+                                artRect.top() + artRect.height() * 0.56);
+        const int flyCoins = qBound(4, 4 + runCoins / 15, 8);
+        for (int i = 0; i < flyCoins; ++i) {
+            const qreal localT = qBound<qreal>(0.0, anim * 1.35 - i * 0.11, 1.0);
+            if (localT <= 0.0) {
+                continue;
+            }
+
+            const QPointF start(safeBounds.left() + 18.0 + (i % 3) * 28.0,
+                                safeBounds.top() + 28.0 + i * 18.0);
+            const QPointF control(safeBounds.center().x() - 12.0 + i * 9.0,
+                                  safeBounds.top() - 20.0 - (i % 2) * 12.0);
+            const QPointF point = quadraticPoint(start, control, bagTarget, easeOutCubic(localT));
+            const qreal scale = 1.12 - localT * 0.60;
+            const qreal alpha = 255.0 * (1.0 - qMax<qreal>(0.0, localT - 0.84) / 0.16);
+
+            painter.save();
+            painter.translate(point);
+            painter.rotate(-12.0 + i * 14.0 + localT * 320.0);
+            painter.setBrush(QColor(255, 214, 92, qRound(alpha)));
+            painter.setPen(QPen(QColor(255, 246, 190, qRound(alpha * 0.88)), 1.8));
+            painter.drawEllipse(QRectF(-12.0 * scale, -12.0 * scale, 24.0 * scale, 24.0 * scale));
+            painter.setPen(QPen(QColor(160, 98, 10, qRound(alpha * 0.72)), 1.0));
+            painter.drawLine(QPointF(-6.0 * scale, 0.0), QPointF(6.0 * scale, 0.0));
+            painter.restore();
+        }
+
+        const QRectF bankBadge(safeBounds.left() + 26.0, safeBounds.bottom() - 38.0, safeBounds.width() - 52.0, 28.0);
+        painter.setBrush(QColor(9, 18, 34, 198));
+        painter.setPen(QPen(QColor(255, 215, 118, 148), 1.4));
+        painter.drawRoundedRect(bankBadge, 12.0, 12.0);
+        painter.setPen(QColor(255, 241, 204));
+        painter.setFont(QFont(QStringLiteral("Segoe UI"), 12, QFont::Black));
+        painter.drawText(bankBadge, Qt::AlignCenter, QStringLiteral("BANK: %1").arg(totalCoins));
+        return pixmap;
+    }
+
+    const QRectF bagRect(safeBounds.left() + safeBounds.width() * 0.29,
+                         safeBounds.top() + 24.0,
+                         safeBounds.width() * 0.42,
+                         safeBounds.height() * 0.60);
+
+    QRadialGradient bagGlow(bagRect.center() + QPointF(10.0, 4.0), bagRect.width() * 1.05);
+    bagGlow.setColorAt(0.0, QColor(255, 224, 118, 126 + qRound(anim * 50.0)));
+    bagGlow.setColorAt(0.58, QColor(255, 176, 58, 42));
+    bagGlow.setColorAt(1.0, QColor(255, 176, 58, 0));
+    painter.setBrush(bagGlow);
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(QRectF(bagRect.left() - 34.0, bagRect.top() - 28.0, bagRect.width() + 82.0, bagRect.height() + 66.0));
+
+    painter.setBrush(QColor(8, 12, 22, 92));
+    painter.drawEllipse(QRectF(bagRect.left() - 28.0, bagRect.bottom() - 2.0, bagRect.width() + 60.0, 24.0));
+
+    QPainterPath bodyPath;
+    bodyPath.moveTo(bagRect.left() + bagRect.width() * 0.34, bagRect.top() + 20.0);
+    bodyPath.cubicTo(bagRect.left() - 10.0, bagRect.top() + 44.0,
+                     bagRect.left() - 8.0, bagRect.bottom() - 28.0,
+                     bagRect.center().x() - 14.0, bagRect.bottom());
+    bodyPath.lineTo(bagRect.center().x() + 14.0, bagRect.bottom());
+    bodyPath.cubicTo(bagRect.right() + 10.0, bagRect.bottom() - 28.0,
+                     bagRect.right() + 12.0, bagRect.top() + 44.0,
+                     bagRect.left() + bagRect.width() * 0.66, bagRect.top() + 20.0);
+    bodyPath.cubicTo(bagRect.center().x() + 14.0, bagRect.top() + 34.0,
+                     bagRect.center().x() - 14.0, bagRect.top() + 34.0,
+                     bagRect.left() + bagRect.width() * 0.34, bagRect.top() + 20.0);
+
+    QLinearGradient bodyFill(bagRect.topLeft(), bagRect.bottomRight());
+    bodyFill.setColorAt(0.0, QColor(255, 214, 96));
+    bodyFill.setColorAt(0.34, QColor(247, 176, 46));
+    bodyFill.setColorAt(0.72, QColor(221, 136, 24));
+    bodyFill.setColorAt(1.0, QColor(168, 94, 12));
+    painter.setBrush(bodyFill);
+    painter.setPen(QPen(QColor(255, 236, 170), 3.0));
+    painter.drawPath(bodyPath);
+
+    QPainterPath crownPath;
+    crownPath.moveTo(bagRect.left() + bagRect.width() * 0.34, bagRect.top() + 20.0);
+    crownPath.cubicTo(bagRect.left() + bagRect.width() * 0.26, bagRect.top() - 16.0,
+                      bagRect.left() + bagRect.width() * 0.20, bagRect.top() - 8.0,
+                      bagRect.left() + bagRect.width() * 0.18, bagRect.top() + 8.0);
+    crownPath.cubicTo(bagRect.left() + bagRect.width() * 0.34, bagRect.top() - 18.0,
+                      bagRect.left() + bagRect.width() * 0.44, bagRect.top() - 18.0,
+                      bagRect.center().x(), bagRect.top() + 2.0);
+    crownPath.cubicTo(bagRect.left() + bagRect.width() * 0.56, bagRect.top() - 18.0,
+                      bagRect.left() + bagRect.width() * 0.66, bagRect.top() - 18.0,
+                      bagRect.left() + bagRect.width() * 0.82, bagRect.top() + 8.0);
+    crownPath.cubicTo(bagRect.left() + bagRect.width() * 0.80, bagRect.top() - 8.0,
+                      bagRect.left() + bagRect.width() * 0.74, bagRect.top() - 16.0,
+                      bagRect.left() + bagRect.width() * 0.66, bagRect.top() + 20.0);
+    crownPath.closeSubpath();
+    painter.setBrush(QColor(244, 165, 34, 230));
+    painter.setPen(QPen(QColor(255, 230, 158), 1.8));
+    painter.drawPath(crownPath);
+
+    const QRectF ropeRect(bagRect.left() + 10.0, bagRect.top() + 24.0, bagRect.width() - 20.0, 14.0);
+    QLinearGradient ropeFill(ropeRect.topLeft(), ropeRect.bottomRight());
+    ropeFill.setColorAt(0.0, QColor(186, 118, 28));
+    ropeFill.setColorAt(1.0, QColor(118, 74, 18));
+    painter.setBrush(ropeFill);
+    painter.setPen(QPen(QColor(255, 218, 145, 120), 1.2));
+    painter.drawRoundedRect(ropeRect, 7.0, 7.0);
+    painter.setPen(QPen(QColor(126, 74, 18), 3.0));
+    painter.drawLine(QPointF(ropeRect.left() + 18.0, ropeRect.center().y()),
+                     QPointF(ropeRect.left() - 4.0, ropeRect.top() + 18.0));
+    painter.drawLine(QPointF(ropeRect.right() - 18.0, ropeRect.center().y()),
+                     QPointF(ropeRect.right() + 4.0, ropeRect.top() + 18.0));
+
+    painter.setPen(QPen(QColor(176, 106, 22, 120), 3.2));
+    for (int i = 0; i < 4; ++i) {
+        const qreal foldX = bagRect.left() + bagRect.width() * (0.20 + i * 0.18);
+        painter.drawLine(QPointF(foldX, bagRect.top() + 42.0),
+                         QPointF(foldX + (i % 2 == 0 ? -5.0 : 5.0), bagRect.bottom() - 14.0));
+    }
+
+    painter.setBrush(QColor(255, 244, 198, 52));
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(QRectF(bagRect.left() + bagRect.width() * 0.17,
+                               bagRect.top() + bagRect.height() * 0.22,
+                               bagRect.width() * 0.22,
+                               bagRect.height() * 0.16));
+
+    const QRectF badgeRect(bagRect.center().x() - 34.0, bagRect.top() + bagRect.height() * 0.40, 68.0, 68.0);
+    painter.setBrush(QColor(255, 228, 132, 110));
+    painter.drawEllipse(badgeRect.adjusted(-8.0, -6.0, 8.0, 6.0));
+    QRadialGradient badgeFill(badgeRect.center() + QPointF(-10.0, -12.0), badgeRect.width() * 0.62);
+    badgeFill.setColorAt(0.0, QColor(255, 244, 206));
+    badgeFill.setColorAt(0.45, QColor(255, 220, 112));
+    badgeFill.setColorAt(1.0, QColor(240, 170, 44));
+    painter.setBrush(badgeFill);
+    painter.setPen(QPen(QColor(182, 116, 18), 2.2));
+    painter.drawEllipse(badgeRect);
+    painter.setPen(QPen(QColor(138, 82, 14), 2.0));
+    painter.setFont(QFont(QStringLiteral("Segoe UI"), 30, QFont::Black));
+    painter.drawText(badgeRect, Qt::AlignCenter, QStringLiteral("$"));
+
+    const int stackCount = qBound(4, 4 + runCoins / 18, 6);
+    for (int stack = 0; stack < stackCount; ++stack) {
+        const int layers = 2 + (stack % 3);
+        const qreal baseX = bounds.left() + 24.0 + stack * 22.0;
+        const qreal baseY = bounds.bottom() - 34.0 + (stack % 2) * 4.0;
+        for (int layer = 0; layer < layers; ++layer) {
+            const QRectF coinRect(baseX, baseY - layer * 7.0, 34.0, 11.0);
+            painter.setBrush(QColor(255, 214, 90));
+            painter.setPen(QPen(QColor(255, 240, 176), 1.5));
+            painter.drawRoundedRect(coinRect, 5.5, 5.5);
+        }
+    }
+
+    const QList<QPointF> looseCoinOffsets = {
+        QPointF(bagRect.right() + 18.0, bagRect.top() + 54.0),
+        QPointF(bagRect.right() + 34.0, bagRect.top() + 82.0),
+        QPointF(bagRect.left() - 18.0, bagRect.bottom() - 26.0)
+    };
+    for (int i = 0; i < looseCoinOffsets.size(); ++i) {
+        painter.save();
+        painter.translate(looseCoinOffsets.at(i));
+        painter.rotate(24.0 - i * 18.0);
+        painter.setBrush(QColor(255, 214, 92));
+        painter.setPen(QPen(QColor(255, 246, 190), 1.7));
+        painter.drawEllipse(QRectF(-14.0, -14.0, 28.0, 28.0));
+        painter.restore();
+    }
+
+    const QPointF bagTarget = badgeRect.center();
+    const int flyCoins = qBound(4, 4 + runCoins / 15, 8);
+    for (int i = 0; i < flyCoins; ++i) {
+        const qreal localT = qBound<qreal>(0.0, anim * 1.35 - i * 0.11, 1.0);
+        if (localT <= 0.0) {
+            continue;
+        }
+
+        const QPointF start(bounds.left() + 22.0 + (i % 3) * 26.0,
+                            bounds.top() + 30.0 + i * 17.0);
+        const QPointF control(bounds.center().x() - 18.0 + i * 7.0,
+                              bounds.top() - 16.0 - (i % 2) * 12.0);
+        const QPointF point = quadraticPoint(start, control, bagTarget, easeOutCubic(localT));
+        const qreal scale = 1.14 - localT * 0.60;
+        const qreal alpha = 255.0 * (1.0 - qMax<qreal>(0.0, localT - 0.84) / 0.16);
+
+        painter.save();
+        painter.translate(point);
+        painter.rotate(-16.0 + i * 14.0 + localT * 320.0);
+        painter.setBrush(QColor(255, 214, 92, qRound(alpha)));
+        painter.setPen(QPen(QColor(255, 246, 190, qRound(alpha * 0.88)), 1.8));
+        painter.drawEllipse(QRectF(-12.0 * scale, -12.0 * scale, 24.0 * scale, 24.0 * scale));
+        painter.setPen(QPen(QColor(160, 98, 10, qRound(alpha * 0.7)), 1.0));
+        painter.drawLine(QPointF(-6.0 * scale, 0.0), QPointF(6.0 * scale, 0.0));
+        painter.restore();
+    }
+
+    drawTinyRewardCar(painter,
+                      QRectF(bounds.right() - 92.0, bounds.bottom() - 56.0, 62.0, 24.0),
+                      QColor(255, 192, 78));
+
+    painter.setPen(QColor(255, 241, 204));
+    painter.setFont(QFont(QStringLiteral("Segoe UI"), 13, QFont::Black));
+    painter.drawText(QRectF(bounds.left(), bounds.bottom() - 24.0, bounds.width(), 18.0),
+                     Qt::AlignCenter,
+                     QStringLiteral("BANK: %1").arg(totalCoins));
+    return pixmap;
+}
 constexpr int kSimulationStepMs = 33;
 constexpr qreal kSimulationStepSeconds = kSimulationStepMs / 1000.0;
 
@@ -886,6 +1592,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_btnCustomTrackMode(nullptr)
     , m_btnTwoPlayerRace(nullptr)
     , m_btnAdaptiveDemo(nullptr)
+    , m_btnCoinChallenge(nullptr)
+    , m_btnGarage(nullptr)
     , m_btnGuide(nullptr)
     , m_btnPlayCustomTrack(nullptr)
     , m_btnSaveCustomTrack(nullptr)
@@ -893,6 +1601,14 @@ MainWindow::MainWindow(QWidget *parent)
     , m_btnExportCustomTrackJson(nullptr)
     , m_customTrackEditor(nullptr)
     , m_customTrackMode(new CustomTrackMode(this))
+    , m_collectibleManager(new CollectibleManager(this))
+    , m_challengeObstacleManager(std::make_unique<ChallengeObstacleManager>())
+    , m_blockerVehicleManager(std::make_unique<BlockerVehicleManager>())
+    , m_garageWidget(nullptr)
+    , m_mainMenuWidget(nullptr)
+    , m_playerProfileStore(new PlayerProfileStore(this))
+    , m_currencyManager(new CurrencyManager(this))
+    , m_skinManager(new SkinManager(this))
     , m_defaultRaceTrack(nullptr)
     , m_selectedBuiltInTrack(nullptr)
     , m_runtimeCustomTrack(nullptr)
@@ -905,6 +1621,17 @@ MainWindow::MainWindow(QWidget *parent)
     , m_playerCountCombo(nullptr)
     , m_trackDifficultyLabel(nullptr)
     , m_trackDescriptionLabel(nullptr)
+    , m_coinChallengeHudLabel(nullptr)
+    , m_coinChallengeSummaryOverlay(nullptr)
+    , m_coinChallengeSummaryTitleLabel(nullptr)
+    , m_coinChallengeSummaryFlavorLabel(nullptr)
+    , m_coinChallengeSummaryRewardLabel(nullptr)
+    , m_coinChallengeSummaryCoinBagLabel(nullptr)
+    , m_coinChallengeSummaryDeltaLabel(nullptr)
+    , m_coinChallengeSummaryStatsLabel(nullptr)
+    , m_coinChallengePlayAgainButton(nullptr)
+    , m_coinChallengeExitButton(nullptr)
+    , m_coinChallengeSummaryAnimTimer(nullptr)
     , m_selectedTrackId(QStringLiteral("neon_loop"))
     , m_selectedAIDifficulty(QStringLiteral("medium"))
     , m_twoPlayerMode(false)
@@ -921,8 +1648,69 @@ MainWindow::MainWindow(QWidget *parent)
     , m_learningTimerStartedMs(0)
     , m_arcadeRaceFinished(false)
     , m_customTrackPlaying(false)
+    , m_coinChallengeActive(false)
+    , m_coinChallengeSummaryVisible(false)
+    , m_coinChallengeTenSecondWarningShown(false)
+    , m_coinChallengeCountdownAnnouncedStage(-1)
     , m_lapsCompleted(0)
     , m_totalLaps(3)
+    , m_coinChallengeDurationMs(kCoinChallengeDefaultDurationMs)
+    , m_coinChallengeRemainingMs(kCoinChallengeDefaultDurationMs)
+    , m_coinChallengeGoalCoins(kCoinChallengeGoalCoins)
+    , m_coinChallengeMaxSpeedKmh(0)
+    , m_coinChallengeLastAverageSpeedKmh(0)
+    , m_coinChallengeLastEfficiencyCpm(0)
+    , m_coinChallengeLastRunCoins(0)
+    , m_coinChallengeWarningStartedMs(0)
+    , m_coinChallengeSpeedSampleSumKmh(0)
+    , m_coinChallengeSpeedSampleCount(0)
+    , m_coinChallengeLastElapsedMs(0)
+    , m_coinChallengeMagnetRemainingMs(0)
+    , m_coinChallengeBalloonRushRemainingMs(0)
+    , m_coinChallengeBalloonRushTriggerRemainingMs(0)
+    , m_coinChallengeBalloonRushReturnRemainingMs(0)
+    , m_coinChallengeBalloonRushIntroCountdownRemainingMs(0)
+    , m_coinChallengeBalloonRushIntroCountdownAnnounced(-1)
+    , m_coinChallengeBalloonRushCollectedCoins(0)
+    , m_coinChallengeBalloonRushRecentGainValue(0)
+    , m_coinChallengeBalloonRushGainFlashRemainingMs(0)
+    , m_coinChallengeBalloonRushMilestoneRemainingMs(0)
+    , m_coinChallengeBalloonRushMilestoneDurationMs(0)
+    , m_coinChallengePowerupsUsed(0)
+    , m_coinChallengeLoopsCompleted(0)
+    , m_coinChallengeLoopCheckpointIndex(0)
+    , m_coinChallengeMagnetSpawnStage(0)
+    , m_coinChallengeFinalCountdownAnnouncedSecond(-1)
+    , m_coinChallengeSummaryAnimatedRunCoins(0)
+    , m_coinChallengeSummaryAnimatedTotalCoins(0)
+    , m_coinChallengeSummaryTargetRunCoins(0)
+    , m_coinChallengeSummaryTargetTotalCoins(0)
+    , m_coinChallengeSummaryDepositSoundStage(0)
+    , m_coinChallengeSummaryVisualProgress(0.0)
+    , m_coinChallengeLastHazardSoundMs(-1000)
+    , m_coinChallengeLeftStartZone(false)
+    , m_coinChallengeWasOnStartZone(false)
+    , m_coinChallengeBalloonRushSpawned(false)
+    , m_coinChallengeMagnetLoopPlaying(false)
+    , m_coinChallengeMagnetSpawnPool()
+    , m_coinChallengeBalloonRushSpawnPool()
+    , m_coinChallengeBalloonRushPhase(CoinChallengeBalloonRushPhase::Inactive)
+    , m_coinChallengeBalloonRushSavedPosition(0.0f, 0.0f)
+    , m_coinChallengeBalloonRushSavedRotation(0.0)
+    , m_coinChallengeBalloonRushSavedSpeed(0.0)
+    , m_coinChallengeBalloonRushLaneIndex(1)
+    , m_coinChallengeBalloonRushLaneVisual(1.0)
+    , m_coinChallengeBalloonRushRoadScroll(0.0)
+    , m_coinChallengeBalloonRushSpawnAccumulatorMs(0.0)
+    , m_coinChallengeBalloonRushPatternLane(1)
+    , m_coinChallengeBalloonRushPatternBatchCount(0)
+    , m_coinChallengeBalloonRushRecentSegmentLanes()
+    , m_coinChallengeBalloonRushVisitedLanes()
+    , m_coinChallengeBalloonRushCoinLayout()
+    , m_coinChallengeBalloonRushMilestoneHeadline()
+    , m_coinChallengeBalloonRushMilestoneDetail()
+    , m_coinChallengeBalloonRushMilestoneAccent()
+    , m_coinChallengeTriggeredMilestones()
     , m_simTick(0)
     , m_sessionElapsedMs(0)
     , m_currentLapStartMs(0)
@@ -1220,6 +2008,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_reportWidget, &DrivingReportWidget::newDriveRequested,
             this, &MainWindow::onReportNewDrive);
 
+    loadPlayerProfile();
+    setupGaragePage();
+
     m_scoreManager->setVehicleId("player_1");
     if (m_player2ScoreManager) {
         m_player2ScoreManager->setVehicleId(QStringLiteral("player_2"));
@@ -1388,6 +2179,34 @@ void MainWindow::setupDemoControls()
                 this, &MainWindow::onGameFinished);
     }
 
+    if (!m_btnGarage && ui->verticalLayout) {
+        m_btnGarage = new QPushButton(QStringLiteral("Garage"), this);
+        m_btnGarage->setObjectName(QStringLiteral("btn_Garage"));
+
+        const int historyIndex = ui->btn_History ? ui->verticalLayout->indexOf(ui->btn_History) : -1;
+        ui->verticalLayout->insertWidget(historyIndex >= 0 ? historyIndex : ui->verticalLayout->count(),
+                                         m_btnGarage);
+
+        connect(m_btnGarage, &QPushButton::clicked, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            showGaragePage();
+        });
+    }
+
+    if (!m_btnCoinChallenge && ui->verticalLayout) {
+        m_btnCoinChallenge = new QPushButton(QStringLiteral("Coin Challenge"), this);
+        m_btnCoinChallenge->setObjectName(QStringLiteral("btn_CoinChallenge"));
+
+        const int arcadeIndex = ui->btn_Arcade ? ui->verticalLayout->indexOf(ui->btn_Arcade) : -1;
+        ui->verticalLayout->insertWidget(arcadeIndex >= 0 ? arcadeIndex + 1 : ui->verticalLayout->count(),
+                                         m_btnCoinChallenge);
+
+        connect(m_btnCoinChallenge, &QPushButton::clicked, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            showCoinChallengeTrackDialog();
+        });
+    }
+
     // Top HUD buttons (from .ui hudLayout): Back, Finish Drive, Exit Game
     if (ui->btn_Back) {
         // Back is already wired to handleReportBackToMenu in the btn_Back click handler above
@@ -1404,6 +2223,27 @@ void MainWindow::setupDemoControls()
         connect(ui->btn_ExitGame_Top, &QPushButton::clicked,
                 this, &MainWindow::exitApplicationFromGame);
     }
+}
+
+void MainWindow::setupGaragePage()
+{
+    if (!ui->stackedWidget || m_garageWidget) {
+        return;
+    }
+
+    m_garageWidget = new GarageWidget(ui->stackedWidget);
+    connect(m_garageWidget, &GarageWidget::backRequested, this, [this]() {
+        if (ui->stackedWidget) {
+            ui->stackedWidget->setCurrentIndex(0);
+        }
+        statusBar()->clearMessage();
+    });
+    connect(m_garageWidget, &GarageWidget::purchaseRequested,
+            this, &MainWindow::handleGaragePurchase);
+    connect(m_garageWidget, &GarageWidget::selectRequested,
+            this, &MainWindow::handleGarageSelect);
+    ui->stackedWidget->addWidget(m_garageWidget);
+    refreshGaragePage();
 }
 
 void MainWindow::setupCustomTrackControls()
@@ -1639,139 +2479,425 @@ void MainWindow::showArcadeSetupDialog()
     statusBar()->clearMessage();
 }
 
+void MainWindow::showCoinChallengeTrackDialog()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Coin Challenge Track"));
+    dialog.setModal(true);
+    dialog.setStyleSheet(QStringLiteral(
+        "QDialog{background:#06101F;color:#EAFBFF;}"
+        "QLabel#coinChallengeSetupTitle{color:#38F6FF;font-size:22px;font-weight:800;letter-spacing:5px;}"
+        "QLabel.coinChallengeSetupCopy{color:#BCEEFF;font-size:14px;}"
+        "QComboBox{background:#071126;color:#F3FBFF;border:2px solid #00CFE8;"
+        "border-radius:10px;padding:8px 18px;font-size:18px;font-weight:700;min-height:44px;}"
+        "QPushButton{background:#071126;color:#F3FBFF;border:2px solid #00CFE8;"
+        "border-radius:10px;min-height:44px;font-size:16px;font-weight:800;padding:0 20px;}"
+        "QPushButton:hover{background:#0A1C38;border-color:#38F6FF;}"
+        "QPushButton#btn_StartCoinChallenge{background:#0B2734;border-color:#35F6FF;color:#FFFFFF;}"));
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(22, 22, 22, 18);
+    layout->setSpacing(14);
+
+    auto* title = new QLabel(QStringLiteral("COIN CHALLENGE"), &dialog);
+    title->setObjectName(QStringLiteral("coinChallengeSetupTitle"));
+    title->setAlignment(Qt::AlignCenter);
+    layout->addWidget(title);
+
+    auto* subtitle = new QLabel(QStringLiteral("Select a built-in track for this challenge run."), &dialog);
+    subtitle->setProperty("class", QStringLiteral("coinChallengeSetupCopy"));
+    subtitle->setAlignment(Qt::AlignCenter);
+    subtitle->setWordWrap(true);
+    layout->addWidget(subtitle);
+
+    auto* trackCombo = new QComboBox(&dialog);
+    for (const BuiltInTrackInfo& info : BuiltInTrackFactory::tracks()) {
+        trackCombo->addItem(QStringLiteral("%1  |  %2").arg(info.name, info.difficulty), info.id);
+    }
+    const int trackIndex = trackCombo->findData(m_selectedTrackId);
+    trackCombo->setCurrentIndex(trackIndex >= 0 ? trackIndex : 0);
+    layout->addWidget(trackCombo);
+
+    auto* infoLabel = new QLabel(&dialog);
+    infoLabel->setProperty("class", QStringLiteral("coinChallengeSetupCopy"));
+    infoLabel->setWordWrap(true);
+    layout->addWidget(infoLabel);
+
+    auto updateInfo = [trackCombo, infoLabel]() {
+        const QString selectedId = trackCombo->currentData().toString();
+        for (const BuiltInTrackInfo& info : BuiltInTrackFactory::tracks()) {
+            if (info.id == selectedId) {
+                infoLabel->setText(QStringLiteral("%1\nDifficulty: %2")
+                                       .arg(info.description, info.difficulty));
+                return;
+            }
+        }
+        infoLabel->clear();
+    };
+    updateInfo();
+    connect(trackCombo, &QComboBox::currentIndexChanged, &dialog, [updateInfo](int index) {
+        Q_UNUSED(index);
+        updateInfo();
+    });
+
+    auto* buttonRow = new QHBoxLayout();
+    buttonRow->setSpacing(12);
+    auto* cancelButton = new QPushButton(QStringLiteral("Cancel"), &dialog);
+    auto* startButton = new QPushButton(QStringLiteral("Start Challenge"), &dialog);
+    startButton->setObjectName(QStringLiteral("btn_StartCoinChallenge"));
+    buttonRow->addWidget(cancelButton);
+    buttonRow->addWidget(startButton);
+    layout->addLayout(buttonRow);
+
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(startButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    m_selectedTrackId = trackCombo->currentData().toString();
+    if (m_selectedTrackId.isEmpty()) {
+        m_selectedTrackId = QStringLiteral("neon_loop");
+    }
+    startCoinChallengeMode();
+}
+
+void MainWindow::showGaragePage()
+{
+    if (!ui->stackedWidget) {
+        return;
+    }
+
+    if (!m_garageWidget) {
+        setupGaragePage();
+    }
+
+    refreshGaragePage();
+    ui->stackedWidget->setCurrentWidget(m_garageWidget);
+    statusBar()->showMessage(QStringLiteral("Garage ready"));
+}
+
+void MainWindow::startCoinChallengeMode()
+{
+    if (m_driveActive) {
+        silentFinishSession();
+    }
+    clearTransientDrivingFeedback();
+    hideCoinChallengeSummaryOverlay();
+    m_coinChallengeMagnetRemainingMs = 0;
+    m_coinChallengeBalloonRushRemainingMs = 0;
+    m_coinChallengeBalloonRushTriggerRemainingMs = 0;
+    m_coinChallengeBalloonRushPhase = CoinChallengeBalloonRushPhase::Inactive;
+    syncCoinChallengeMagnetLoop();
+
+    if (m_learningSessionTimer) {
+        m_learningSessionTimer->stop();
+        m_learningSessionTimer->deleteLater();
+        m_learningSessionTimer = nullptr;
+    }
+
+    m_currentMode = QStringLiteral("Coin Challenge");
+    m_twoPlayerMode = false;
+    m_twoPlayerFinishHandled = false;
+    m_player1Finished = false;
+    m_player2Finished = false;
+    m_arcadeRaceLogicActive = false;
+    m_customTrackPlaying = false;
+    m_coinChallengeActive = true;
+    m_driveActive = true;
+    m_arcadeRaceFinished = false;
+    m_lapsCompleted = 0;
+    m_totalLaps = 1;
+    m_coinChallengeRemainingMs = m_coinChallengeDurationMs;
+    m_simTick = 0;
+    m_sessionElapsedMs = 0;
+    m_currentLapStartMs = 0;
+    m_bestLapMs = 0;
+    m_playerSpeed = 0.0;
+    m_player2Speed = 0.0;
+    m_player2LapsCompleted = 0;
+    m_player2NextCheckpointIndex = 0;
+    m_player2WasInsideNextGate = false;
+    resetCoinChallengeStats();
+
+    if (m_drivingDataCollector) {
+        m_drivingDataCollector->stopCollection();
+        m_drivingDataCollector->clearData();
+    }
+    if (m_player2DataCollector) {
+        m_player2DataCollector->stopCollection();
+        m_player2DataCollector->clearData();
+    }
+
+    if (m_selectedBuiltInTrack) {
+        m_selectedBuiltInTrack->deleteLater();
+        m_selectedBuiltInTrack = nullptr;
+    }
+    const QString trackId = m_selectedTrackId.isEmpty() ? QStringLiteral("neon_loop") : m_selectedTrackId;
+    m_selectedBuiltInTrack = BuiltInTrackFactory::createTrack(trackId, this);
+    if (!m_selectedBuiltInTrack) {
+        m_selectedTrackId = QStringLiteral("neon_loop");
+        m_selectedBuiltInTrack = BuiltInTrackFactory::createTrack(m_selectedTrackId, this);
+    }
+    m_defaultRaceTrack = m_selectedBuiltInTrack;
+
+    TrackManager* trackMgr = TrackManager::instance(this);
+    if (trackMgr && m_defaultRaceTrack) {
+        trackMgr->setCurrentTrack(m_defaultRaceTrack);
+    }
+
+    if (ui->stackedWidget) {
+        ui->stackedWidget->setCurrentIndex(1);
+    }
+    if (m_customTrackEditor) {
+        m_customTrackEditor->hide();
+    }
+
+    setGameHeaderVisible(true);
+    updatePauseButtonState();
+    if (m_btnFinishDrive) {
+        m_btnFinishDrive->show();
+        m_btnFinishDrive->setEnabled(false);
+    }
+    if (m_gameView) {
+        m_gameView->show();
+        m_gameView->clearAllAICars();
+        m_gameView->clearCoins();
+        m_gameView->clearCoinChallengeOverlayState();
+        m_gameView->clearBalloonRushSceneState();
+    }
+    if (m_aiManager) {
+        m_aiManager->destroyAllOpponents();
+    }
+    clearEBRuntimeObjects();
+
+    restoreDefaultRaceTrack();
+    focusGameViewForDriving();
+
+    if (ui->label_ModeTitle) {
+        ui->label_ModeTitle->setText(QStringLiteral("COIN CHALLENGE"));
+        ui->label_ModeTitle->setStyleSheet(
+            "QLabel{color:#F5C451;font-size:13px;font-weight:bold;letter-spacing:3px;}");
+    }
+
+    if (m_learningHUD) {
+        m_learningHUD->hide();
+    }
+    if (m_arcadeHUD) {
+        m_arcadeHUD->hide();
+    }
+
+    if (m_vehiclePhysics) {
+        m_vehiclePhysics->reset();
+        m_vehiclePhysics->resetRaceProgress();
+        m_vehiclePhysics->setRaceLogicEnabled(false);
+    }
+    if (m_player2Physics) {
+        m_player2Physics->reset();
+        m_player2Physics->resetRaceProgress();
+        m_player2Physics->setRaceLogicEnabled(false);
+    }
+
+    applyPlayerSpawnAtStartLine();
+    resetArcadeRaceProgress();
+
+    if (m_challengeObstacleManager) {
+        m_challengeObstacleManager->setTrack(m_gameView ? m_gameView->trackData() : m_defaultRaceTrack);
+        m_challengeObstacleManager->resetForCoinChallenge();
+    }
+    if (m_blockerVehicleManager) {
+        m_blockerVehicleManager->setTrack(m_gameView ? m_gameView->trackData() : m_defaultRaceTrack);
+        m_blockerVehicleManager->resetForCoinChallenge();
+        m_blockerVehicleManager->update(0.0, 0, m_coinChallengeDurationMs / 1000, 0);
+    }
+
+    if (m_collectibleManager) {
+        m_collectibleManager->setTrack(m_gameView ? m_gameView->trackData() : m_defaultRaceTrack);
+        m_collectibleManager->setBlockedAreas(currentCoinChallengeBlockedAreas());
+        m_collectibleManager->resetForCoinChallenge();
+        m_collectibleManager->setBlockedAreas(currentCoinChallengeBlockedAreas());
+    }
+    setupCoinChallengePowerupBoxes();
+    if (m_gameView && m_collectibleManager) {
+        m_gameView->updateCoins(m_collectibleManager->coins());
+    }
+    refreshCoinChallengeHazardVisuals();
+
+    m_countdownActive = true;
+    m_countdownRemainingMs = 3200;
+
+    updateCoinChallengeHud();
+
+    showCountdown();
+    statusBar()->showMessage(QStringLiteral("Coin Challenge: get ready"), 2500);
+}
+
+void MainWindow::finishCoinChallengeMode()
+{
+    if (!m_coinChallengeActive) {
+        return;
+    }
+
+    m_coinChallengeActive = false;
+    m_driveActive = false;
+    m_arcadeRaceLogicActive = false;
+    m_customTrackPlaying = false;
+    m_twoPlayerMode = false;
+    m_countdownActive = false;
+    m_coinChallengeRemainingMs = m_coinChallengeDurationMs;
+    m_coinChallengeMagnetRemainingMs = 0;
+    m_coinChallengeBalloonRushRemainingMs = 0;
+    m_coinChallengeBalloonRushTriggerRemainingMs = 0;
+    m_coinChallengeBalloonRushPhase = CoinChallengeBalloonRushPhase::Inactive;
+    syncCoinChallengeMagnetLoop();
+    clearTransientDrivingFeedback();
+
+    savePlayerProfile();
+    refreshGaragePage();
+    clearEBRuntimeObjects();
+
+    if (m_aiManager) {
+        m_aiManager->destroyAllOpponents();
+    }
+    if (m_gameView) {
+        m_gameView->clearAllAICars();
+        m_gameView->clearCoins();
+        m_gameView->clearChallengeObstacles();
+        m_gameView->clearBlockerVehicles();
+        m_gameView->clearCoinChallengeOverlayState();
+        m_gameView->clearBalloonRushSceneState();
+    }
+    if (m_collectibleManager) {
+        m_collectibleManager->clear();
+    }
+    if (m_challengeObstacleManager) {
+        m_challengeObstacleManager->clear();
+    }
+    if (m_blockerVehicleManager) {
+        m_blockerVehicleManager->clear();
+    }
+    if (m_coinChallengeHudLabel) {
+        m_coinChallengeHudLabel->hide();
+        m_coinChallengeHudLabel->clear();
+    }
+    if (m_coinChallengeSummaryAnimTimer) {
+        m_coinChallengeSummaryAnimTimer->stop();
+    }
+    hideCoinChallengeSummaryOverlay();
+}
+
 void MainWindow::styleMainMenu()
 {
-    if (ui->pageMenu) {
-        QWidget* background = ui->pageMenu->findChild<QWidget*>(QStringLiteral("mainMenuVisualBackground"));
-        if (!background) {
-            background = new MenuBackgroundLayer(ui->pageMenu);
-            background->setObjectName(QStringLiteral("mainMenuVisualBackground"));
+    if (!ui->pageMenu) {
+        return;
+    }
+
+    if (!m_mainMenuWidget) {
+        m_mainMenuWidget = new MainMenuWidget(ui->pageMenu);
+        m_mainMenuWidget->setReferenceBackgrounds(QStringLiteral("assets/ui/menu/menu_reference_main.png"),
+                                                 QStringLiteral("assets/ui/menu/menu_reference_start.png"));
+        connect(m_mainMenuWidget, &MainMenuWidget::arcadeRequested, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            showArcadeSetupDialog();
+        });
+        connect(m_mainMenuWidget, &MainMenuWidget::coinChallengeRequested, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            showCoinChallengeTrackDialog();
+        });
+        connect(m_mainMenuWidget, &MainMenuWidget::learningRequested, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            startDrivingSession(QStringLiteral("Learning"));
+        });
+        connect(m_mainMenuWidget, &MainMenuWidget::aiDemoRequested, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            m_twoPlayerMode = false;
+            m_selectedAIDifficulty = QStringLiteral("adaptive");
+            if (m_playerCountCombo) {
+                const int singlePlayerIndex = m_playerCountCombo->findData(1);
+                m_playerCountCombo->setCurrentIndex(singlePlayerIndex >= 0 ? singlePlayerIndex : 0);
+            }
+            if (m_aiDifficultyCombo) {
+                const int adaptiveIndex = m_aiDifficultyCombo->findData(QStringLiteral("adaptive"));
+                if (adaptiveIndex >= 0) {
+                    m_aiDifficultyCombo->setCurrentIndex(adaptiveIndex);
+                }
+            }
+            startBuiltInTrackSession(QStringLiteral("Arcade"));
+        });
+        connect(m_mainMenuWidget, &MainMenuWidget::garageRequested, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            showGaragePage();
+        });
+        connect(m_mainMenuWidget, &MainMenuWidget::trackStudioRequested, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            showCustomTrackEditor();
+        });
+        connect(m_mainMenuWidget, &MainMenuWidget::recordsRequested, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            on_btn_History_clicked();
+        });
+        connect(m_mainMenuWidget, &MainMenuWidget::guideRequested, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonClick);
+            showGuideDialog();
+        });
+        connect(m_mainMenuWidget, &MainMenuWidget::exitRequested, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::ButtonBack);
+            close();
+        });
+
+        if (m_currencyManager) {
+            connect(m_currencyManager, &CurrencyManager::coinsChanged,
+                    m_mainMenuWidget, &MainMenuWidget::setCoinCount);
+            m_mainMenuWidget->setCoinCount(m_currencyManager->coins());
         }
-        background->setGeometry(ui->pageMenu->rect());
-        background->lower();
-        background->show();
-        ui->pageMenu->installEventFilter(background);
-        ui->pageMenu->setStyleSheet(QStringLiteral("QWidget#pageMenu{background:transparent;}"));
     }
 
     if (ui->label) {
-        ui->label->setObjectName(QStringLiteral("label_MainLogo"));
-        ui->label->clear();
-        ui->label->setVisible(false);
+        ui->label->hide();
+    }
+
+    const QList<QWidget*> legacyMenuWidgets = {
+        ui->btn_Arcade,
+        ui->btn_Learn,
+        ui->btn_History,
+        ui->btn_Exit,
+        m_btnCoinChallenge,
+        m_btnGarage,
+        m_btnLoadCustomTrack,
+        m_btnCustomTrackMode,
+        m_btnTwoPlayerRace,
+        m_btnAdaptiveDemo,
+        m_btnGuide
+    };
+    for (QWidget* widget : legacyMenuWidgets) {
+        if (widget) {
+            widget->hide();
+            widget->setEnabled(false);
+        }
     }
 
     if (ui->menuGridLayout) {
-        ui->menuGridLayout->setContentsMargins(96, 74, 96, 74);
-        ui->menuGridLayout->setVerticalSpacing(20);
-        ui->menuGridLayout->setRowMinimumHeight(0, 300);
-        ui->menuGridLayout->setRowStretch(0, 0);
+        ui->menuGridLayout->setContentsMargins(0, 0, 0, 0);
+        ui->menuGridLayout->setSpacing(0);
+        ui->menuGridLayout->setRowStretch(0, 1);
         ui->menuGridLayout->setRowStretch(1, 1);
+        ui->menuGridLayout->setColumnStretch(0, 1);
+        if (m_mainMenuWidget && ui->menuGridLayout->indexOf(m_mainMenuWidget) < 0) {
+            ui->menuGridLayout->addWidget(m_mainMenuWidget, 0, 0, 2, 1);
+        }
     }
-
     if (ui->verticalLayout) {
-        ui->verticalLayout->setSpacing(22);
         ui->verticalLayout->setContentsMargins(0, 0, 0, 0);
-        ui->verticalLayout->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
-
-        if (!ui->pageMenu->property("mainMenuLayoutRebuilt").toBool()) {
-            while (QLayoutItem* item = ui->verticalLayout->takeAt(0)) {
-                delete item;
-            }
-
-            auto addCenteredRow = [this](const QList<QPushButton*>& buttons, int spacing) {
-                auto* row = new QHBoxLayout();
-                row->setSpacing(spacing);
-                row->setContentsMargins(0, 0, 0, 0);
-                row->addStretch(1);
-                for (QPushButton* button : buttons) {
-                    if (button) {
-                        row->addWidget(button);
-                    }
-                }
-                row->addStretch(1);
-                ui->verticalLayout->addLayout(row);
-            };
-
-            if (m_btnGuide) {
-                m_btnGuide->setParent(ui->pageMenu);
-                m_btnGuide->raise();
-            }
-
-            addCenteredRow({ ui->btn_Arcade, m_btnCustomTrackMode, ui->btn_Learn }, 28);
-            addCenteredRow({ m_btnTwoPlayerRace, m_btnAdaptiveDemo }, 28);
-
-            auto* secondaryColumn = new QVBoxLayout();
-            secondaryColumn->setSpacing(12);
-            secondaryColumn->setContentsMargins(0, 24, 0, 0);
-            secondaryColumn->setAlignment(Qt::AlignHCenter);
-            for (QPushButton* button : { m_btnLoadCustomTrack, ui->btn_History, ui->btn_Exit }) {
-                if (button) {
-                    secondaryColumn->addWidget(button, 0, Qt::AlignHCenter);
-                }
-            }
-            ui->verticalLayout->addLayout(secondaryColumn);
-            ui->pageMenu->setProperty("mainMenuLayoutRebuilt", true);
-        }
+        ui->verticalLayout->setSpacing(0);
     }
 
-    const QList<QPushButton*> menuButtons = {
-        ui->btn_Arcade,
-        m_btnTwoPlayerRace,
-        m_btnAdaptiveDemo,
-        ui->btn_Learn,
-        m_btnCustomTrackMode,
-        ui->btn_History,
-        m_btnLoadCustomTrack,
-        m_btnGuide,
-        ui->btn_Exit
-    };
-    for (QPushButton* button : menuButtons) {
-        if (!button) {
-            continue;
-        }
-        button->setCursor(Qt::PointingHandCursor);
-        button->setMinimumSize(0, 0);
-        button->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+    ui->pageMenu->setStyleSheet(QStringLiteral("QWidget#pageMenu{background:#040816;}"));
+    if (!ui->menuGridLayout) {
+        m_mainMenuWidget->setGeometry(ui->pageMenu->rect());
     }
-
-    for (QPushButton* button : { ui->btn_Arcade, m_btnCustomTrackMode, ui->btn_Learn }) {
-        if (button) {
-            button->setFixedSize(310, 82);
-        }
-    }
-    for (QPushButton* button : { m_btnTwoPlayerRace, m_btnAdaptiveDemo }) {
-        if (button) {
-            button->setFixedSize(330, 66);
-        }
-    }
-    for (QPushButton* button : { m_btnLoadCustomTrack, ui->btn_History, ui->btn_Exit }) {
-        if (button) {
-            button->setFixedSize(520, 58);
-        }
-    }
-    if (m_btnGuide && ui->pageMenu) {
-        m_btnGuide->setFixedSize(380, 52);
-        m_btnGuide->setMinimumWidth(380);
-        m_btnGuide->setMaximumWidth(380);
-        m_btnGuide->move(qMax(24, ui->pageMenu->width() - m_btnGuide->width() - 64), 52);
-        m_btnGuide->raise();
-    }
-
-    if (m_aiDifficultyCombo) {
-        m_aiDifficultyCombo->setMinimumSize(620, 56);
-        m_aiDifficultyCombo->setMaximumSize(860, 62);
-        m_aiDifficultyCombo->setCursor(Qt::PointingHandCursor);
-    }
-    if (m_trackSelectCombo) {
-        m_trackSelectCombo->setMinimumSize(620, 56);
-        m_trackSelectCombo->setMaximumSize(860, 62);
-        m_trackSelectCombo->setCursor(Qt::PointingHandCursor);
-    }
-    if (m_playerCountCombo) {
-        m_playerCountCombo->setMinimumSize(620, 56);
-        m_playerCountCombo->setMaximumSize(860, 62);
-        m_playerCountCombo->setCursor(Qt::PointingHandCursor);
-    }
+    m_mainMenuWidget->show();
+    m_mainMenuWidget->raise();
 }
 
 void MainWindow::setGameHeaderVisible(bool visible)
@@ -1927,6 +3053,7 @@ void MainWindow::setGamePaused(bool paused)
     if (m_arcadeHUD) {
         m_arcadeHUD->setPaused(m_gamePaused);
     }
+    syncCoinChallengeMagnetLoop();
     updatePauseButtonState();
 }
 
@@ -1993,10 +3120,26 @@ void MainWindow::resizeEvent(QResizeEvent* event)
 {
     QMainWindow::resizeEvent(event);
 
+    if (m_mainMenuWidget && ui->pageMenu) {
+        if (!ui->menuGridLayout || ui->menuGridLayout->indexOf(m_mainMenuWidget) < 0) {
+            m_mainMenuWidget->setGeometry(ui->pageMenu->rect());
+        } else {
+            m_mainMenuWidget->updateGeometry();
+        }
+        m_mainMenuWidget->raise();
+    }
+
     if (m_btnGuide && ui->pageMenu) {
         m_btnGuide->setFixedSize(380, 52);
         m_btnGuide->move(qMax(24, ui->pageMenu->width() - m_btnGuide->width() - 64), 52);
         m_btnGuide->raise();
+    }
+
+    layoutCoinChallengeHud();
+    if (m_coinChallengeSummaryOverlay && ui->stackedWidget && ui->stackedWidget->count() > 1) {
+        if (QWidget* gamePage = ui->stackedWidget->widget(1)) {
+            m_coinChallengeSummaryOverlay->setGeometry(gamePage->rect());
+        }
     }
 
     if (!m_customTrackEditor || m_customTrackPlaying
@@ -2024,6 +3167,11 @@ void MainWindow::returnToMainMenuFromGame(bool finishWithReport)
                                                                 : nullptr));
     if (reportPage && ui->stackedWidget && ui->stackedWidget->currentWidget() == reportPage) {
         onReportBackToMenu();
+        return;
+    }
+
+    if (isCoinChallengeModeActive()) {
+        exitCoinChallengeToMenu();
         return;
     }
 
@@ -2285,13 +3433,25 @@ void MainWindow::restoreDefaultRaceTrack()
     if (trackMgr) {
         trackMgr->setCurrentTrack(m_defaultRaceTrack);
         QList<QVector2D> waypoints;
-        for (Checkpoint* cp : m_defaultRaceTrack->getCheckpointsInOrder()) {
-            if (cp) {
-                waypoints.append(cp->getPosition());
-            }
+        const QString trackId = m_defaultRaceTrack->getId();
+        if (BuiltInTrackFactory::isBuiltInTrackId(trackId)) {
+            waypoints = BuiltInTrackFactory::getAIDrivingWaypoints(trackId);
         }
-        waypoints.append(m_defaultRaceTrack->getStartPosition());
-        trackMgr->setWaypoints(waypoints);
+        if (waypoints.isEmpty()) {
+            trackMgr->rebuildWaypoints();
+            waypoints = trackMgr->getWaypoints();
+        }
+        if (waypoints.isEmpty()) {
+            for (Checkpoint* cp : m_defaultRaceTrack->getCheckpointsInOrder()) {
+                if (cp) {
+                    waypoints.append(cp->getPosition());
+                }
+            }
+            waypoints.append(m_defaultRaceTrack->getStartPosition());
+        }
+        if (!waypoints.isEmpty()) {
+            trackMgr->setWaypoints(waypoints);
+        }
     }
 }
 
@@ -2532,6 +3692,79 @@ void MainWindow::showGuideDialog()
     dialog.exec();
 }
 
+void MainWindow::loadPlayerProfile()
+{
+    if (!m_playerProfileStore || !m_currencyManager || !m_skinManager) {
+        return;
+    }
+
+    const PlayerProfile profile = m_playerProfileStore->loadProfile();
+    m_currencyManager->setCoins(profile.coins);
+    m_skinManager->setUnlockedSkinIds(profile.ownedSkins);
+    m_skinManager->setCurrentSkinId(profile.currentSkin);
+}
+
+bool MainWindow::savePlayerProfile()
+{
+    if (!m_playerProfileStore || !m_currencyManager || !m_skinManager) {
+        return false;
+    }
+
+    PlayerProfile profile;
+    profile.coins = m_currencyManager->coins();
+    profile.ownedSkins = m_skinManager->unlockedSkinIds();
+    profile.currentSkin = m_skinManager->currentSkinId();
+    const bool saved = m_playerProfileStore->saveProfile(profile);
+    if (!saved) {
+        statusBar()->showMessage(QStringLiteral("Failed to save player profile"), 4000);
+    }
+    return saved;
+}
+
+void MainWindow::refreshGaragePage()
+{
+    if (!m_garageWidget || !m_currencyManager || !m_skinManager) {
+        return;
+    }
+
+    m_garageWidget->setGarageState(m_skinManager->skins(),
+                                   m_skinManager->currentSkinId(),
+                                   m_currencyManager->coins());
+}
+
+void MainWindow::handleGaragePurchase(const QString& skinId)
+{
+    if (!m_skinManager || !m_currencyManager) {
+        return;
+    }
+
+    if (!m_skinManager->purchaseSkin(skinId, *m_currencyManager)) {
+        statusBar()->showMessage(QStringLiteral("Not enough coins or skin unavailable"), 3000);
+        refreshGaragePage();
+        return;
+    }
+
+    savePlayerProfile();
+    refreshGaragePage();
+    statusBar()->showMessage(QStringLiteral("Purchased skin: %1").arg(skinId), 3000);
+}
+
+void MainWindow::handleGarageSelect(const QString& skinId)
+{
+    if (!m_skinManager) {
+        return;
+    }
+
+    if (!m_skinManager->selectSkin(skinId)) {
+        refreshGaragePage();
+        return;
+    }
+
+    savePlayerProfile();
+    refreshGaragePage();
+    statusBar()->showMessage(QStringLiteral("Selected skin: %1").arg(skinId), 3000);
+}
+
 void MainWindow::setupGameView()
 {
     QWidget* gamePage = ui->stackedWidget && ui->stackedWidget->count() > 1
@@ -2565,6 +3798,25 @@ void MainWindow::setupGameView()
 
             page->setFocusPolicy(Qt::StrongFocus);
             page->setFocus();
+
+            if (!m_coinChallengeHudLabel) {
+                m_coinChallengeHudLabel = new QLabel(page);
+                m_coinChallengeHudLabel->setObjectName(QStringLiteral("coinChallengeHudLabel"));
+                m_coinChallengeHudLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+                m_coinChallengeHudLabel->setTextFormat(Qt::RichText);
+                m_coinChallengeHudLabel->setWordWrap(true);
+                m_coinChallengeHudLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+                m_coinChallengeHudLabel->setStyleSheet(QStringLiteral(
+                    "QLabel#coinChallengeHudLabel{"
+                    "background:rgba(5,12,24,228);"
+                    "border:2px solid rgba(245,196,81,220);"
+                    "border-radius:20px;"
+                    "padding:0px;"
+                    "color:#FFF6D1;"
+                    "}"));
+                m_coinChallengeHudLabel->hide();
+            }
+            layoutCoinChallengeHud();
         }
     }
 
@@ -2900,24 +4152,43 @@ void MainWindow::setupVehiclePhysics()
     if (m_gameView) {
         connect(m_gameView, &GameViewWidget::keyInputReceived,
                 this, [this](QKeyEvent* event) {
-                    if (!m_gamePaused && m_vehiclePhysics) {
+                    if (isCoinChallengeBalloonRushSceneActive()) {
+                        if (event && (event->key() == Qt::Key_A || event->key() == Qt::Key_Left)) {
+                            moveCoinChallengeBalloonRushLane(-1);
+                        } else if (event && (event->key() == Qt::Key_D || event->key() == Qt::Key_Right)) {
+                            moveCoinChallengeBalloonRushLane(1);
+                        }
+                        return;
+                    }
+                    if (!m_gamePaused && !m_countdownActive && m_vehiclePhysics) {
                         m_vehiclePhysics->handleKeyPress(event);
                     }
                 });
         connect(m_gameView, &GameViewWidget::keyReleased,
                 this, [this](QKeyEvent* event) {
+                    if (isCoinChallengeBalloonRushSceneActive()) {
+                        Q_UNUSED(event);
+                        return;
+                    }
                     if (m_vehiclePhysics) {
                         m_vehiclePhysics->handleKeyRelease(event);
                     }
                 });
         connect(m_gameView, &GameViewWidget::keyInputReceived,
                 this, [this](QKeyEvent* event) {
-                    if (!m_gamePaused && m_player2Physics) {
+                    if (isCoinChallengeBalloonRushSceneActive()) {
+                        return;
+                    }
+                    if (!m_gamePaused && !m_countdownActive && m_player2Physics) {
                         m_player2Physics->handleKeyPress(event);
                     }
                 });
         connect(m_gameView, &GameViewWidget::keyReleased,
                 this, [this](QKeyEvent* event) {
+                    if (isCoinChallengeBalloonRushSceneActive()) {
+                        Q_UNUSED(event);
+                        return;
+                    }
                     if (m_player2Physics) {
                         m_player2Physics->handleKeyRelease(event);
                     }
@@ -2942,14 +4213,24 @@ void MainWindow::setupVehiclePhysics()
                                                     m_playerPosition,
                                                     m_playerRotation,
                                                     displaySpeedKmh(),
-                                                    QColor(255, 48, 118),
+                                                    currentPlayerSkinColor(),
                                                     m_vehiclePhysics->isSpeedBoostActive(),
                                                     m_vehiclePhysics->isShieldActive(),
                                                     m_vehiclePhysics->isInvisible(),
-                                                    m_vehiclePhysics->isMagnetActive());
+                                                    m_vehiclePhysics->isMagnetActive(),
+                                                    currentPlayerSkinId());
                         updateTwoPlayerCamera();
                     } else {
-                        m_gameView->updatePlayerCar(m_playerPosition, m_playerRotation, displaySpeedKmh());
+                        m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                                    m_playerPosition,
+                                                    m_playerRotation,
+                                                    displaySpeedKmh(),
+                                                    currentPlayerSkinColor(),
+                                                    m_vehiclePhysics->isSpeedBoostActive(),
+                                                    m_vehiclePhysics->isShieldActive(),
+                                                    m_vehiclePhysics->isInvisible(),
+                                                    m_vehiclePhysics->isMagnetActive(),
+                                                    currentPlayerSkinId());
                         m_gameView->setCameraPosition(m_playerPosition);
                     }
                 }
@@ -3036,14 +4317,24 @@ void MainWindow::setupVehiclePhysics()
                                                     m_playerPosition,
                                                     m_vehiclePhysics->getRotation(),
                                                     displaySpeedKmh(),
-                                                    QColor(255, 48, 118),
+                                                    currentPlayerSkinColor(),
                                                     m_vehiclePhysics->isSpeedBoostActive(),
                                                     m_vehiclePhysics->isShieldActive(),
                                                     m_vehiclePhysics->isInvisible(),
-                                                    m_vehiclePhysics->isMagnetActive());
+                                                    m_vehiclePhysics->isMagnetActive(),
+                                                    currentPlayerSkinId());
                         updateTwoPlayerCamera();
                     } else {
-                        m_gameView->updatePlayerCar(m_playerPosition, m_vehiclePhysics->getRotation(), displaySpeedKmh());
+                        m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                                    m_playerPosition,
+                                                    m_vehiclePhysics->getRotation(),
+                                                    displaySpeedKmh(),
+                                                    currentPlayerSkinColor(),
+                                                    m_vehiclePhysics->isSpeedBoostActive(),
+                                                    m_vehiclePhysics->isShieldActive(),
+                                                    m_vehiclePhysics->isInvisible(),
+                                                    m_vehiclePhysics->isMagnetActive(),
+                                                    currentPlayerSkinId());
                         m_gameView->setCameraPosition(m_playerPosition);
                     }
                 }
@@ -3126,6 +4417,20 @@ void MainWindow::initializeAIOpponents()
     AIOpponent* ai1 = m_aiManager->createOpponent("ai_1", primaryStyle);
     AIOpponent* ai2 = m_aiManager->createOpponent("ai_2", secondaryStyle);
     const QList<AIOpponent*> opponents = {ai1, ai2};
+    int spawnAnchorIndex = 0;
+    if (!aiWaypoints.isEmpty() && trackMgr && trackMgr->hasCurrentTrack()) {
+        const QVector2D startPosition = trackMgr->getCurrentTrack()->getStartPosition();
+        qreal nearestDistance = std::numeric_limits<qreal>::max();
+        for (int i = 0; i < aiWaypoints.size(); ++i) {
+            const qreal distance = (aiWaypoints.at(i).position - startPosition).length();
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                spawnAnchorIndex = i;
+            }
+        }
+    }
+    const int waypointCount = aiWaypoints.size();
+    const int spawnStep = waypointCount > 6 ? qMax(1, waypointCount / 18) : 1;
 
     for (int i = 0; i < opponents.size(); ++i) {
         AIOpponent* ai = opponents.at(i);
@@ -3138,11 +4443,28 @@ void MainWindow::initializeAIOpponents()
         ai->setConfig(config);
         ai->setMaxSpeed(config.maxSpeed);
         ai->setWaypoints(aiWaypoints);
-        const QVector2D spawnPos = aiWaypoints.first().position + QVector2D(35.0f * i, 42.0f * i);
+        const int spawnIndex = waypointCount > 1
+            ? (spawnAnchorIndex + (i * spawnStep)) % waypointCount
+            : 0;
+        const int targetIndex = waypointCount > 1
+            ? (spawnIndex + 1) % waypointCount
+            : spawnIndex;
+        QVector2D spawnPos = aiWaypoints.at(spawnIndex).position;
+        QVector2D spawnDirection(0.0f, 1.0f);
+        if (waypointCount > 1) {
+            spawnDirection = aiWaypoints.at(targetIndex).position - aiWaypoints.at(spawnIndex).position;
+        }
+        if (!spawnDirection.isNull()) {
+            QVector2D lateral(-spawnDirection.y(), spawnDirection.x());
+            if (!lateral.isNull()) {
+                lateral.normalize();
+                spawnPos += lateral * (i == 0 ? -14.0f : 14.0f);
+            }
+        }
         ai->setPosition(spawnPos);
-        if (aiWaypoints.size() > 1) {
-            const QVector2D toNext = aiWaypoints.at(1).position - aiWaypoints.first().position;
-            ai->setRotation(qRadiansToDegrees(std::atan2(toNext.x(), toNext.y())));
+        ai->setCurrentWaypointIndex(targetIndex);
+        if (!spawnDirection.isNull()) {
+            ai->setRotation(qRadiansToDegrees(std::atan2(spawnDirection.x(), spawnDirection.y())));
         } else {
             ai->setRotation(0.0);
         }
@@ -3203,6 +4525,9 @@ void MainWindow::applyPlayerSpawnAtStartLine()
     m_playerPosition = spawnPos;
     m_playerRotation = spawnRotation;
     m_playerSpeed = 0.0;
+    m_coinChallengeLastSafePlayerPosition = spawnPos;
+    m_coinChallengeLastSafePlayerRotation = spawnRotation;
+    m_coinChallengeHasSafePlayerPosition = true;
 
     if (m_vehiclePhysics) {
         m_vehiclePhysics->setPosition(spawnPos);
@@ -3210,7 +4535,16 @@ void MainWindow::applyPlayerSpawnAtStartLine()
     }
 
     if (m_gameView) {
-        m_gameView->updatePlayerCar(m_playerPosition, m_playerRotation, displaySpeedKmh());
+        m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                    m_playerPosition,
+                                    m_playerRotation,
+                                    displaySpeedKmh(),
+                                    currentPlayerSkinColor(),
+                                    m_vehiclePhysics ? m_vehiclePhysics->isSpeedBoostActive() : false,
+                                    m_vehiclePhysics ? m_vehiclePhysics->isShieldActive() : false,
+                                    m_vehiclePhysics ? m_vehiclePhysics->isInvisible() : false,
+                                    m_vehiclePhysics ? m_vehiclePhysics->isMagnetActive() : false,
+                                    currentPlayerSkinId());
         m_gameView->setCameraPosition(m_playerPosition);
     }
 }
@@ -3245,6 +4579,7 @@ void MainWindow::loadCustomTrack()
         const qreal tileSize = 64.0;
         loadedTrack->setStartPosition(QVector2D(15 * tileSize + tileSize / 2.0, 3 * tileSize + tileSize / 2.0));
         loadedTrack->setStartRotation(0.0);
+        trackMgr->rebuildWaypoints();
     }
     setupEBRuntimeObjects();
     initializeAIOpponents();
@@ -3346,45 +4681,6 @@ void MainWindow::startCustomTrackSession(TrackData* track)
     TrackManager* trackMgr = TrackManager::instance(this);
     if (trackMgr) {
         trackMgr->setCurrentTrack(track);
-
-        QList<QVector2D> waypoints;
-        auto appendWaypointIfNew = [&waypoints](const QVector2D& point) {
-            if (waypoints.isEmpty() || (waypoints.last() - point).lengthSquared() > 1.0f) {
-                waypoints.append(point);
-            }
-        };
-
-        appendWaypointIfNew(track->getStartPosition());
-
-        for (Checkpoint* cp : track->getCheckpointsInOrder()) {
-            if (cp) {
-                appendWaypointIfNew(cp->getPosition());
-            }
-        }
-
-        QVector2D finishPos = track->getStartPosition();
-        bool finishFound = false;
-        for (int row = 0; row < track->getRowCount(); ++row) {
-            for (int col = 0; col < track->getColCount(); ++col) {
-
-                TrackTile* tile = track->getTileAt(row, col);
-
-                if (tile &&
-                    tile->getType() == TileType::FinishLine)
-                {
-                    finishPos = TrackData::tileToWorldCenter(row, col);
-                    finishFound = true;
-                    break;
-                }
-            }
-
-            if (finishFound)
-                break;
-        }
-
-        appendWaypointIfNew(finishFound ? finishPos : track->getStartPosition());
-
-        trackMgr->setWaypoints(waypoints);
     }
 
     preparePlayerReportSystems();
@@ -3475,8 +4771,9 @@ int MainWindow::speedToDisplayKmh(qreal physicsSpeed) const
 void MainWindow::updateEBRuntime(qreal deltaSeconds)
 {
     const qint64 deltaMs = static_cast<qint64>(deltaSeconds * 1000.0);
-    const float collectRadius = (m_vehiclePhysics && m_vehiclePhysics->isMagnetActive()) ? 96.0f : 54.0f;
-    const float player2CollectRadius = (m_player2Physics && m_player2Physics->isMagnetActive()) ? 96.0f : 54.0f;
+    const bool widenPowerupCollect = !isCoinChallengeModeActive();
+    const float collectRadius = (widenPowerupCollect && m_vehiclePhysics && m_vehiclePhysics->isMagnetActive()) ? 96.0f : 54.0f;
+    const float player2CollectRadius = (widenPowerupCollect && m_player2Physics && m_player2Physics->isMagnetActive()) ? 96.0f : 54.0f;
 
     for (PowerupBox* box : m_powerupBoxes) {
         if (!box) {
@@ -3633,10 +4930,25 @@ void MainWindow::handlePowerupCollectedForPlayer(PhantomDrive::PowerupType type,
                     updateTwoPlayerCamera();
                 } else if (m_twoPlayerMode) {
                     m_gameView->updatePlayerCar(QStringLiteral("P1"), m_playerPosition, m_playerRotation,
-                                                displaySpeedKmh(), QColor(255, 48, 118));
+                                                displaySpeedKmh(),
+                                                currentPlayerSkinColor(),
+                                                m_vehiclePhysics ? m_vehiclePhysics->isSpeedBoostActive() : false,
+                                                m_vehiclePhysics ? m_vehiclePhysics->isShieldActive() : false,
+                                                m_vehiclePhysics ? m_vehiclePhysics->isInvisible() : false,
+                                                m_vehiclePhysics ? m_vehiclePhysics->isMagnetActive() : false,
+                                                currentPlayerSkinId());
                     updateTwoPlayerCamera();
                 } else {
-                    m_gameView->updatePlayerCar(m_playerPosition, m_playerRotation, displaySpeedKmh());
+                    m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                                m_playerPosition,
+                                                m_playerRotation,
+                                                displaySpeedKmh(),
+                                                currentPlayerSkinColor(),
+                                                m_vehiclePhysics ? m_vehiclePhysics->isSpeedBoostActive() : false,
+                                                m_vehiclePhysics ? m_vehiclePhysics->isShieldActive() : false,
+                                                m_vehiclePhysics ? m_vehiclePhysics->isInvisible() : false,
+                                                m_vehiclePhysics ? m_vehiclePhysics->isMagnetActive() : false,
+                                                currentPlayerSkinId());
                     m_gameView->setCameraPosition(m_playerPosition);
                 }
             }
@@ -3645,8 +4957,14 @@ void MainWindow::handlePowerupCollectedForPlayer(PhantomDrive::PowerupType type,
             notifyArcadeHUD(QStringLiteral("Teleport"), 0);
         }
     } else if (effectiveType == PowerupType::Magnet && targetPhysics) {
-        targetPhysics->activateMagnet(6000);
-        notifyArcadeHUD(QStringLiteral("Magnet"), 6000);
+        const int magnetDurationMs = isCoinChallengeModeActive() ? kCoinChallengeMagnetDurationMs : 6000;
+        targetPhysics->activateMagnet(magnetDurationMs);
+        if (isCoinChallengeModeActive() && playerIndex == 1) {
+            m_coinChallengeMagnetRemainingMs = magnetDurationMs;
+            ++m_coinChallengePowerupsUsed;
+            syncCoinChallengeMagnetLoop();
+        }
+        notifyArcadeHUD(QStringLiteral("Magnet"), magnetDurationMs);
     }
 }
 
@@ -3662,6 +4980,11 @@ void MainWindow::handleTrafficViolation(const PhantomDrive::ViolationEvent& viol
 
 void MainWindow::updateRaceHud()
 {
+    if (isCoinChallengeModeActive()) {
+        updateCoinChallengeHud();
+        return;
+    }
+
     const bool raceRankingActive = m_arcadeRaceLogicActive
         && (m_currentMode == QStringLiteral("Arcade") || m_customTrackPlaying);
     const bool learningRaceHudActive = (m_currentMode == QStringLiteral("Learning"));
@@ -4209,6 +5532,41 @@ void MainWindow::simulateGameLoop()
             return;
         }
         if (m_countdownActive) {
+            if (m_countdownTimerStartedMs > 0) {
+                const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+                const int elapsedMs = static_cast<int>(qMax<qint64>(0, nowMs - m_countdownTimerStartedMs));
+                m_countdownRemainingMs = qMax(0, 3200 - elapsedMs);
+            }
+
+            if (isCoinChallengeModeActive()) {
+                const int countdownStage = coinChallengeCountdownStage();
+                if (countdownStage >= 0 && countdownStage != m_coinChallengeCountdownAnnouncedStage) {
+                    m_coinChallengeCountdownAnnouncedStage = countdownStage;
+                    playSound(coinChallengeCountdownSoundForStage(countdownStage));
+                }
+                updateCoinChallengeHud();
+            }
+            if (m_gameView) {
+                m_gameView->update();
+            }
+            return;
+        }
+
+        if (isCoinChallengeModeActive() && isCoinChallengeBalloonRushSequenceActive()) {
+            updateCoinChallengeBalloonRush(kSimulationStepMs);
+            updateCoinChallengeHud();
+            if (m_gameView) {
+                m_gameView->update();
+            }
+            return;
+        }
+
+        if (isCoinChallengeModeActive() && m_coinChallengeForcedEndActive) {
+            updateCoinChallengeForcedEndSequence(kSimulationStepMs);
+            updateCoinChallengeHud();
+            if (m_gameView) {
+                m_gameView->update();
+            }
             return;
         }
 
@@ -4237,6 +5595,114 @@ void MainWindow::simulateGameLoop()
 
         updateEBRuntime(kSimulationStepSeconds);
         updateTrafficAndHud(m_simTick);
+
+        if (isCoinChallengeModeActive()) {
+            const int currentSpeedKmh = displaySpeedKmh();
+            const int runCoinsBeforeUpdate = m_collectibleManager ? m_collectibleManager->runCoins() : 0;
+            m_coinChallengeRemainingMs = qMax(0, m_coinChallengeRemainingMs - kSimulationStepMs);
+            m_coinChallengeMagnetRemainingMs = qMax(0, m_coinChallengeMagnetRemainingMs - kSimulationStepMs);
+            m_coinChallengeDamageFlashRemainingMs = qMax(0, m_coinChallengeDamageFlashRemainingMs - kSimulationStepMs);
+            m_coinChallengeDamagePopupRemainingMs = qMax(0, m_coinChallengeDamagePopupRemainingMs - kSimulationStepMs);
+            m_coinChallengeLowIntegrityWarningRemainingMs = qMax(0,
+                                                                 m_coinChallengeLowIntegrityWarningRemainingMs - kSimulationStepMs);
+            if (m_coinChallengeDamagePopupRemainingMs <= 0) {
+                m_coinChallengeRecentDamageAmount = 0;
+                m_coinChallengeDamagePopupText.clear();
+                m_coinChallengeDamagePopupDetail.clear();
+            }
+            syncCoinChallengeMagnetLoop();
+            updateCoinChallengeStats(currentSpeedKmh);
+            updateCoinChallengeLoopProgress(positionBeforeUpdate);
+            const int remainingSeconds = qMax(0, static_cast<int>(qCeil(m_coinChallengeRemainingMs / 1000.0)));
+            if (m_challengeObstacleManager) {
+                m_challengeObstacleManager->updateProgress(runCoinsBeforeUpdate,
+                                                           remainingSeconds,
+                                                           m_sessionElapsedMs);
+            }
+            if (m_blockerVehicleManager) {
+                m_blockerVehicleManager->update(kSimulationStepSeconds,
+                                                runCoinsBeforeUpdate,
+                                                remainingSeconds,
+                                                m_sessionElapsedMs);
+            }
+            refreshCoinChallengeHazardVisuals();
+            if (m_collectibleManager) {
+                m_collectibleManager->setBlockedAreas(currentCoinChallengeBlockedAreas());
+            }
+            updateCoinChallengeLastSafePosition();
+            applyCoinChallengeHazardCollision(positionBeforeUpdate);
+            if (m_coinChallengeForcedEndActive) {
+                updateCoinChallengeHud();
+                if (m_gameView) {
+                    m_gameView->update();
+                }
+                return;
+            }
+            if (m_collectibleManager) {
+                m_collectibleManager->setTargetActiveCoinCount(coinChallengeDesiredActiveCoins());
+            }
+            updateHUD(currentSpeedKmh, QStringLiteral("Driving"));
+
+            if (!m_coinChallengeTenSecondWarningShown && m_coinChallengeRemainingMs > 0 && m_coinChallengeRemainingMs <= 10000) {
+                m_coinChallengeTenSecondWarningShown = true;
+                m_coinChallengeWarningStartedMs = QDateTime::currentMSecsSinceEpoch();
+                playSound(PhantomDrive::SoundEffect::FinalLap);
+            }
+
+            if (m_coinChallengeRemainingMs > 0 && remainingSeconds > 0 && remainingSeconds <= 3) {
+                if (remainingSeconds != m_coinChallengeFinalCountdownAnnouncedSecond) {
+                    m_coinChallengeFinalCountdownAnnouncedSecond = remainingSeconds;
+                    playSound(coinChallengeCountdownSoundForStage(remainingSeconds));
+                }
+            } else if (remainingSeconds > 3) {
+                m_coinChallengeFinalCountdownAnnouncedSecond = -1;
+            }
+
+            const QRectF playerCollectRect = playerCoinCollectRect();
+            bool coinsChanged = false;
+            if (m_collectibleManager && m_currencyManager) {
+                coinsChanged = m_collectibleManager->update(playerCollectRect,
+                                                            m_playerPosition.toPointF(),
+                                                            kSimulationStepSeconds,
+                                                            *m_currencyManager,
+                                                            m_coinChallengeMagnetRemainingMs > 0,
+                                                            kCoinChallengeMagnetRadius,
+                                                            kCoinChallengeMagnetPullSpeed);
+            }
+            const QList<CoinItem> collectedCoins = m_collectibleManager
+                ? m_collectibleManager->collectedCoinsThisFrame()
+                : QList<CoinItem>();
+            const bool collectedCoin = m_collectibleManager
+                && m_collectibleManager->runCoins() > runCoinsBeforeUpdate;
+            const int runCoinsAfterUpdate = m_collectibleManager ? m_collectibleManager->runCoins() : runCoinsBeforeUpdate;
+
+            if (coinsChanged) {
+                if (m_gameView && m_collectibleManager) {
+                    m_gameView->updateCoins(m_collectibleManager->coins());
+                }
+            }
+
+            if (collectedCoin) {
+                if (m_gameView) {
+                    for (const CoinItem& coin : collectedCoins) {
+                        m_gameView->triggerCoinGoalAnimation(coin.position, coin.value);
+                    }
+                }
+                handleCoinChallengeMilestones(runCoinsBeforeUpdate, runCoinsAfterUpdate);
+                playSound(PhantomDrive::SoundEffect::PowerupCollect);
+                refreshGaragePage();
+                savePlayerProfile();
+            }
+
+            maybeSpawnCoinChallengeMagnet();
+            maybeSpawnCoinChallengeBalloonRush();
+            updateCoinChallengeHud();
+
+            if (m_coinChallengeRemainingMs <= 0) {
+                showCoinChallengeSummaryOverlay();
+            }
+            return;
+        }
 
         if (m_twoPlayerMode && m_vehiclePhysics && m_player2Physics) {
             static bool playersInContact = false;
@@ -4329,11 +5795,12 @@ void MainWindow::simulateGameLoop()
                                                 m_playerPosition,
                                                 m_playerRotation,
                                                 displaySpeedKmh(),
-                                                QColor(255, 48, 118),
+                                                currentPlayerSkinColor(),
                                                 m_vehiclePhysics->isSpeedBoostActive(),
                                                 m_vehiclePhysics->isShieldActive(),
                                                 m_vehiclePhysics->isInvisible(),
-                                                m_vehiclePhysics->isMagnetActive());
+                                                m_vehiclePhysics->isMagnetActive(),
+                                                currentPlayerSkinId());
                     m_gameView->updatePlayerCar(QStringLiteral("P2"),
                                                 m_player2Position,
                                                 m_player2Rotation,
@@ -4584,6 +6051,16 @@ void MainWindow::startBuiltInTrackSession(const QString& mode)
 
 void MainWindow::onGameFinished()
 {
+    if (isCoinChallengeModeActive()) {
+        if (!m_coinChallengeSummaryVisible && !m_coinChallengeForcedEndActive) {
+            m_coinChallengeEndReason = CoinChallengeEndReason::ForcedFinish;
+            m_coinChallengeEndTitle = QStringLiteral("Forced Finish");
+            m_coinChallengeEndDetail = QStringLiteral("Run ended manually. Banking collected coins.");
+        }
+        showCoinChallengeSummaryOverlay();
+        return;
+    }
+
     if (!m_driveActive || !m_scoreManager || !m_drivingDataCollector) {
         return;
     }
@@ -4686,6 +6163,10 @@ void MainWindow::silentFinishSession()
     if (!m_driveActive) {
         return;
     }
+    if (isCoinChallengeModeActive()) {
+        finishCoinChallengeMode();
+        return;
+    }
     m_driveActive = false;
     clearTransientDrivingFeedback();
 
@@ -4773,7 +6254,12 @@ void MainWindow::fadeInReportWindow()
 
 void MainWindow::onReportBackToMenu()
 {
+    if (m_coinChallengeHudLabel) {
+        m_coinChallengeHudLabel->hide();
+    }
+    hideCoinChallengeSummaryOverlay();
     if (m_gameView) {
+        m_gameView->clearCoinChallengeOverlayState();
         m_gameView->hide();
     }
     if (m_learningHUD) {
@@ -4798,7 +6284,9 @@ void MainWindow::onReportNewDrive()
         ui->btn_Back->setEnabled(true);
     }
     const QString mode = m_currentMode.isEmpty() ? QStringLiteral("Arcade") : m_currentMode;
-    if (mode == QStringLiteral("Custom Track") && m_runtimeCustomTrack) {
+    if (mode == QStringLiteral("Coin Challenge")) {
+        startCoinChallengeMode();
+    } else if (mode == QStringLiteral("Custom Track") && m_runtimeCustomTrack) {
         startCustomTrackSession(m_runtimeCustomTrack);
     } else {
         startDrivingSession(mode);
@@ -4808,6 +6296,2016 @@ void MainWindow::onReportNewDrive()
 void MainWindow::updateTrafficAndHud(int tick)
 {
     // LearningHUD is fully deprecated; all HUD data goes to ArcadeHUD.
+}
+
+bool MainWindow::isCoinChallengeModeActive() const
+{
+    return m_coinChallengeActive;
+}
+
+QRectF MainWindow::playerCoinCollectRect() const
+{
+    constexpr qreal width = 36.0;
+    constexpr qreal height = 56.0;
+    return QRectF(m_playerPosition.x() - width / 2.0,
+                  m_playerPosition.y() - height / 2.0,
+                  width,
+                  height);
+}
+
+void MainWindow::resetCoinChallengeStats()
+{
+    m_coinChallengeSummaryVisible = false;
+    m_coinChallengeTenSecondWarningShown = false;
+    m_coinChallengeCountdownAnnouncedStage = -1;
+    m_coinChallengeMaxSpeedKmh = 0;
+    m_coinChallengeLastAverageSpeedKmh = 0;
+    m_coinChallengeLastEfficiencyCpm = 0;
+    m_coinChallengeLastRunCoins = 0;
+    m_coinChallengeWarningStartedMs = 0;
+    m_coinChallengeSpeedSampleSumKmh = 0;
+    m_coinChallengeSpeedSampleCount = 0;
+    m_coinChallengeLastElapsedMs = 0;
+    m_coinChallengeMagnetRemainingMs = 0;
+    m_coinChallengeBalloonRushRemainingMs = 0;
+    m_coinChallengeBalloonRushTriggerRemainingMs = 0;
+    m_coinChallengeBalloonRushReturnRemainingMs = 0;
+    m_coinChallengeBalloonRushIntroCountdownRemainingMs = 0;
+    m_coinChallengeBalloonRushIntroCountdownAnnounced = -1;
+    m_coinChallengeBalloonRushCollectedCoins = 0;
+    m_coinChallengeBalloonRushRecentGainValue = 0;
+    m_coinChallengeBalloonRushGainFlashRemainingMs = 0;
+    m_coinChallengeBalloonRushMilestoneRemainingMs = 0;
+    m_coinChallengeBalloonRushMilestoneDurationMs = 0;
+    m_coinChallengePowerupsUsed = 0;
+    m_coinChallengeLoopsCompleted = 0;
+    m_coinChallengeLoopCheckpointIndex = 0;
+    m_coinChallengeMagnetSpawnStage = 0;
+    m_coinChallengeFinalCountdownAnnouncedSecond = -1;
+    m_coinChallengeSummaryAnimatedRunCoins = 0;
+    m_coinChallengeSummaryAnimatedTotalCoins = 0;
+    m_coinChallengeSummaryTargetRunCoins = 0;
+    m_coinChallengeSummaryTargetTotalCoins = 0;
+    m_coinChallengeSummaryDepositSoundStage = 0;
+    m_coinChallengeVehicleIntegrity = kCoinChallengeIntegrityMax;
+    m_coinChallengeObstacleHits = 0;
+    m_coinChallengeAICollisionCount = 0;
+    m_coinChallengeDamageTaken = 0;
+    m_coinChallengeRecentDamageAmount = 0;
+    m_coinChallengeDamageFlashRemainingMs = 0;
+    m_coinChallengeDamagePopupRemainingMs = 0;
+    m_coinChallengeLowIntegrityWarningRemainingMs = 0;
+    m_coinChallengeLeftStartZone = false;
+    m_coinChallengeWasOnStartZone = false;
+    m_coinChallengeBalloonRushSpawned = false;
+    m_coinChallengeMagnetLoopPlaying = false;
+    m_coinChallengeLastHazardSoundMs = -1000;
+    m_coinChallengeLastDamageMs = -1000;
+    m_coinChallengeForcedEndActive = false;
+    m_coinChallengeForcedEndRemainingMs = 0;
+    m_coinChallengeEndReason = CoinChallengeEndReason::None;
+    m_coinChallengeDamagePopupText.clear();
+    m_coinChallengeDamagePopupDetail.clear();
+    m_coinChallengeEndTitle.clear();
+    m_coinChallengeEndDetail.clear();
+    m_coinChallengeBlockerDamageContacts.clear();
+    m_coinChallengeObstacleDamageContacts.clear();
+    m_coinChallengeLastSafePlayerPosition = QVector2D(0.0f, 0.0f);
+    m_coinChallengeLastSafePlayerRotation = 0.0;
+    m_coinChallengeHasSafePlayerPosition = false;
+    m_coinChallengeMagnetSpawnPool.clear();
+    m_coinChallengeBalloonRushSpawnPool.clear();
+    m_coinChallengeBalloonRushPhase = CoinChallengeBalloonRushPhase::Inactive;
+    m_coinChallengeBalloonRushSavedPosition = QVector2D(0.0f, 0.0f);
+    m_coinChallengeBalloonRushSavedRotation = 0.0;
+    m_coinChallengeBalloonRushSavedSpeed = 0.0;
+    m_coinChallengeBalloonRushLaneIndex = 1;
+    m_coinChallengeBalloonRushLaneVisual = 1.0;
+    m_coinChallengeBalloonRushRoadScroll = 0.0;
+    m_coinChallengeBalloonRushIntroCountdownRemainingMs = 0;
+    m_coinChallengeBalloonRushIntroCountdownAnnounced = -1;
+    m_coinChallengeBalloonRushSpawnAccumulatorMs = 0.0;
+    m_coinChallengeBalloonRushPatternLane = 1;
+    m_coinChallengeBalloonRushPatternBatchCount = 0;
+    m_coinChallengeBalloonRushRecentSegmentLanes.clear();
+    m_coinChallengeBalloonRushVisitedLanes.clear();
+    m_coinChallengeBalloonRushCoinLayout.clear();
+    m_coinChallengeBalloonRushMilestoneHeadline.clear();
+    m_coinChallengeBalloonRushMilestoneDetail.clear();
+    m_coinChallengeBalloonRushMilestoneAccent = QColor();
+    m_coinChallengeTriggeredMilestones.clear();
+}
+
+void MainWindow::updateCoinChallengeStats(int currentSpeedKmh)
+{
+    if (!m_coinChallengeActive || m_countdownActive) {
+        return;
+    }
+
+    const int speedKmh = qMax(0, currentSpeedKmh);
+    m_coinChallengeSpeedSampleSumKmh += speedKmh;
+    ++m_coinChallengeSpeedSampleCount;
+    m_coinChallengeMaxSpeedKmh = qMax(m_coinChallengeMaxSpeedKmh, speedKmh);
+    m_coinChallengeLastElapsedMs = qMax<qint64>(m_coinChallengeLastElapsedMs, m_sessionElapsedMs);
+    m_coinChallengeLastAverageSpeedKmh = coinChallengeAverageSpeedKmh();
+    m_coinChallengeLastEfficiencyCpm = coinChallengeEfficiencyCpm();
+    m_coinChallengeLastRunCoins = m_collectibleManager ? m_collectibleManager->runCoins() : 0;
+}
+
+int MainWindow::coinChallengeAverageSpeedKmh() const
+{
+    if (m_coinChallengeSpeedSampleCount <= 0) {
+        return m_coinChallengeLastAverageSpeedKmh;
+    }
+
+    return qMax(0, qRound(static_cast<qreal>(m_coinChallengeSpeedSampleSumKmh)
+                          / static_cast<qreal>(m_coinChallengeSpeedSampleCount)));
+}
+
+int MainWindow::coinChallengeMaxSpeedDisplayKmh() const
+{
+    return qMax(m_coinChallengeMaxSpeedKmh, 0);
+}
+
+int MainWindow::coinChallengeEfficiencyCpm() const
+{
+    const qint64 elapsedMs = m_coinChallengeLastElapsedMs > 0 ? m_coinChallengeLastElapsedMs : m_sessionElapsedMs;
+    if (elapsedMs <= 0) {
+        return m_coinChallengeLastEfficiencyCpm;
+    }
+
+    const int runCoins = m_collectibleManager ? m_collectibleManager->runCoins() : m_coinChallengeLastRunCoins;
+    const qreal elapsedSeconds = static_cast<qreal>(elapsedMs) / 1000.0;
+    if (elapsedSeconds <= 0.001) {
+        return m_coinChallengeLastEfficiencyCpm;
+    }
+
+    return qMax(0, qRound((static_cast<qreal>(runCoins) / elapsedSeconds) * 60.0));
+}
+
+qreal MainWindow::coinChallengeGoalProgress() const
+{
+    const int goalCoins = qMax(1, m_coinChallengeGoalCoins);
+    const int runCoins = m_collectibleManager ? m_collectibleManager->runCoins() : m_coinChallengeLastRunCoins;
+    return qBound<qreal>(0.0,
+                         static_cast<qreal>(runCoins) / static_cast<qreal>(goalCoins),
+                         1.0);
+}
+
+int MainWindow::coinChallengeDesiredActiveCoins() const
+{
+    const int averageSpeedKmh = coinChallengeAverageSpeedKmh();
+    return qBound(12, 12 + qMax(0, averageSpeedKmh - 35) / 25, 16);
+}
+
+int MainWindow::coinChallengeCountdownStage() const
+{
+    if (!m_countdownActive) {
+        return -1;
+    }
+
+    if (m_countdownRemainingMs > 2200) {
+        return 3;
+    }
+    if (m_countdownRemainingMs > 1200) {
+        return 2;
+    }
+    if (m_countdownRemainingMs > kCoinChallengeCountdownGoWindowMs) {
+        return 1;
+    }
+    return 0;
+}
+
+qreal MainWindow::coinChallengeCountdownStageProgress() const
+{
+    if (!m_countdownActive) {
+        return 1.0;
+    }
+
+    const int stage = coinChallengeCountdownStage();
+    if (stage == 3) {
+        return qBound<qreal>(0.0,
+                             static_cast<qreal>(3200 - m_countdownRemainingMs) / 1000.0,
+                             1.0);
+    }
+    if (stage == 2) {
+        return qBound<qreal>(0.0,
+                             static_cast<qreal>(2200 - m_countdownRemainingMs) / 1000.0,
+                             1.0);
+    }
+    if (stage == 1) {
+        return qBound<qreal>(0.0,
+                             static_cast<qreal>(1200 - m_countdownRemainingMs) / 850.0,
+                             1.0);
+    }
+    return qBound<qreal>(0.0,
+                         static_cast<qreal>(kCoinChallengeCountdownGoWindowMs - m_countdownRemainingMs)
+                             / static_cast<qreal>(kCoinChallengeCountdownGoWindowMs),
+                         1.0);
+}
+
+int MainWindow::coinChallengeIntegrityStage() const
+{
+    if (m_coinChallengeVehicleIntegrity <= 0) {
+        return 4;
+    }
+    if (m_coinChallengeVehicleIntegrity <= kCoinChallengeCriticalIntegrityThreshold) {
+        return 3;
+    }
+    if (m_coinChallengeVehicleIntegrity <= 50) {
+        return 2;
+    }
+    if (m_coinChallengeVehicleIntegrity <= 75) {
+        return 1;
+    }
+    return 0;
+}
+
+void MainWindow::applyCoinChallengeIntegrityDamage(int amount,
+                                                   const QString& popupText,
+                                                   const QString& popupDetail)
+{
+    if (!m_coinChallengeActive || m_coinChallengeForcedEndActive || amount <= 0) {
+        return;
+    }
+
+    const int previousIntegrity = qBound(0, m_coinChallengeVehicleIntegrity, kCoinChallengeIntegrityMax);
+    m_coinChallengeVehicleIntegrity = qMax(0, previousIntegrity - amount);
+    const int appliedDamage = previousIntegrity - m_coinChallengeVehicleIntegrity;
+    if (appliedDamage <= 0) {
+        return;
+    }
+
+    m_coinChallengeDamageTaken += appliedDamage;
+    m_coinChallengeRecentDamageAmount = appliedDamage;
+    m_coinChallengeDamageFlashRemainingMs = kCoinChallengeDamageFlashDurationMs;
+    m_coinChallengeDamagePopupRemainingMs = kCoinChallengeDamagePopupDurationMs;
+    m_coinChallengeDamagePopupText = popupText.isEmpty()
+        ? QStringLiteral("-%1").arg(appliedDamage)
+        : popupText;
+    m_coinChallengeDamagePopupDetail = popupDetail.isEmpty()
+        ? coinChallengeIntegrityStatusLabel(m_coinChallengeVehicleIntegrity)
+        : popupDetail;
+
+    const bool enteredCriticalIntegrity = previousIntegrity > kCoinChallengeCriticalIntegrityThreshold
+        && m_coinChallengeVehicleIntegrity > 0
+        && m_coinChallengeVehicleIntegrity <= kCoinChallengeCriticalIntegrityThreshold;
+    if (enteredCriticalIntegrity) {
+        m_coinChallengeLowIntegrityWarningRemainingMs = kCoinChallengeLowIntegrityWarningDurationMs;
+        showInteractiveFeedback(QStringLiteral("INTEGRITY CRITICAL"), PhantomDrive::FeedbackType::Critical);
+    }
+
+    if (m_coinChallengeVehicleIntegrity <= 0) {
+        triggerCoinChallengeForcedEnd(CoinChallengeEndReason::VehicleDestroyed,
+                                      QStringLiteral("Vehicle Destroyed"),
+                                      QStringLiteral("Integrity dropped to 0%. Tow truck dispatched."));
+    }
+}
+
+void MainWindow::triggerCoinChallengeForcedEnd(CoinChallengeEndReason reason,
+                                               const QString& title,
+                                               const QString& detail)
+{
+    if (!m_coinChallengeActive || m_coinChallengeSummaryVisible || m_coinChallengeForcedEndActive) {
+        return;
+    }
+
+    m_coinChallengeForcedEndActive = true;
+    m_coinChallengeForcedEndRemainingMs = kCoinChallengeForcedEndDurationMs;
+    m_coinChallengeEndReason = reason;
+    m_coinChallengeEndTitle = title;
+    m_coinChallengeEndDetail = detail;
+    m_coinChallengeDamageFlashRemainingMs = qMax(m_coinChallengeDamageFlashRemainingMs,
+                                                 kCoinChallengeDamageFlashDurationMs);
+    m_coinChallengeDamagePopupRemainingMs = qMax(m_coinChallengeDamagePopupRemainingMs,
+                                                 kCoinChallengeDamagePopupDurationMs);
+
+    if (reason == CoinChallengeEndReason::FatalCrash || reason == CoinChallengeEndReason::VehicleDestroyed) {
+        m_coinChallengeVehicleIntegrity = 0;
+    }
+
+    m_coinChallengeMagnetRemainingMs = 0;
+    syncCoinChallengeMagnetLoop();
+
+    if (m_vehiclePhysics) {
+        m_vehiclePhysics->clearDriveInput();
+        m_vehiclePhysics->setSpeed(0.0);
+    }
+
+    m_playerSpeed = 0.0;
+    if (m_btnPause) {
+        m_btnPause->setEnabled(false);
+    }
+    if (m_btnFinishDrive) {
+        m_btnFinishDrive->setEnabled(false);
+    }
+
+    playSound(PhantomDrive::SoundEffect::Crash);
+    QTimer::singleShot(120, this, [this, reason]() {
+        if (!m_coinChallengeForcedEndActive) {
+            return;
+        }
+        playSound(reason == CoinChallengeEndReason::FatalCrash
+                      ? PhantomDrive::SoundEffect::Collision
+                      : PhantomDrive::SoundEffect::Fail);
+    });
+}
+
+void MainWindow::updateCoinChallengeForcedEndSequence(int deltaMs)
+{
+    if (!m_coinChallengeForcedEndActive) {
+        return;
+    }
+
+    m_coinChallengeForcedEndRemainingMs = qMax(0, m_coinChallengeForcedEndRemainingMs - deltaMs);
+    m_coinChallengeDamageFlashRemainingMs = qMax(0, m_coinChallengeDamageFlashRemainingMs - deltaMs);
+    m_coinChallengeDamagePopupRemainingMs = qMax(0, m_coinChallengeDamagePopupRemainingMs - deltaMs);
+    m_coinChallengeLowIntegrityWarningRemainingMs = qMax(0,
+                                                         m_coinChallengeLowIntegrityWarningRemainingMs - deltaMs);
+
+    if (m_vehiclePhysics) {
+        m_vehiclePhysics->clearDriveInput();
+        m_vehiclePhysics->setSpeed(0.0);
+    }
+    m_playerSpeed = 0.0;
+
+    if (m_coinChallengeDamagePopupRemainingMs <= 0) {
+        m_coinChallengeRecentDamageAmount = 0;
+        m_coinChallengeDamagePopupText.clear();
+        m_coinChallengeDamagePopupDetail.clear();
+    }
+
+    if (m_coinChallengeForcedEndRemainingMs <= 0) {
+        m_coinChallengeForcedEndActive = false;
+        showCoinChallengeSummaryOverlay();
+    }
+}
+
+void MainWindow::updateCoinChallengeHud()
+{
+    const int totalCoins = m_currencyManager ? m_currencyManager->coins() : 0;
+    const int runCoins = m_collectibleManager ? m_collectibleManager->runCoins() : m_coinChallengeLastRunCoins;
+    const bool balloonRushActive = isCoinChallengeBalloonRushSequenceActive();
+    const int integrity = qBound(0, m_coinChallengeVehicleIntegrity, kCoinChallengeIntegrityMax);
+    const int activeCoins = balloonRushActive
+        ? 0
+        : (m_collectibleManager ? m_collectibleManager->activeCoinCount() : 0);
+    const int remainingSeconds = qMax(0, static_cast<int>(qCeil(m_coinChallengeRemainingMs / 1000.0)));
+    const int countdownStage = coinChallengeCountdownStage();
+    const int countdownSeconds = countdownStage > 0 ? countdownStage : 0;
+    const int speedKmh = displaySpeedKmh();
+    const int averageSpeedKmh = coinChallengeAverageSpeedKmh();
+    const int maxSpeedKmh = coinChallengeMaxSpeedDisplayKmh();
+    const int efficiencyCpm = coinChallengeEfficiencyCpm();
+    const qreal goalProgress = coinChallengeGoalProgress();
+    const qreal timeProgress = m_coinChallengeDurationMs > 0
+        ? qBound<qreal>(0.0,
+                        static_cast<qreal>(m_coinChallengeRemainingMs) / static_cast<qreal>(m_coinChallengeDurationMs),
+                        1.0)
+        : 0.0;
+
+    CoinChallengeOverlayState overlayState;
+    overlayState.visible = m_coinChallengeActive && !m_coinChallengeSummaryVisible && !balloonRushActive;
+    overlayState.countdownActive = m_countdownActive;
+    overlayState.tenSecondWarningVisible = m_coinChallengeTenSecondWarningShown
+        && !m_countdownActive
+        && !m_coinChallengeSummaryVisible
+        && remainingSeconds > 3
+        && m_coinChallengeRemainingMs > 0;
+    overlayState.goalComplete = runCoins >= m_coinChallengeGoalCoins;
+    overlayState.criticalIntegrity = integrity > 0 && integrity <= kCoinChallengeCriticalIntegrityThreshold;
+    overlayState.destroyed = integrity <= 0;
+    overlayState.forcedEndActive = m_coinChallengeForcedEndActive;
+    overlayState.remainingSeconds = remainingSeconds;
+    overlayState.countdownSeconds = countdownSeconds;
+    overlayState.countdownStage = countdownStage;
+    overlayState.totalCoins = totalCoins;
+    overlayState.runCoins = runCoins;
+    overlayState.activeCoins = activeCoins;
+    overlayState.goalCoins = m_coinChallengeGoalCoins;
+    overlayState.speedKmh = speedKmh;
+    overlayState.averageSpeedKmh = averageSpeedKmh;
+    overlayState.maxSpeedKmh = maxSpeedKmh;
+    overlayState.efficiencyCoinsPerMinute = efficiencyCpm;
+    overlayState.goalProgress = goalProgress;
+    overlayState.timeProgress = timeProgress;
+    overlayState.countdownStageProgress = coinChallengeCountdownStageProgress();
+    overlayState.integrityPercent = integrity;
+    overlayState.integrityStage = coinChallengeIntegrityStage();
+    overlayState.recentDamageAmount = m_coinChallengeRecentDamageAmount;
+    overlayState.damageFlashProgress = qBound<qreal>(0.0,
+                                                     static_cast<qreal>(m_coinChallengeDamageFlashRemainingMs)
+                                                         / static_cast<qreal>(kCoinChallengeDamageFlashDurationMs),
+                                                     1.0);
+    overlayState.lowIntegrityPulseProgress = qBound<qreal>(
+        0.0,
+        static_cast<qreal>(m_coinChallengeLowIntegrityWarningRemainingMs)
+            / static_cast<qreal>(kCoinChallengeLowIntegrityWarningDurationMs),
+        1.0);
+    overlayState.integrityStatusText = coinChallengeIntegrityStatusLabel(integrity);
+    overlayState.damagePopupText = m_coinChallengeDamagePopupRemainingMs > 0 ? m_coinChallengeDamagePopupText : QString();
+    overlayState.damagePopupDetail = m_coinChallengeDamagePopupRemainingMs > 0 ? m_coinChallengeDamagePopupDetail : QString();
+    overlayState.forcedEndProgress = m_coinChallengeForcedEndActive
+        ? 1.0 - (static_cast<qreal>(m_coinChallengeForcedEndRemainingMs)
+                 / static_cast<qreal>(qMax(1, kCoinChallengeForcedEndDurationMs)))
+        : 0.0;
+    overlayState.forcedEndHeadline = m_coinChallengeEndTitle;
+    overlayState.forcedEndDetail = m_coinChallengeEndDetail;
+    const bool magnetActive = m_coinChallengeMagnetRemainingMs > 0;
+    overlayState.powerupActive = balloonRushActive || magnetActive;
+    overlayState.powerupLabel = balloonRushActive
+        ? QStringLiteral("BALLOON RUSH")
+        : (magnetActive ? QStringLiteral("MAGNET ACTIVE")
+                        : QStringLiteral("Powerup: --"));
+    overlayState.powerupRemainingSeconds = balloonRushActive
+        ? qMax(1, static_cast<int>(qCeil(m_coinChallengeBalloonRushRemainingMs / 1000.0)))
+        : (magnetActive
+               ? qMax(1, static_cast<int>(qCeil(m_coinChallengeMagnetRemainingMs / 1000.0)))
+               : 0);
+    overlayState.loopsCompleted = m_coinChallengeLoopsCompleted;
+    overlayState.routeHintText = m_coinChallengeForcedEndActive
+        ? QStringLiteral("RECOVERY IN PROGRESS  |  CONTROL LOCKED")
+        : (balloonRushActive
+        ? QStringLiteral("BALLOON RUSH  |  BONUS SCENE ACTIVE")
+        : QStringLiteral("FOLLOW THE COIN TRAIL  |  LOOPS %1")
+              .arg(m_coinChallengeLoopsCompleted));
+    if (overlayState.tenSecondWarningVisible && m_coinChallengeWarningStartedMs > 0) {
+        overlayState.tenSecondWarningProgress = qBound<qreal>(
+            0.0,
+            static_cast<qreal>(QDateTime::currentMSecsSinceEpoch() - m_coinChallengeWarningStartedMs) / 1800.0,
+            1.0);
+    }
+
+    if (m_gameView) {
+        if (overlayState.visible) {
+            m_gameView->setCoinChallengeOverlayState(overlayState);
+        } else {
+            m_gameView->clearCoinChallengeOverlayState();
+        }
+    }
+
+    if (m_coinChallengeHudLabel) {
+        const QString statusText = m_countdownActive
+            ? QStringLiteral("START SEQUENCE")
+            : QStringLiteral("LIVE RUN");
+        const QString timeValue = m_countdownActive
+            ? QStringLiteral("%1").arg(countdownSeconds)
+            : QStringLiteral("%1s").arg(remainingSeconds);
+
+        m_coinChallengeHudLabel->setText(QStringLiteral(
+            "<div style='padding:14px 16px;'>"
+            "<div style='color:#F5C451;font-size:11px;font-weight:800;letter-spacing:2px;'>COIN CHALLENGE</div>"
+            "<div style='margin-top:3px;color:#8FEFFF;font-size:10px;font-weight:700;'>%1</div>"
+            "<div style='margin-top:10px;color:#EAFBFF;font-size:15px;font-weight:700;'>Time: %2</div>"
+            "<div style='margin-top:6px;color:#7DFFB8;font-size:14px;font-weight:700;'>Run Coins: +%3</div>"
+            "<div style='margin-top:4px;color:#FFF6D1;font-size:13px;font-weight:600;'>Total Coins: %4</div>"
+            "</div>")
+                                             .arg(statusText,
+                                                  timeValue,
+                                                  QString::number(runCoins),
+                                                  QString::number(totalCoins)));
+        m_coinChallengeHudLabel->hide();
+    }
+}
+
+void MainWindow::layoutCoinChallengeHud()
+{
+    if (!m_coinChallengeHudLabel || !ui->stackedWidget || ui->stackedWidget->count() <= 1) {
+        return;
+    }
+
+    QWidget* gamePage = ui->stackedWidget->widget(1);
+    if (!gamePage) {
+        return;
+    }
+
+    const int width = 308;
+    const int height = 148;
+    const int margin = 18;
+    m_coinChallengeHudLabel->setGeometry(margin, 54, width, height);
+}
+
+void MainWindow::ensureCoinChallengeSummaryOverlay()
+{
+    if (m_coinChallengeSummaryOverlay || !ui->stackedWidget || ui->stackedWidget->count() <= 1) {
+        return;
+    }
+
+    QWidget* gamePage = ui->stackedWidget->widget(1);
+    if (!gamePage) {
+        return;
+    }
+
+    m_coinChallengeSummaryOverlay = new QWidget(gamePage);
+    m_coinChallengeSummaryOverlay->setObjectName(QStringLiteral("coinChallengeSummaryOverlay"));
+    m_coinChallengeSummaryOverlay->setStyleSheet(QStringLiteral(
+        "QWidget#coinChallengeSummaryOverlay{background:rgba(2,8,20,188);}"
+        "QWidget#coinChallengeSummaryPanel{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+        "stop:0 rgba(22,18,58,246), stop:0.55 rgba(14,18,38,242), stop:1 rgba(40,18,14,240));"
+        "border:3px solid rgba(255,214,102,225);border-radius:30px;}"
+        "QLabel#coinChallengeSummaryTitle{color:#F9D66F;font-size:30px;font-weight:900;letter-spacing:5px;}"
+        "QLabel#coinChallengeSummaryFlavor{color:#FFF2D0;font-size:14px;font-weight:700;letter-spacing:2px;}"
+        "QLabel#coinChallengeSummaryDelta{color:#7DFFB8;font-size:24px;font-weight:900;letter-spacing:2px;}"
+        "QLabel#coinChallengeSummaryStats{color:#F7FBFF;font-size:15px;font-weight:600;line-height:145%;}"
+        "QPushButton#coinChallengePlayAgainButton{background:#0B2734;color:#FFFFFF;border:2px solid #35F6FF;"
+        "border-radius:12px;min-height:50px;font-size:17px;font-weight:800;padding:0 26px;}"
+        "QPushButton#coinChallengePlayAgainButton:hover{background:#123652;border-color:#7EFFFF;}"
+        "QPushButton#coinChallengeExitButton{background:#2B1020;color:#FFD5DE;border:2px solid #FF5E88;"
+        "border-radius:12px;min-height:50px;font-size:17px;font-weight:800;padding:0 26px;}"
+        "QPushButton#coinChallengeExitButton:hover{background:#3A152A;border-color:#FF86A7;}"));
+
+    auto* overlayLayout = new QVBoxLayout(m_coinChallengeSummaryOverlay);
+    overlayLayout->setContentsMargins(28, 26, 28, 26);
+    overlayLayout->addStretch(1);
+
+    auto* panel = new QWidget(m_coinChallengeSummaryOverlay);
+    panel->setObjectName(QStringLiteral("coinChallengeSummaryPanel"));
+    panel->setMinimumWidth(1040);
+    panel->setMaximumWidth(1140);
+
+    auto* panelLayout = new QVBoxLayout(panel);
+    panelLayout->setContentsMargins(42, 34, 42, 30);
+    panelLayout->setSpacing(18);
+
+    m_coinChallengeSummaryTitleLabel = new QLabel(QStringLiteral("Challenge Complete"), panel);
+    m_coinChallengeSummaryTitleLabel->setObjectName(QStringLiteral("coinChallengeSummaryTitle"));
+    m_coinChallengeSummaryTitleLabel->setAlignment(Qt::AlignCenter);
+    m_coinChallengeSummaryTitleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    panelLayout->addWidget(m_coinChallengeSummaryTitleLabel);
+
+    m_coinChallengeSummaryFlavorLabel = new QLabel(QStringLiteral("Treasure payout incoming"), panel);
+    m_coinChallengeSummaryFlavorLabel->setObjectName(QStringLiteral("coinChallengeSummaryFlavor"));
+    m_coinChallengeSummaryFlavorLabel->setAlignment(Qt::AlignCenter);
+    m_coinChallengeSummaryFlavorLabel->setWordWrap(true);
+    m_coinChallengeSummaryFlavorLabel->setMinimumHeight(34);
+    panelLayout->addWidget(m_coinChallengeSummaryFlavorLabel);
+
+    auto* rewardRow = new QHBoxLayout();
+    rewardRow->setSpacing(18);
+
+    m_coinChallengeSummaryRewardLabel = new QLabel(panel);
+    m_coinChallengeSummaryRewardLabel->setMinimumSize(260, 204);
+    m_coinChallengeSummaryRewardLabel->setMaximumWidth(300);
+    m_coinChallengeSummaryRewardLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    m_coinChallengeSummaryRewardLabel->setAlignment(Qt::AlignCenter);
+    rewardRow->addWidget(m_coinChallengeSummaryRewardLabel, 1);
+
+    auto* centerColumn = new QVBoxLayout();
+    centerColumn->setSpacing(12);
+    centerColumn->setAlignment(Qt::AlignCenter);
+
+    m_coinChallengeSummaryDeltaLabel = new QLabel(QStringLiteral("TREASURE DROP"), panel);
+    m_coinChallengeSummaryDeltaLabel->setObjectName(QStringLiteral("coinChallengeSummaryDelta"));
+    m_coinChallengeSummaryDeltaLabel->setAlignment(Qt::AlignCenter);
+    m_coinChallengeSummaryDeltaLabel->setWordWrap(true);
+    m_coinChallengeSummaryDeltaLabel->setMinimumHeight(58);
+    centerColumn->addWidget(m_coinChallengeSummaryDeltaLabel);
+
+    m_coinChallengeSummaryStatsLabel = new QLabel(panel);
+    m_coinChallengeSummaryStatsLabel->setObjectName(QStringLiteral("coinChallengeSummaryStats"));
+    m_coinChallengeSummaryStatsLabel->setAlignment(Qt::AlignCenter);
+    m_coinChallengeSummaryStatsLabel->setTextFormat(Qt::RichText);
+    m_coinChallengeSummaryStatsLabel->setWordWrap(true);
+    m_coinChallengeSummaryStatsLabel->setMinimumSize(320, 250);
+    m_coinChallengeSummaryStatsLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    centerColumn->addWidget(m_coinChallengeSummaryStatsLabel);
+    rewardRow->addLayout(centerColumn, 1);
+
+    m_coinChallengeSummaryCoinBagLabel = new QLabel(panel);
+    m_coinChallengeSummaryCoinBagLabel->setMinimumSize(368, 272);
+    m_coinChallengeSummaryCoinBagLabel->setMaximumWidth(430);
+    m_coinChallengeSummaryCoinBagLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    m_coinChallengeSummaryCoinBagLabel->setAlignment(Qt::AlignCenter);
+    rewardRow->addWidget(m_coinChallengeSummaryCoinBagLabel, 2);
+
+    panelLayout->addLayout(rewardRow);
+
+    auto* buttonRow = new QHBoxLayout();
+    buttonRow->setSpacing(14);
+    buttonRow->addStretch(1);
+    m_coinChallengePlayAgainButton = new QPushButton(QStringLiteral("Play Again"), panel);
+    m_coinChallengePlayAgainButton->setObjectName(QStringLiteral("coinChallengePlayAgainButton"));
+    m_coinChallengeExitButton = new QPushButton(QStringLiteral("Exit"), panel);
+    m_coinChallengeExitButton->setObjectName(QStringLiteral("coinChallengeExitButton"));
+    buttonRow->addWidget(m_coinChallengePlayAgainButton);
+    buttonRow->addWidget(m_coinChallengeExitButton);
+    buttonRow->addStretch(1);
+    panelLayout->addLayout(buttonRow);
+
+    overlayLayout->addWidget(panel, 0, Qt::AlignHCenter);
+    overlayLayout->addStretch(1);
+
+    m_coinChallengeSummaryAnimTimer = new QTimer(m_coinChallengeSummaryOverlay);
+    m_coinChallengeSummaryAnimTimer->setInterval(28);
+    connect(m_coinChallengeSummaryAnimTimer, &QTimer::timeout, this, [this]() {
+        animateCoinChallengeSummaryStep();
+    });
+
+    connect(m_coinChallengePlayAgainButton, &QPushButton::clicked, this, [this]() {
+        hideCoinChallengeSummaryOverlay();
+        startCoinChallengeMode();
+    });
+    connect(m_coinChallengeExitButton, &QPushButton::clicked, this, [this]() {
+        exitCoinChallengeToMenu();
+    });
+
+    m_coinChallengeSummaryOverlay->setGeometry(gamePage->rect());
+    m_coinChallengeSummaryOverlay->hide();
+}
+
+void MainWindow::showCoinChallengeSummaryOverlay()
+{
+    if (!m_coinChallengeActive || m_coinChallengeSummaryVisible) {
+        return;
+    }
+
+    updateCoinChallengeStats(displaySpeedKmh());
+    ensureCoinChallengeSummaryOverlay();
+    if (!m_coinChallengeSummaryOverlay || !m_coinChallengeSummaryStatsLabel || !m_coinChallengeSummaryTitleLabel) {
+        return;
+    }
+
+    m_coinChallengeSummaryVisible = true;
+    m_driveActive = false;
+    m_arcadeRaceLogicActive = false;
+    m_countdownActive = false;
+    m_coinChallengeTenSecondWarningShown = false;
+    m_coinChallengeWarningStartedMs = 0;
+    m_coinChallengeMagnetRemainingMs = 0;
+    m_coinChallengeBalloonRushRemainingMs = 0;
+    m_coinChallengeBalloonRushTriggerRemainingMs = 0;
+    m_coinChallengeBalloonRushPhase = CoinChallengeBalloonRushPhase::Inactive;
+    syncCoinChallengeMagnetLoop();
+
+    if (m_btnFinishDrive) {
+        m_btnFinishDrive->setEnabled(false);
+    }
+    if (m_btnPause) {
+        m_btnPause->setEnabled(false);
+    }
+    if (m_coinChallengeHudLabel) {
+        m_coinChallengeHudLabel->hide();
+    }
+    if (m_gameView) {
+        m_gameView->clearCoinChallengeOverlayState();
+        m_gameView->clearBalloonRushSceneState();
+    }
+
+    const int totalCoins = m_currencyManager ? m_currencyManager->coins() : 0;
+    const int runCoins = m_collectibleManager ? m_collectibleManager->runCoins() : m_coinChallengeLastRunCoins;
+    const bool goalComplete = runCoins >= m_coinChallengeGoalCoins;
+    if (m_coinChallengeEndReason == CoinChallengeEndReason::None) {
+        m_coinChallengeEndReason = goalComplete
+            ? CoinChallengeEndReason::GoalComplete
+            : CoinChallengeEndReason::Timeout;
+    }
+    if (m_coinChallengeEndTitle.isEmpty()) {
+        m_coinChallengeEndTitle = coinChallengeEndReasonLabel(m_coinChallengeEndReason, goalComplete);
+    }
+    if (m_coinChallengeEndDetail.isEmpty()) {
+        switch (m_coinChallengeEndReason) {
+        case CoinChallengeEndReason::GoalComplete:
+            m_coinChallengeEndDetail = QStringLiteral("Treasure chest packed. Coins are dropping into the bag.");
+            break;
+        case CoinChallengeEndReason::ForcedFinish:
+            m_coinChallengeEndDetail = QStringLiteral("Run ended manually. Banking collected coins.");
+            break;
+        case CoinChallengeEndReason::VehicleDestroyed:
+            m_coinChallengeEndDetail = QStringLiteral("Integrity reached 0%. Recovery team pulled you off the road.");
+            break;
+        case CoinChallengeEndReason::FatalCrash:
+            m_coinChallengeEndDetail = QStringLiteral("AI collision totalled the car. Recovery team secured the haul.");
+            break;
+        case CoinChallengeEndReason::Timeout:
+        case CoinChallengeEndReason::None:
+        default:
+            m_coinChallengeEndDetail = QStringLiteral("Time is up. Count the haul and bank every coin.");
+            break;
+        }
+    }
+
+    m_coinChallengeSummaryTitleLabel->setText(m_coinChallengeEndTitle);
+    if (m_coinChallengeSummaryFlavorLabel) {
+        m_coinChallengeSummaryFlavorLabel->setText(m_coinChallengeEndDetail);
+    }
+
+    m_coinChallengeSummaryTargetRunCoins = runCoins;
+    m_coinChallengeSummaryTargetTotalCoins = totalCoins;
+    m_coinChallengeSummaryAnimatedRunCoins = 0;
+    m_coinChallengeSummaryAnimatedTotalCoins = qMax(0, totalCoins - runCoins);
+    m_coinChallengeSummaryDepositSoundStage = 0;
+    m_coinChallengeSummaryVisualProgress = 0.0;
+    refreshCoinChallengeSummaryVisuals();
+    if (m_coinChallengeSummaryAnimTimer) {
+        m_coinChallengeSummaryAnimTimer->start();
+    }
+
+    playSound((m_coinChallengeEndReason == CoinChallengeEndReason::FatalCrash
+               || m_coinChallengeEndReason == CoinChallengeEndReason::VehicleDestroyed)
+                  ? PhantomDrive::SoundEffect::Fail
+                  : PhantomDrive::SoundEffect::RaceFinish);
+    if (goalComplete && m_coinChallengeEndReason != CoinChallengeEndReason::FatalCrash) {
+        QTimer::singleShot(180, this, [this]() {
+            playSound(PhantomDrive::SoundEffect::Victory);
+        });
+    }
+    if (runCoins > 0) {
+        QTimer::singleShot(260, this, [this]() {
+            if (m_coinChallengeSummaryVisible) {
+                playSound(PhantomDrive::SoundEffect::PowerupCollect);
+            }
+        });
+    }
+
+    m_coinChallengeSummaryOverlay->setGeometry(ui->stackedWidget->widget(1)->rect());
+    m_coinChallengeSummaryOverlay->show();
+    m_coinChallengeSummaryOverlay->raise();
+}
+
+void MainWindow::refreshCoinChallengeSummaryVisuals()
+{
+    if (!m_coinChallengeSummaryStatsLabel) {
+        return;
+    }
+
+    const bool goalComplete = m_coinChallengeSummaryTargetRunCoins >= m_coinChallengeGoalCoins;
+    const QString endReason = coinChallengeEndReasonLabel(m_coinChallengeEndReason, goalComplete);
+    const int averageSpeed = coinChallengeAverageSpeedKmh();
+    const int maxSpeed = coinChallengeMaxSpeedDisplayKmh();
+    const int efficiency = coinChallengeEfficiencyCpm();
+    const int baggedCoins = qMax(0, m_coinChallengeSummaryAnimatedRunCoins);
+    const int bankCoins = qMax(0, m_coinChallengeSummaryAnimatedTotalCoins);
+
+    if (m_coinChallengeSummaryDeltaLabel) {
+        QString deltaText = goalComplete
+            ? QStringLiteral("TREASURE CHEST SECURED")
+            : QStringLiteral("BANK DEPOSIT COMPLETE");
+        QString deltaColor = goalComplete ? QStringLiteral("#A6FFC6") : QStringLiteral("#FFD470");
+        if (m_coinChallengeEndReason == CoinChallengeEndReason::ForcedFinish) {
+            deltaText = QStringLiteral("RUN FORCE-CLOSED");
+            deltaColor = QStringLiteral("#8FEFFF");
+        } else if (m_coinChallengeEndReason == CoinChallengeEndReason::VehicleDestroyed) {
+            deltaText = QStringLiteral("RECOVERY TOW COMPLETE");
+            deltaColor = QStringLiteral("#FFB36B");
+        } else if (m_coinChallengeEndReason == CoinChallengeEndReason::FatalCrash) {
+            deltaText = QStringLiteral("FATAL CRASH LOGGED");
+            deltaColor = QStringLiteral("#FF6E7B");
+        }
+        m_coinChallengeSummaryDeltaLabel->setText(deltaText);
+        m_coinChallengeSummaryDeltaLabel->setStyleSheet(QStringLiteral(
+            "QLabel#coinChallengeSummaryDelta{color:%1;font-size:24px;font-weight:900;letter-spacing:2px;}")
+                                                         .arg(deltaColor));
+    }
+
+    if (m_coinChallengeSummaryRewardLabel) {
+        m_coinChallengeSummaryRewardLabel->setPixmap(makeCoinChallengeChestVisual(
+            m_coinChallengeSummaryRewardLabel->size(),
+            baggedCoins,
+            goalComplete,
+            m_coinChallengeSummaryVisualProgress));
+    }
+    if (m_coinChallengeSummaryCoinBagLabel) {
+        m_coinChallengeSummaryCoinBagLabel->setPixmap(makeCoinChallengeBagVisual(
+            m_coinChallengeSummaryCoinBagLabel->size(),
+            bankCoins,
+            baggedCoins,
+            m_coinChallengeSummaryVisualProgress));
+    }
+
+    m_coinChallengeSummaryStatsLabel->setText(QStringLiteral(
+        "<div style='text-align:center;'>"
+        "<div style='font-size:40px;font-weight:900;color:#F9D66F;line-height:112%;'>+%1</div>"
+        "<div style='font-size:13px;font-weight:800;color:#FFF4D2;letter-spacing:2px;'>RUN PAYOUT</div>"
+        "<div style='margin-top:14px;display:inline-block;padding:14px 18px;border-radius:18px;"
+        "background:rgba(7,18,38,182);border:1px solid rgba(255,216,120,130);text-align:left;'>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>End Reason:</b> %2</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>Coins Collected:</b> %1</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>Total Coins:</b> %3</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>Final Integrity:</b> %4%% (%5)</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>Obstacle Hits:</b> %6</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>AI Collisions:</b> %7</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>Damage Taken:</b> %8%%</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>Average Speed:</b> %9 km/h</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>Max Speed:</b> %10 km/h</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>Efficiency:</b> %11 coins/min</div>"
+        "<div style='font-size:14px;color:#EAFBFF;'><b>Powerups Used:</b> %12</div>"
+        "</div>"
+        "</div>")
+                                             .arg(baggedCoins)
+                                             .arg(endReason)
+                                             .arg(bankCoins)
+                                             .arg(m_coinChallengeVehicleIntegrity)
+                                             .arg(coinChallengeIntegrityStatusLabel(m_coinChallengeVehicleIntegrity))
+                                             .arg(m_coinChallengeObstacleHits)
+                                             .arg(m_coinChallengeAICollisionCount)
+                                             .arg(m_coinChallengeDamageTaken)
+                                             .arg(averageSpeed)
+                                             .arg(maxSpeed)
+                                             .arg(efficiency)
+                                             .arg(m_coinChallengePowerupsUsed));
+}
+
+void MainWindow::animateCoinChallengeSummaryStep()
+{
+    const int runTarget = qMax(0, m_coinChallengeSummaryTargetRunCoins);
+    const int totalTarget = qMax(0, m_coinChallengeSummaryTargetTotalCoins);
+    bool changed = false;
+
+    if (m_coinChallengeSummaryAnimatedRunCoins < runTarget) {
+        const int gap = runTarget - m_coinChallengeSummaryAnimatedRunCoins;
+        m_coinChallengeSummaryAnimatedRunCoins += qMax(1, gap / 10);
+        m_coinChallengeSummaryAnimatedRunCoins = qMin(m_coinChallengeSummaryAnimatedRunCoins, runTarget);
+        changed = true;
+    }
+    if (m_coinChallengeSummaryAnimatedTotalCoins < totalTarget) {
+        const int gap = totalTarget - m_coinChallengeSummaryAnimatedTotalCoins;
+        m_coinChallengeSummaryAnimatedTotalCoins += qMax(1, gap / 11);
+        m_coinChallengeSummaryAnimatedTotalCoins = qMin(m_coinChallengeSummaryAnimatedTotalCoins, totalTarget);
+        changed = true;
+    }
+    if (m_coinChallengeSummaryVisualProgress < 1.0) {
+        m_coinChallengeSummaryVisualProgress = qMin<qreal>(1.0, m_coinChallengeSummaryVisualProgress + 0.022);
+        changed = true;
+    }
+
+    if (runTarget > 0) {
+        static const qreal kDepositThresholds[] = {0.10, 0.24, 0.40, 0.58, 0.76, 0.92};
+        static const SoundEffect kDepositSounds[] = {
+            PhantomDrive::SoundEffect::PowerupCollect,
+            PhantomDrive::SoundEffect::Checkpoint,
+            PhantomDrive::SoundEffect::PowerupCollect,
+            PhantomDrive::SoundEffect::Checkpoint,
+            PhantomDrive::SoundEffect::PowerupCollect,
+            PhantomDrive::SoundEffect::PowerupCollect
+        };
+        while (m_coinChallengeSummaryDepositSoundStage < 6
+               && static_cast<qreal>(m_coinChallengeSummaryAnimatedRunCoins) / static_cast<qreal>(runTarget)
+                      >= kDepositThresholds[m_coinChallengeSummaryDepositSoundStage]) {
+            playSound(kDepositSounds[m_coinChallengeSummaryDepositSoundStage]);
+            ++m_coinChallengeSummaryDepositSoundStage;
+        }
+    }
+
+    if (changed) {
+        refreshCoinChallengeSummaryVisuals();
+        return;
+    }
+
+    if (m_coinChallengeSummaryAnimTimer) {
+        m_coinChallengeSummaryAnimTimer->stop();
+    }
+}
+
+void MainWindow::hideCoinChallengeSummaryOverlay()
+{
+    m_coinChallengeSummaryVisible = false;
+    if (m_coinChallengeSummaryAnimTimer) {
+        m_coinChallengeSummaryAnimTimer->stop();
+    }
+    if (m_coinChallengeSummaryOverlay) {
+        m_coinChallengeSummaryOverlay->hide();
+    }
+}
+
+void MainWindow::exitCoinChallengeToMenu()
+{
+    hideCoinChallengeSummaryOverlay();
+    finishCoinChallengeMode();
+    setGameHeaderVisible(false);
+    if (ui->stackedWidget) {
+        ui->stackedWidget->setCurrentIndex(0);
+    }
+    statusBar()->clearMessage();
+}
+
+void MainWindow::setupCoinChallengePowerupBoxes()
+{
+    if (!m_gameView || !m_gameView->trackData()) {
+        return;
+    }
+
+    qDeleteAll(m_powerupBoxes);
+    m_powerupBoxes.clear();
+    m_coinChallengeMagnetSpawnPool.clear();
+    m_coinChallengeBalloonRushSpawnPool.clear();
+    m_coinChallengeMagnetSpawnStage = 0;
+    m_coinChallengeBalloonRushSpawned = false;
+
+    TrackData* track = m_gameView->trackData();
+    const QVector2D start = track->getStartPosition();
+    QList<QRectF> blockedAreas;
+    if (m_challengeObstacleManager) {
+        blockedAreas.append(m_challengeObstacleManager->allObstacleBounds());
+    }
+    if (m_blockerVehicleManager) {
+        blockedAreas.append(m_blockerVehicleManager->allVehicleBounds());
+    }
+    QList<QVector2D> candidates;
+
+    auto appendCandidate = [this, &candidates, start, blockedAreas, track](const QVector2D& candidate) {
+        QVector2D snappedCandidate;
+        if (!snapToNearestCoinChallengeRoadPoint(track, candidate, snappedCandidate)) {
+            return;
+        }
+        if (!isCoinChallengePowerupSpawnPointValid(snappedCandidate, 260.0f)) {
+            return;
+        }
+        if ((snappedCandidate - start).length() < 260.0f) {
+            return;
+        }
+        for (const QRectF& rect : blockedAreas) {
+            if (rect.adjusted(-28.0, -28.0, 28.0, 28.0).contains(snappedCandidate.toPointF())) {
+                return;
+            }
+        }
+        for (const QVector2D& existing : candidates) {
+            if ((existing - snappedCandidate).length() < 150.0f) {
+                return;
+            }
+        }
+        candidates.append(snappedCandidate);
+    };
+
+    for (const QVector2D& itemBox : track->getItemBoxPositions()) {
+        appendCandidate(itemBox);
+    }
+
+    const QList<Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    for (const Checkpoint* checkpoint : checkpoints) {
+        if (checkpoint) {
+            appendCandidate(checkpoint->getPosition());
+        }
+    }
+
+    if (candidates.isEmpty()) {
+        appendCandidate(start + QVector2D(320.0f, 180.0f));
+        appendCandidate(start + QVector2D(-280.0f, 360.0f));
+        appendCandidate(start + QVector2D(120.0f, 520.0f));
+    }
+
+    if (candidates.isEmpty()) {
+        return;
+    }
+
+    std::shuffle(candidates.begin(), candidates.end(), *QRandomGenerator::global());
+    const int spawnCount = qMin(4, candidates.size());
+    for (int i = 0; i < spawnCount; ++i) {
+        if (spawnCount >= 3 && i == spawnCount - 1) {
+            m_coinChallengeBalloonRushSpawnPool.append(candidates.at(i));
+        } else {
+            m_coinChallengeMagnetSpawnPool.append(candidates.at(i));
+        }
+    }
+
+    if (m_coinChallengeBalloonRushSpawnPool.isEmpty() && !candidates.isEmpty()) {
+        m_coinChallengeBalloonRushSpawnPool.append(candidates.constLast());
+    }
+}
+
+bool MainWindow::isCoinChallengePowerupSpawnPointValid(const QVector2D& position, qreal minDistanceFromPlayers) const
+{
+    if (!m_gameView) {
+        return false;
+    }
+
+    TrackData* track = m_gameView->trackData();
+    if (!track || !track->containsPoint(position)) {
+        return false;
+    }
+
+    const QPoint tileCoord = TrackData::worldToTile(position, kTileSize);
+    TrackTile* tile = track->getTileAt(tileCoord.y(), tileCoord.x());
+    if (!tile || !isDrivableSurface(tile->getType())) {
+        return false;
+    }
+
+    if (positionNearStartFinish(track, position, 88.0) || tileAtIsStartFinish(track, position)) {
+        return false;
+    }
+
+    const QList<Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    for (const Checkpoint* checkpoint : checkpoints) {
+        if (checkpoint && checkpoint->containsPoint(position)) {
+            return false;
+        }
+    }
+
+    for (const QRectF& rect : currentCoinChallengeBlockedAreas()) {
+        if (rect.adjusted(-32.0, -32.0, 32.0, 32.0).contains(position.toPointF())) {
+            return false;
+        }
+    }
+
+    if ((position - m_playerPosition).length() < minDistanceFromPlayers) {
+        return false;
+    }
+    if (m_twoPlayerMode && (position - m_player2Position).length() < minDistanceFromPlayers) {
+        return false;
+    }
+
+    for (PowerupBox* box : m_powerupBoxes) {
+        if (!box || !box->isActive()) {
+            continue;
+        }
+        if ((box->position() - position).length() < 120.0f) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool MainWindow::tryTakeCoinChallengePowerupSpawnPoint(QList<QVector2D>& spawnPool, QVector2D& outPosition) const
+{
+    if (spawnPool.isEmpty()) {
+        return false;
+    }
+
+    QList<QVector2D> deferred;
+    while (!spawnPool.isEmpty()) {
+        const QVector2D candidate = spawnPool.takeFirst();
+        if (isCoinChallengePowerupSpawnPointValid(candidate)) {
+            deferred.append(spawnPool);
+            spawnPool = deferred;
+            outPosition = candidate;
+            return true;
+        }
+        deferred.append(candidate);
+    }
+
+    spawnPool = deferred;
+    return false;
+}
+
+void MainWindow::updateCoinChallengeLoopProgress(const QVector2D& positionBefore)
+{
+    if (!isCoinChallengeModeActive() || !m_gameView || !m_gameView->trackData()) {
+        return;
+    }
+
+    TrackData* track = m_gameView->trackData();
+    const QList<Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    const bool onStartZone = tileAtIsStartFinish(track, m_playerPosition)
+        || positionNearStartFinish(track, m_playerPosition, 72.0);
+
+    if (!onStartZone) {
+        m_coinChallengeLeftStartZone = true;
+    }
+
+    if (m_coinChallengeLoopCheckpointIndex < checkpoints.size()) {
+        Checkpoint* nextCheckpoint = checkpoints.at(m_coinChallengeLoopCheckpointIndex);
+        if (nextCheckpoint && crossedCheckpointGate(nextCheckpoint, positionBefore, m_playerPosition)) {
+            ++m_coinChallengeLoopCheckpointIndex;
+        }
+    }
+
+    const bool readyForLoopComplete = checkpoints.isEmpty()
+        ? m_coinChallengeLeftStartZone
+        : (m_coinChallengeLeftStartZone && m_coinChallengeLoopCheckpointIndex >= checkpoints.size());
+    const bool crossedStartZone = readyForLoopComplete && onStartZone && !m_coinChallengeWasOnStartZone;
+    if (crossedStartZone) {
+        ++m_coinChallengeLoopsCompleted;
+        m_coinChallengeLoopCheckpointIndex = 0;
+        m_coinChallengeLeftStartZone = false;
+        playSound(PhantomDrive::SoundEffect::Checkpoint);
+    }
+
+    m_coinChallengeWasOnStartZone = onStartZone;
+}
+
+void MainWindow::maybeSpawnCoinChallengeMagnet()
+{
+    if (!isCoinChallengeModeActive() || !m_gameView) {
+        return;
+    }
+
+    const QList<PowerupBox*> activeBoxes = m_powerupBoxes;
+    for (PowerupBox* box : activeBoxes) {
+        if (box && box->isActive()) {
+            return;
+        }
+    }
+
+    if (m_coinChallengeMagnetSpawnPool.isEmpty()) {
+        return;
+    }
+
+    const int runCoins = m_collectibleManager ? m_collectibleManager->runCoins() : 0;
+    const bool spawnFirstMagnet = m_coinChallengeMagnetSpawnStage == 0 && m_coinChallengeLoopsCompleted >= 1;
+    const bool spawnSecondMagnet = m_coinChallengeMagnetSpawnStage == 1 && runCoins >= m_coinChallengeGoalCoins;
+
+    if (!spawnFirstMagnet && !spawnSecondMagnet) {
+        return;
+    }
+
+    QVector2D spawnPos;
+    if (!tryTakeCoinChallengePowerupSpawnPoint(m_coinChallengeMagnetSpawnPool, spawnPos)) {
+        return;
+    }
+    spawnCoinChallengeMagnetBox(spawnPos);
+    ++m_coinChallengeMagnetSpawnStage;
+}
+
+void MainWindow::maybeSpawnCoinChallengeBalloonRush()
+{
+    if (!isCoinChallengeModeActive() || !m_gameView || m_coinChallengeBalloonRushSpawned) {
+        return;
+    }
+
+    const QList<PowerupBox*> activeBoxes = m_powerupBoxes;
+    for (PowerupBox* box : activeBoxes) {
+        if (box && box->isActive()) {
+            return;
+        }
+    }
+
+    if (m_coinChallengeBalloonRushSpawnPool.isEmpty()) {
+        return;
+    }
+
+    const int runCoins = m_collectibleManager ? m_collectibleManager->runCoins() : 0;
+    if (runCoins < kCoinChallengeBalloonRushMilestone || m_coinChallengeLoopsCompleted < 1) {
+        return;
+    }
+
+    QVector2D spawnPos;
+    if (!tryTakeCoinChallengePowerupSpawnPoint(m_coinChallengeBalloonRushSpawnPool, spawnPos)) {
+        return;
+    }
+    spawnCoinChallengeBalloonRushBox(spawnPos);
+    m_coinChallengeBalloonRushSpawned = true;
+}
+
+void MainWindow::spawnCoinChallengeMagnetBox(const QVector2D& position)
+{
+    if (!m_gameView) {
+        return;
+    }
+
+    const QString id = QStringLiteral("coin_magnet_%1").arg(m_coinChallengeMagnetSpawnStage + 1);
+    const QString typeName = powerupTypeToString(PowerupType::Magnet);
+    auto* box = new PowerupBox(position, 54.0f, this);
+    box->setObjectName(id);
+    box->setFixedPowerupType(PowerupType::Magnet);
+    box->setRespawnTime(kCoinChallengePowerupRespawnSeconds);
+    m_powerupBoxes.append(box);
+    m_gameView->addPowerupBox(id, position, typeName);
+
+    connect(box, &PowerupBox::collected,
+            this, [this, id](const QString& playerId, const PowerupType& collectedType) {
+                if (m_gameView) {
+                    m_gameView->removePowerupBox(id);
+                }
+                if (playerId == QStringLiteral("player_1")) {
+                    handlePowerupCollectedForPlayer(collectedType, 1);
+                }
+            });
+    connect(box, &PowerupBox::respawned,
+            this, [this, id, typeName, box]() {
+                if (m_gameView && box) {
+                    m_gameView->addPowerupBox(id, box->position(), typeName);
+                }
+            });
+}
+
+void MainWindow::spawnCoinChallengeBalloonRushBox(const QVector2D& position)
+{
+    if (!m_gameView) {
+        return;
+    }
+
+    const QString id = QStringLiteral("coin_balloon_rush");
+    const QString typeName = QStringLiteral("Balloon Rush");
+    auto* box = new PowerupBox(position, 56.0f, this);
+    box->setObjectName(id);
+    box->setFixedPowerupType(PowerupType::Custom);
+    box->setRespawnTime(kCoinChallengePowerupRespawnSeconds);
+    m_powerupBoxes.append(box);
+    m_gameView->addPowerupBox(id, position, typeName);
+
+    connect(box, &PowerupBox::collected,
+            this, [this, id](const QString& playerId, const PowerupType&) {
+                if (m_gameView) {
+                    m_gameView->removePowerupBox(id);
+                }
+                if (playerId == QStringLiteral("player_1")) {
+                    activateCoinChallengeBalloonRush();
+                }
+            });
+}
+
+void MainWindow::activateCoinChallengeBalloonRush()
+{
+    if (!isCoinChallengeModeActive() || isCoinChallengeBalloonRushSequenceActive()) {
+        return;
+    }
+
+    ++m_coinChallengePowerupsUsed;
+    m_coinChallengeBalloonRushPhase = CoinChallengeBalloonRushPhase::Trigger;
+    m_coinChallengeBalloonRushTriggerRemainingMs = kCoinChallengeBalloonRushTriggerDurationMs;
+    m_coinChallengeBalloonRushRemainingMs = kCoinChallengeBalloonRushSceneDurationMs;
+    m_coinChallengeBalloonRushIntroCountdownRemainingMs = 0;
+    m_coinChallengeBalloonRushIntroCountdownAnnounced = -1;
+    m_coinChallengeBalloonRushCollectedCoins = 0;
+    m_coinChallengeBalloonRushIntroCountdownRemainingMs = 0;
+    m_coinChallengeBalloonRushIntroCountdownAnnounced = -1;
+    m_coinChallengeBalloonRushRecentGainValue = 0;
+    m_coinChallengeBalloonRushGainFlashRemainingMs = 0;
+    m_coinChallengeBalloonRushMilestoneRemainingMs = 0;
+    m_coinChallengeBalloonRushMilestoneDurationMs = 0;
+    m_coinChallengeBalloonRushReturnRemainingMs = 0;
+    m_coinChallengeBalloonRushSavedPosition = m_playerPosition;
+    m_coinChallengeBalloonRushSavedRotation = m_playerRotation;
+    m_coinChallengeBalloonRushSavedSpeed = m_playerSpeed;
+    m_coinChallengeBalloonRushLaneIndex = 1;
+    m_coinChallengeBalloonRushLaneVisual = 1.0;
+    m_coinChallengeBalloonRushRoadScroll = 0.0;
+    m_coinChallengeBalloonRushSpawnAccumulatorMs = 0.0;
+    m_coinChallengeBalloonRushPatternLane = 1;
+    m_coinChallengeBalloonRushPatternBatchCount = 0;
+    m_coinChallengeBalloonRushRecentSegmentLanes.clear();
+    m_coinChallengeBalloonRushVisitedLanes.clear();
+    m_coinChallengeBalloonRushCoinLayout.clear();
+    m_coinChallengeBalloonRushMilestoneHeadline.clear();
+    m_coinChallengeBalloonRushMilestoneDetail.clear();
+    m_coinChallengeBalloonRushMilestoneAccent = QColor();
+
+    if (m_vehiclePhysics) {
+        m_vehiclePhysics->clearDriveInput();
+    }
+    if (m_player2Physics) {
+        m_player2Physics->clearDriveInput();
+    }
+
+    playSound(PhantomDrive::SoundEffect::PowerupCustom);
+    QTimer::singleShot(110, this, [this]() {
+        if (isCoinChallengeModeActive() && isCoinChallengeBalloonRushSequenceActive()) {
+            playSound(PhantomDrive::SoundEffect::Checkpoint);
+        }
+    });
+
+    showInteractiveFeedback(QStringLiteral("Balloon Rush!"), PhantomDrive::FeedbackType::Powerup);
+    syncCoinChallengeMagnetLoop();
+    refreshCoinChallengeHazardVisuals();
+    refreshCoinChallengeBalloonRushScene();
+    updateCoinChallengeHud();
+}
+
+bool MainWindow::isCoinChallengeBalloonRushSequenceActive() const
+{
+    return m_coinChallengeBalloonRushPhase != CoinChallengeBalloonRushPhase::Inactive;
+}
+
+bool MainWindow::isCoinChallengeBalloonRushSceneActive() const
+{
+    return m_coinChallengeBalloonRushPhase == CoinChallengeBalloonRushPhase::BonusScene;
+}
+
+void MainWindow::updateCoinChallengeBalloonRush(int deltaMs)
+{
+    if (!isCoinChallengeModeActive() || !isCoinChallengeBalloonRushSequenceActive()) {
+        return;
+    }
+
+    if (m_coinChallengeBalloonRushPhase == CoinChallengeBalloonRushPhase::Trigger) {
+        m_coinChallengeBalloonRushTriggerRemainingMs = qMax(0, m_coinChallengeBalloonRushTriggerRemainingMs - deltaMs);
+        if (m_coinChallengeBalloonRushTriggerRemainingMs <= 0) {
+            enterCoinChallengeBalloonRushBonusScene();
+            return;
+        }
+
+        refreshCoinChallengeBalloonRushScene();
+        return;
+    }
+
+    if (m_coinChallengeBalloonRushPhase == CoinChallengeBalloonRushPhase::Return) {
+        m_coinChallengeBalloonRushReturnRemainingMs = qMax(0, m_coinChallengeBalloonRushReturnRemainingMs - deltaMs);
+        if (m_coinChallengeBalloonRushReturnRemainingMs <= 0) {
+            finishCoinChallengeBalloonRush();
+            return;
+        }
+
+        refreshCoinChallengeBalloonRushScene();
+        return;
+    }
+
+    if (m_coinChallengeBalloonRushPhase != CoinChallengeBalloonRushPhase::BonusScene) {
+        finishCoinChallengeBalloonRush();
+        return;
+    }
+
+    const qreal deltaSeconds = qMax<qreal>(0.0, static_cast<qreal>(deltaMs) / 1000.0);
+    const int runCoinsBeforeFrame = m_collectibleManager ? m_collectibleManager->runCoins() : 0;
+    int collectedThisFrame = 0;
+    m_coinChallengeBalloonRushRemainingMs = qMax(0, m_coinChallengeBalloonRushRemainingMs - deltaMs);
+    m_coinChallengeBalloonRushLaneVisual += (static_cast<qreal>(m_coinChallengeBalloonRushLaneIndex) - m_coinChallengeBalloonRushLaneVisual)
+        * qMin<qreal>(1.0, deltaSeconds * 10.0);
+    m_coinChallengeBalloonRushGainFlashRemainingMs = qMax(0, m_coinChallengeBalloonRushGainFlashRemainingMs - deltaMs);
+    m_coinChallengeBalloonRushMilestoneRemainingMs = qMax(0, m_coinChallengeBalloonRushMilestoneRemainingMs - deltaMs);
+    if (m_coinChallengeBalloonRushGainFlashRemainingMs <= 0) {
+        m_coinChallengeBalloonRushRecentGainValue = 0;
+    }
+
+    if (m_coinChallengeBalloonRushMilestoneRemainingMs <= 0) {
+        m_coinChallengeBalloonRushMilestoneDurationMs = 0;
+        m_coinChallengeBalloonRushMilestoneHeadline.clear();
+        m_coinChallengeBalloonRushMilestoneDetail.clear();
+        m_coinChallengeBalloonRushMilestoneAccent = QColor();
+    }
+
+    const int introCountdownStage = balloonRushIntroCountdownStage(m_coinChallengeBalloonRushRemainingMs);
+    if (introCountdownStage >= 0 && introCountdownStage != m_coinChallengeBalloonRushIntroCountdownAnnounced) {
+        m_coinChallengeBalloonRushIntroCountdownAnnounced = introCountdownStage;
+        playSound(coinChallengeCountdownSoundForStage(introCountdownStage));
+    }
+
+    m_coinChallengeBalloonRushRoadScroll += deltaSeconds * 1.85;
+    m_coinChallengeBalloonRushSpawnAccumulatorMs += deltaMs;
+    while (m_coinChallengeBalloonRushSpawnAccumulatorMs >= kCoinChallengeBalloonRushCoinSpawnIntervalMs) {
+        m_coinChallengeBalloonRushSpawnAccumulatorMs -= kCoinChallengeBalloonRushCoinSpawnIntervalMs;
+        if (m_coinChallengeBalloonRushPatternBatchCount <= 0) {
+            int nextLane = m_coinChallengeBalloonRushPatternLane;
+            if (m_coinChallengeBalloonRushVisitedLanes.isEmpty()) {
+                nextLane = 1;
+            } else {
+                QList<int> laneCandidates;
+                QList<int> missingLanes;
+                for (int lane = 0; lane < 3; ++lane) {
+                    if (!m_coinChallengeBalloonRushVisitedLanes.contains(lane)) {
+                        missingLanes.append(lane);
+                    }
+                }
+
+                if (!missingLanes.isEmpty()) {
+                    for (const int lane : missingLanes) {
+                        if (lane != m_coinChallengeBalloonRushPatternLane) {
+                            laneCandidates.append(lane);
+                        }
+                    }
+                    if (laneCandidates.isEmpty()) {
+                        laneCandidates = missingLanes;
+                    }
+                } else {
+                    for (int lane = 0; lane < 3; ++lane) {
+                        if (lane == m_coinChallengeBalloonRushPatternLane) {
+                            continue;
+                        }
+                        if (!m_coinChallengeBalloonRushRecentSegmentLanes.contains(lane)) {
+                            laneCandidates.append(lane);
+                        }
+                    }
+                    if (laneCandidates.isEmpty()) {
+                        for (int lane = 0; lane < 3; ++lane) {
+                            if (lane != m_coinChallengeBalloonRushPatternLane) {
+                                laneCandidates.append(lane);
+                            }
+                        }
+                    }
+                }
+
+                if (!laneCandidates.isEmpty()) {
+                    nextLane = laneCandidates.at(QRandomGenerator::global()->bounded(laneCandidates.size()));
+                }
+            }
+            m_coinChallengeBalloonRushPatternLane = qBound(0, nextLane, 2);
+            m_coinChallengeBalloonRushVisitedLanes.insert(m_coinChallengeBalloonRushPatternLane);
+            m_coinChallengeBalloonRushRecentSegmentLanes.append(m_coinChallengeBalloonRushPatternLane);
+            while (m_coinChallengeBalloonRushRecentSegmentLanes.size() > 2) {
+                m_coinChallengeBalloonRushRecentSegmentLanes.removeFirst();
+            }
+            m_coinChallengeBalloonRushPatternBatchCount = 3 + QRandomGenerator::global()->bounded(3);
+        }
+
+        const int primaryLane = qBound(0, m_coinChallengeBalloonRushPatternLane, 2);
+        const qreal baseDepth = 0.10 + 0.010 * QRandomGenerator::global()->bounded(3);
+        m_coinChallengeBalloonRushCoinLayout.append(QPointF(primaryLane, baseDepth));
+        --m_coinChallengeBalloonRushPatternBatchCount;
+    }
+
+    const qreal travelStep = kCoinChallengeBalloonRushCoinSpeedPerSecond * deltaSeconds;
+    for (int i = m_coinChallengeBalloonRushCoinLayout.size() - 1; i >= 0; --i) {
+        QPointF coin = m_coinChallengeBalloonRushCoinLayout.at(i);
+        coin.setY(coin.y() + travelStep);
+
+        const bool inCatchWindow = coin.y() >= 0.82 && coin.y() <= 1.06;
+        const bool laneMatched = qAbs(coin.x() - static_cast<qreal>(m_coinChallengeBalloonRushLaneIndex)) <= 0.28;
+        if (inCatchWindow && laneMatched) {
+            m_coinChallengeBalloonRushCoinLayout.removeAt(i);
+            ++m_coinChallengeBalloonRushCollectedCoins;
+            ++collectedThisFrame;
+            if (m_collectibleManager && m_currencyManager) {
+                m_collectibleManager->addRunCoins(1, *m_currencyManager);
+            }
+            playSound(PhantomDrive::SoundEffect::PowerupCollect);
+            refreshGaragePage();
+            savePlayerProfile();
+            continue;
+        }
+
+        if (coin.y() > 1.14) {
+            m_coinChallengeBalloonRushCoinLayout.removeAt(i);
+            continue;
+        }
+
+        m_coinChallengeBalloonRushCoinLayout[i] = coin;
+    }
+
+    if (collectedThisFrame > 0) {
+        m_coinChallengeBalloonRushRecentGainValue = collectedThisFrame;
+        m_coinChallengeBalloonRushGainFlashRemainingMs = 620;
+        const int runCoinsAfterFrame = m_collectibleManager ? m_collectibleManager->runCoins() : runCoinsBeforeFrame;
+        handleCoinChallengeMilestones(runCoinsBeforeFrame, runCoinsAfterFrame);
+    }
+
+    if (m_coinChallengeBalloonRushRemainingMs <= 0) {
+        m_coinChallengeBalloonRushPhase = CoinChallengeBalloonRushPhase::Return;
+        m_coinChallengeBalloonRushReturnRemainingMs = kCoinChallengeBalloonRushReturnTransitionDurationMs;
+        m_coinChallengeBalloonRushCoinLayout.clear();
+        m_coinChallengeBalloonRushRecentGainValue = 0;
+        m_coinChallengeBalloonRushGainFlashRemainingMs = 0;
+        finishCoinChallengeBalloonRush(false);
+        refreshCoinChallengeBalloonRushScene();
+        return;
+    }
+
+    refreshCoinChallengeBalloonRushScene();
+}
+
+void MainWindow::enterCoinChallengeBalloonRushBonusScene()
+{
+    if (!isCoinChallengeModeActive()) {
+        return;
+    }
+
+    m_coinChallengeBalloonRushPhase = CoinChallengeBalloonRushPhase::BonusScene;
+    m_coinChallengeBalloonRushRemainingMs = kCoinChallengeBalloonRushSceneDurationMs;
+    m_coinChallengeBalloonRushReturnRemainingMs = 0;
+    m_coinChallengeBalloonRushLaneIndex = 1;
+    m_coinChallengeBalloonRushLaneVisual = 1.0;
+    m_coinChallengeBalloonRushRoadScroll = 0.0;
+    m_coinChallengeBalloonRushIntroCountdownRemainingMs = 0;
+    m_coinChallengeBalloonRushIntroCountdownAnnounced = -1;
+    m_coinChallengeBalloonRushSpawnAccumulatorMs = 0.0;
+    m_coinChallengeBalloonRushPatternLane = 1;
+    m_coinChallengeBalloonRushPatternBatchCount = 0;
+    m_coinChallengeBalloonRushRecentSegmentLanes.clear();
+    m_coinChallengeBalloonRushVisitedLanes.clear();
+    m_coinChallengeBalloonRushCoinLayout.clear();
+    syncCoinChallengeMagnetLoop();
+    refreshCoinChallengeBalloonRushScene();
+}
+
+void MainWindow::finishCoinChallengeBalloonRush(bool completeSequence)
+{
+    if (!isCoinChallengeModeActive()) {
+        return;
+    }
+
+    if (m_vehiclePhysics) {
+        m_vehiclePhysics->clearDriveInput();
+        QVector2D restorePosition = m_coinChallengeBalloonRushSavedPosition;
+        auto restorePositionIsSafe = [&](const QVector2D& candidate) {
+            return isCoinChallengePlayerPositionSafe(candidate);
+        };
+
+        if (!restorePositionIsSafe(restorePosition)) {
+            QVector2D snapped;
+            if (m_gameView && snapToNearestCoinChallengeRoadPoint(m_gameView->trackData(), restorePosition, snapped, 5)) {
+                restorePosition = snapped;
+            }
+            if (!restorePositionIsSafe(restorePosition)) {
+                static const QVector2D kRestoreOffsets[] = {
+                    QVector2D(0.0f, 0.0f),
+                    QVector2D(64.0f, 0.0f),
+                    QVector2D(-64.0f, 0.0f),
+                    QVector2D(0.0f, 64.0f),
+                    QVector2D(0.0f, -64.0f),
+                    QVector2D(96.0f, 32.0f),
+                    QVector2D(-96.0f, 32.0f)
+                };
+                for (const QVector2D& offset : kRestoreOffsets) {
+                    const QVector2D candidate = restorePosition + offset;
+                    if (restorePositionIsSafe(candidate)) {
+                        restorePosition = candidate;
+                        break;
+                    }
+                }
+            }
+        }
+
+        const qreal restoreSpeed = qBound<qreal>(42.0, m_coinChallengeBalloonRushSavedSpeed, 84.0);
+        m_vehiclePhysics->setPosition(restorePosition);
+        m_vehiclePhysics->setRotation(m_coinChallengeBalloonRushSavedRotation);
+        m_vehiclePhysics->setSpeed(restoreSpeed);
+        m_playerPosition = restorePosition;
+        m_playerRotation = m_coinChallengeBalloonRushSavedRotation;
+        m_playerSpeed = restoreSpeed;
+        if (restorePositionIsSafe(restorePosition)) {
+            m_coinChallengeLastSafePlayerPosition = restorePosition;
+            m_coinChallengeLastSafePlayerRotation = m_playerRotation;
+            m_coinChallengeHasSafePlayerPosition = true;
+        }
+    }
+
+    m_previousPlayerPosition = m_playerPosition;
+    if (m_gameView) {
+        m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                    m_playerPosition,
+                                    m_playerRotation,
+                                    displaySpeedKmh(),
+                                    currentPlayerSkinColor(),
+                                    m_vehiclePhysics && m_vehiclePhysics->isSpeedBoostActive(),
+                                    m_vehiclePhysics && m_vehiclePhysics->isShieldActive(),
+                                    m_vehiclePhysics && m_vehiclePhysics->isInvisible(),
+                                    m_vehiclePhysics && m_vehiclePhysics->isMagnetActive(),
+                                    currentPlayerSkinId());
+        m_gameView->setCameraPosition(m_playerPosition);
+        if (completeSequence) {
+            m_gameView->clearBalloonRushSceneState();
+        }
+    }
+
+    if (!completeSequence) {
+        if (m_collectibleManager) {
+            m_collectibleManager->setBlockedAreas(currentCoinChallengeBlockedAreas());
+        }
+        refreshCoinChallengeHazardVisuals();
+        updateCoinChallengeHud();
+        return;
+    }
+
+    m_coinChallengeBalloonRushPhase = CoinChallengeBalloonRushPhase::Inactive;
+    m_coinChallengeBalloonRushRemainingMs = 0;
+    m_coinChallengeBalloonRushTriggerRemainingMs = 0;
+    m_coinChallengeBalloonRushReturnRemainingMs = 0;
+    m_coinChallengeBalloonRushIntroCountdownRemainingMs = 0;
+    m_coinChallengeBalloonRushIntroCountdownAnnounced = -1;
+    m_coinChallengeBalloonRushCollectedCoins = 0;
+    m_coinChallengeBalloonRushRecentGainValue = 0;
+    m_coinChallengeBalloonRushGainFlashRemainingMs = 0;
+    m_coinChallengeBalloonRushMilestoneRemainingMs = 0;
+    m_coinChallengeBalloonRushMilestoneDurationMs = 0;
+    m_coinChallengeBalloonRushLaneIndex = 1;
+    m_coinChallengeBalloonRushLaneVisual = 1.0;
+    m_coinChallengeBalloonRushRoadScroll = 0.0;
+    m_coinChallengeBalloonRushSpawnAccumulatorMs = 0.0;
+    m_coinChallengeBalloonRushPatternBatchCount = 0;
+    m_coinChallengeBalloonRushRecentSegmentLanes.clear();
+    m_coinChallengeBalloonRushVisitedLanes.clear();
+    m_coinChallengeBalloonRushCoinLayout.clear();
+    m_coinChallengeBalloonRushMilestoneHeadline.clear();
+    m_coinChallengeBalloonRushMilestoneDetail.clear();
+    m_coinChallengeBalloonRushMilestoneAccent = QColor();
+    syncCoinChallengeMagnetLoop();
+    refreshCoinChallengeHazardVisuals();
+    updateCoinChallengeHud();
+}
+
+void MainWindow::refreshCoinChallengeBalloonRushScene()
+{
+    if (!m_gameView) {
+        return;
+    }
+
+    if (!isCoinChallengeBalloonRushSequenceActive()) {
+        m_gameView->clearBalloonRushSceneState();
+        return;
+    }
+
+    BalloonRushSceneState sceneState;
+    sceneState.active = true;
+    sceneState.triggerVisible = m_coinChallengeBalloonRushPhase == CoinChallengeBalloonRushPhase::Trigger;
+    sceneState.bonusSceneVisible = m_coinChallengeBalloonRushPhase == CoinChallengeBalloonRushPhase::BonusScene;
+    sceneState.returnTransitionVisible = m_coinChallengeBalloonRushPhase == CoinChallengeBalloonRushPhase::Return;
+    sceneState.introCountdownVisible = sceneState.bonusSceneVisible
+        && balloonRushIntroCountdownStage(m_coinChallengeBalloonRushRemainingMs) >= 0;
+    sceneState.remainingSeconds = qMax(0, static_cast<int>(qCeil(m_coinChallengeBalloonRushRemainingMs / 1000.0)));
+    sceneState.introCountdownValue = sceneState.introCountdownVisible
+        ? balloonRushIntroCountdownStage(m_coinChallengeBalloonRushRemainingMs)
+        : 0;
+    sceneState.collectedCoins = m_coinChallengeBalloonRushCollectedCoins;
+    sceneState.runCoins = m_collectibleManager ? m_collectibleManager->runCoins() : m_coinChallengeLastRunCoins;
+    sceneState.goalCoins = m_coinChallengeGoalCoins;
+    sceneState.recentGainValue = m_coinChallengeBalloonRushRecentGainValue;
+    sceneState.laneIndex = m_coinChallengeBalloonRushLaneIndex;
+    sceneState.laneVisual = m_coinChallengeBalloonRushLaneVisual;
+    sceneState.goalProgress = coinChallengeGoalProgress();
+    sceneState.gainFlashProgress = qBound<qreal>(0.0,
+                                                 static_cast<qreal>(m_coinChallengeBalloonRushGainFlashRemainingMs) / 620.0,
+                                                 1.0);
+    sceneState.introCountdownProgress = sceneState.introCountdownVisible
+        ? balloonRushIntroCountdownStageProgress(m_coinChallengeBalloonRushRemainingMs)
+        : 0.0;
+    sceneState.introCountdownLabel = sceneState.introCountdownVisible
+        ? balloonRushIntroCountdownLabel(m_coinChallengeBalloonRushRemainingMs)
+        : QString();
+    sceneState.roadScroll = m_coinChallengeBalloonRushRoadScroll;
+    sceneState.coinLayout = m_coinChallengeBalloonRushCoinLayout;
+    sceneState.returnTransitionProgress = sceneState.returnTransitionVisible
+        ? 1.0 - (static_cast<qreal>(m_coinChallengeBalloonRushReturnRemainingMs)
+                 / static_cast<qreal>(qMax(1, kCoinChallengeBalloonRushReturnTransitionDurationMs)))
+        : 0.0;
+    sceneState.milestonePopupVisible = sceneState.bonusSceneVisible && m_coinChallengeBalloonRushMilestoneRemainingMs > 0;
+    sceneState.milestonePopupProgress = sceneState.milestonePopupVisible
+        ? 1.0 - (static_cast<qreal>(m_coinChallengeBalloonRushMilestoneRemainingMs)
+                 / static_cast<qreal>(qMax(1, m_coinChallengeBalloonRushMilestoneDurationMs)))
+        : 0.0;
+    sceneState.milestoneHeadline = m_coinChallengeBalloonRushMilestoneHeadline;
+    sceneState.milestoneDetail = m_coinChallengeBalloonRushMilestoneDetail;
+    sceneState.milestoneAccent = m_coinChallengeBalloonRushMilestoneAccent;
+
+    if (sceneState.triggerVisible) {
+        const int viewHeight = m_gameView ? m_gameView->height() : height();
+        const qreal progress = 1.0 - (static_cast<qreal>(m_coinChallengeBalloonRushTriggerRemainingMs)
+            / static_cast<qreal>(qMax(1, kCoinChallengeBalloonRushTriggerDurationMs)));
+        const qreal pop = progress < 0.45
+            ? easeOutCubic(progress / 0.45)
+            : 1.0;
+        const qreal lift = progress > 0.52
+            ? easeOutCubic((progress - 0.52) / 0.48)
+            : 0.0;
+        sceneState.triggerProgress = qBound<qreal>(0.0, progress, 1.0);
+        sceneState.badgeOpacity = progress < 0.82 ? 1.0 : qMax<qreal>(0.0, (1.0 - progress) / 0.18);
+        sceneState.badgeScale = 0.62 + pop * 0.62 - lift * 0.08;
+        sceneState.badgeYOffset = -lift * viewHeight * 0.22;
+        sceneState.headline = QStringLiteral("BALLOON RUSH");
+        sceneState.detail = QStringLiteral("Bonus Scene incoming");
+    } else if (sceneState.returnTransitionVisible) {
+        sceneState.headline = QStringLiteral("RETURNING TO TRACK");
+        sceneState.detail = QStringLiteral("Dropping back from Balloon Rush");
+    } else if (sceneState.bonusSceneVisible) {
+        sceneState.headline = QStringLiteral("BALLOON RUSH");
+        sceneState.detail = QStringLiteral("Sweep the coin lanes");
+    }
+
+    m_gameView->setBalloonRushSceneState(sceneState);
+}
+
+void MainWindow::moveCoinChallengeBalloonRushLane(int direction)
+{
+    if (!isCoinChallengeBalloonRushSceneActive()) {
+        return;
+    }
+
+    const int nextLane = qBound(0, m_coinChallengeBalloonRushLaneIndex + direction, 2);
+    if (nextLane == m_coinChallengeBalloonRushLaneIndex) {
+        return;
+    }
+
+    m_coinChallengeBalloonRushLaneIndex = nextLane;
+    playSound(PhantomDrive::SoundEffect::Checkpoint);
+    refreshCoinChallengeBalloonRushScene();
+}
+
+void MainWindow::syncCoinChallengeMagnetLoop()
+{
+    const bool shouldPlay = isCoinChallengeModeActive()
+        && !m_coinChallengeSummaryVisible
+        && !m_gamePaused
+        && !isCoinChallengeBalloonRushSequenceActive()
+        && m_coinChallengeMagnetRemainingMs > 0;
+
+    SoundManager& soundManager = SoundManager::instance(this);
+    if (shouldPlay && !m_coinChallengeMagnetLoopPlaying) {
+        soundManager.playLoop(PhantomDrive::SoundEffect::PowerupMagnet);
+        m_coinChallengeMagnetLoopPlaying = true;
+    } else if (!shouldPlay && m_coinChallengeMagnetLoopPlaying) {
+        soundManager.stopLoop(PhantomDrive::SoundEffect::PowerupMagnet);
+        m_coinChallengeMagnetLoopPlaying = false;
+    }
+}
+
+void MainWindow::refreshCoinChallengeHazardVisuals()
+{
+    if (!m_gameView) {
+        return;
+    }
+
+    if (m_coinChallengeBalloonRushPhase == CoinChallengeBalloonRushPhase::BonusScene) {
+        m_gameView->clearChallengeObstacles();
+        m_gameView->clearBlockerVehicles();
+        return;
+    }
+
+    if (m_challengeObstacleManager) {
+        m_gameView->updateChallengeObstacles(m_challengeObstacleManager->activeObstacles());
+    } else {
+        m_gameView->clearChallengeObstacles();
+    }
+
+    if (m_blockerVehicleManager) {
+        m_gameView->updateBlockerVehicles(m_blockerVehicleManager->activeVehicles());
+    } else {
+        m_gameView->clearBlockerVehicles();
+    }
+}
+
+QList<QRectF> MainWindow::currentCoinChallengeBlockedAreas() const
+{
+    if (m_coinChallengeBalloonRushPhase == CoinChallengeBalloonRushPhase::BonusScene) {
+        return {};
+    }
+
+    QList<QRectF> blockedAreas;
+    if (m_challengeObstacleManager) {
+        blockedAreas.append(m_challengeObstacleManager->activeObstacleBounds());
+    }
+    if (m_blockerVehicleManager) {
+        blockedAreas.append(m_blockerVehicleManager->activeVehicleBounds());
+    }
+    return blockedAreas;
+}
+
+QRectF MainWindow::playerHazardCollisionRect(const QVector2D& position) const
+{
+    return QRectF(position.x() - 14.0,
+                  position.y() - 21.0,
+                  28.0,
+                  42.0);
+}
+
+bool MainWindow::isCoinChallengePlayerPositionSafe(const QVector2D& position) const
+{
+    if (!isCoinChallengeModeActive() || !m_vehiclePhysics || !m_gameView || !m_gameView->trackData()) {
+        return false;
+    }
+
+    if (m_coinChallengeBalloonRushPhase == CoinChallengeBalloonRushPhase::BonusScene
+        || m_coinChallengeForcedEndActive) {
+        return false;
+    }
+
+    TrackData* track = m_gameView->trackData();
+    const QPoint tileCoord = TrackData::worldToTile(position, kTileSize);
+    TrackTile* tile = track->getTileAt(tileCoord.y(), tileCoord.x());
+    if (!tile || !isCoinChallengeDrivableSurface(tile->getType())) {
+        return false;
+    }
+
+    const QRectF candidateRect = playerHazardCollisionRect(position);
+    for (const QRectF& bounds : currentCoinChallengeBlockedAreas()) {
+        if (candidateRect.intersects(bounds)) {
+            return false;
+        }
+    }
+
+    return m_vehiclePhysics->isPositionFree(position);
+}
+
+void MainWindow::updateCoinChallengeLastSafePosition()
+{
+    if (!isCoinChallengePlayerPositionSafe(m_playerPosition)) {
+        return;
+    }
+
+    m_coinChallengeLastSafePlayerPosition = m_playerPosition;
+    m_coinChallengeLastSafePlayerRotation = m_playerRotation;
+    m_coinChallengeHasSafePlayerPosition = true;
+}
+
+void MainWindow::applyCoinChallengeHazardCollision(const QVector2D& positionBeforeUpdate)
+{
+    if (!isCoinChallengeModeActive() || !m_vehiclePhysics || m_coinChallengeForcedEndActive) {
+        return;
+    }
+
+    const QRectF playerRect = playerHazardCollisionRect(m_playerPosition);
+    const QList<QRectF> hazardBounds = currentCoinChallengeBlockedAreas();
+    const QVector2D fallbackPosition = m_coinChallengeHasSafePlayerPosition
+        ? m_coinChallengeLastSafePlayerPosition
+        : positionBeforeUpdate;
+    const qreal fallbackRotation = m_coinChallengeHasSafePlayerPosition
+        ? m_coinChallengeLastSafePlayerRotation
+        : m_playerRotation;
+    const QSizeF playerCollisionSize(playerRect.width(), playerRect.height());
+
+    auto retainActiveContacts = [&playerRect](const QSet<QString>& contacts,
+                                              const auto& hazards,
+                                              qreal releasePadding) {
+        QSet<QString> retainedContacts;
+        for (const auto& hazard : hazards) {
+            const QRectF releaseZone = hazard.bounds().adjusted(-releasePadding,
+                                                                -releasePadding,
+                                                                releasePadding,
+                                                                releasePadding);
+            if (playerRect.intersects(releaseZone)) {
+                retainedContacts.insert(hazard.id);
+            }
+        }
+
+        QSet<QString> filteredContacts;
+        for (const QString& contactId : contacts) {
+            if (retainedContacts.contains(contactId)) {
+                filteredContacts.insert(contactId);
+            }
+        }
+        return filteredContacts;
+    };
+
+    auto syncPlayerStateFromPhysics = [&]() {
+        m_playerPosition = m_vehiclePhysics->getPosition();
+        m_previousPlayerPosition = m_playerPosition;
+        m_playerRotation = m_vehiclePhysics->getRotation();
+        m_playerSpeed = m_vehiclePhysics->getSpeed();
+        if (isCoinChallengePlayerPositionSafe(m_playerPosition)) {
+            m_coinChallengeLastSafePlayerPosition = m_playerPosition;
+            m_coinChallengeLastSafePlayerRotation = m_playerRotation;
+            m_coinChallengeHasSafePlayerPosition = true;
+        }
+        if (m_gameView) {
+            m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                        m_playerPosition,
+                                        m_playerRotation,
+                                        displaySpeedKmh(),
+                                        currentPlayerSkinColor(),
+                                        m_vehiclePhysics->isSpeedBoostActive(),
+                                        m_vehiclePhysics->isShieldActive(),
+                                        m_vehiclePhysics->isInvisible(),
+                                        m_vehiclePhysics->isMagnetActive(),
+                                        currentPlayerSkinId());
+        }
+    };
+
+    if (m_blockerVehicleManager) {
+        m_coinChallengeBlockerDamageContacts = retainActiveContacts(m_coinChallengeBlockerDamageContacts,
+                                                                    m_blockerVehicleManager->activeVehicles(),
+                                                                    18.0);
+    } else {
+        m_coinChallengeBlockerDamageContacts.clear();
+    }
+
+    if (m_challengeObstacleManager) {
+        m_coinChallengeObstacleDamageContacts = retainActiveContacts(m_coinChallengeObstacleDamageContacts,
+                                                                     m_challengeObstacleManager->activeObstacles(),
+                                                                     14.0);
+    } else {
+        m_coinChallengeObstacleDamageContacts.clear();
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+    if (m_blockerVehicleManager) {
+        for (const BlockerVehicle& blocker : m_blockerVehicleManager->activeVehicles()) {
+            const QRectF bounds = blocker.bounds();
+            if (!playerRect.intersects(bounds)) {
+                continue;
+            }
+
+            if (m_coinChallengeBlockerDamageContacts.contains(blocker.id)) {
+                continue;
+            }
+
+            if (!m_vehiclePhysics->resolveHazardCollision(bounds,
+                                                          hazardBounds,
+                                                          positionBeforeUpdate,
+                                                          fallbackPosition,
+                                                          fallbackRotation,
+                                                          playerCollisionSize,
+                                                          1.15)) {
+                continue;
+            }
+
+            m_coinChallengeBlockerDamageContacts.insert(blocker.id);
+            syncPlayerStateFromPhysics();
+            m_coinChallengeLastDamageMs = nowMs;
+            ++m_coinChallengeAICollisionCount;
+            applyCoinChallengeIntegrityDamage(kCoinChallengeBlockerCollisionDamage,
+                                              QStringLiteral("-%1").arg(kCoinChallengeBlockerCollisionDamage),
+                                              QStringLiteral("AI vehicle impact"));
+
+            if (m_gameView) {
+                m_gameView->showCollisionImpact((m_playerPosition + blocker.position) * 0.5f, 1.9);
+            }
+            if (nowMs - m_coinChallengeLastHazardSoundMs >= 280) {
+                m_coinChallengeLastHazardSoundMs = nowMs;
+                playSound(PhantomDrive::SoundEffect::Collision);
+            }
+            return;
+        }
+    }
+
+    if (m_challengeObstacleManager) {
+        for (const ChallengeObstacle& obstacle : m_challengeObstacleManager->activeObstacles()) {
+            const QRectF bounds = obstacle.bounds();
+            if (!playerRect.intersects(bounds)) {
+                continue;
+            }
+
+            if (m_coinChallengeObstacleDamageContacts.contains(obstacle.id)) {
+                continue;
+            }
+
+            const int damage = coinChallengeObstacleDamage(obstacle.type);
+            if (!m_vehiclePhysics->resolveHazardCollision(bounds,
+                                                          hazardBounds,
+                                                          positionBeforeUpdate,
+                                                          fallbackPosition,
+                                                          fallbackRotation,
+                                                          playerCollisionSize,
+                                                          0.76)) {
+                continue;
+            }
+
+            m_coinChallengeObstacleDamageContacts.insert(obstacle.id);
+            syncPlayerStateFromPhysics();
+            m_coinChallengeLastDamageMs = nowMs;
+            ++m_coinChallengeObstacleHits;
+            applyCoinChallengeIntegrityDamage(damage,
+                                              QStringLiteral("-%1").arg(damage),
+                                              coinChallengeObstacleDamageDetail(obstacle.type));
+
+            if (m_gameView) {
+                m_gameView->showCollisionImpact(m_playerPosition,
+                                                damage >= 15 ? 1.45 : 1.1);
+            }
+            if (nowMs - m_coinChallengeLastHazardSoundMs >= 280) {
+                m_coinChallengeLastHazardSoundMs = nowMs;
+                playSound(damage >= 15 ? PhantomDrive::SoundEffect::Collision
+                                       : PhantomDrive::SoundEffect::Crash);
+            }
+            return;
+        }
+    }
+}
+
+void MainWindow::handleCoinChallengeMilestones(int runCoinsBeforeUpdate, int runCoinsAfterUpdate)
+{
+    static const QList<int> milestones = {50, 70};
+    for (const int milestone : milestones) {
+        if (runCoinsBeforeUpdate < milestone
+            && runCoinsAfterUpdate >= milestone
+            && !m_coinChallengeTriggeredMilestones.contains(milestone)) {
+            m_coinChallengeTriggeredMilestones.insert(milestone);
+            triggerCoinChallengeMilestone(milestone);
+        }
+    }
+}
+
+void MainWindow::triggerCoinChallengeMilestone(int milestoneCoins)
+{
+    if (!m_gameView) {
+        return;
+    }
+
+    QString headline;
+    QString detail;
+    QColor accent;
+
+    switch (milestoneCoins) {
+    case 50:
+        headline = QStringLiteral("MILESTONE 1");
+        detail = QStringLiteral("50 / 70 COINS");
+        accent = QColor(255, 178, 66);
+        break;
+    case 70:
+        headline = QStringLiteral("MILESTONE 2");
+        detail = QStringLiteral("GOAL COMPLETE - 70 COINS");
+        accent = QColor(125, 255, 184);
+        break;
+    default:
+        return;
+    }
+
+    if (isCoinChallengeBalloonRushSceneActive()) {
+        m_coinChallengeBalloonRushMilestoneHeadline = headline;
+        m_coinChallengeBalloonRushMilestoneDetail = detail;
+        m_coinChallengeBalloonRushMilestoneAccent = accent;
+        m_coinChallengeBalloonRushMilestoneDurationMs = detail.contains(QStringLiteral("70")) ? 2250 : 1850;
+        m_coinChallengeBalloonRushMilestoneRemainingMs = m_coinChallengeBalloonRushMilestoneDurationMs;
+        refreshCoinChallengeBalloonRushScene();
+        return;
+    }
+
+    m_gameView->triggerMilestoneCelebration(headline, detail, accent);
+}
+
+QString MainWindow::currentPlayerSkinId() const
+{
+    return m_skinManager ? m_skinManager->currentSkinId() : QStringLiteral("default");
+}
+
+QColor MainWindow::currentPlayerSkinColor() const
+{
+    const QString skinId = currentPlayerSkinId();
+    if (skinId == QStringLiteral("blue")) {
+        return QColor(44, 118, 255);
+    }
+    if (skinId == QStringLiteral("neon")) {
+        return QColor(40, 246, 224);
+    }
+    if (skinId == QStringLiteral("gold")) {
+        return QColor(247, 196, 81);
+    }
+    if (skinId == QStringLiteral("aurora")) {
+        return QColor(51, 168, 255);
+    }
+    if (skinId == QStringLiteral("splitfire")) {
+        return QColor(255, 97, 77);
+    }
+    if (skinId == QStringLiteral("violet")) {
+        return QColor(108, 92, 255);
+    }
+    return QColor(228, 234, 242);
 }
 
 void MainWindow::onDrivingDataCollected(const DrivingData& data)
@@ -4822,11 +8320,12 @@ void MainWindow::onDrivingDataCollected(const DrivingData& data)
                                         m_playerPosition,
                                         m_playerRotation,
                                         displaySpeedKmh(),
-                                        QColor(255, 48, 118),
+                                        currentPlayerSkinColor(),
                                         m_vehiclePhysics ? m_vehiclePhysics->isSpeedBoostActive() : false,
                                         m_vehiclePhysics ? m_vehiclePhysics->isShieldActive() : false,
                                         m_vehiclePhysics ? m_vehiclePhysics->isInvisible() : false,
-                                        m_vehiclePhysics ? m_vehiclePhysics->isMagnetActive() : false);
+                                        m_vehiclePhysics ? m_vehiclePhysics->isMagnetActive() : false,
+                                        currentPlayerSkinId());
             m_gameView->updatePlayerCar(QStringLiteral("P2"),
                                         m_player2Position,
                                         m_player2Rotation,
@@ -4838,7 +8337,16 @@ void MainWindow::onDrivingDataCollected(const DrivingData& data)
                                         m_player2Physics ? m_player2Physics->isMagnetActive() : false);
             updateTwoPlayerCamera();
         } else {
-            m_gameView->updatePlayerCar(m_playerPosition, m_playerRotation, displaySpeedKmh());
+            m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                        m_playerPosition,
+                                        m_playerRotation,
+                                        displaySpeedKmh(),
+                                        currentPlayerSkinColor(),
+                                        m_vehiclePhysics ? m_vehiclePhysics->isSpeedBoostActive() : false,
+                                        m_vehiclePhysics ? m_vehiclePhysics->isShieldActive() : false,
+                                        m_vehiclePhysics ? m_vehiclePhysics->isInvisible() : false,
+                                        m_vehiclePhysics ? m_vehiclePhysics->isMagnetActive() : false,
+                                        currentPlayerSkinId());
             m_gameView->setCameraPosition(m_playerPosition);
         }
     }
@@ -4886,11 +8394,12 @@ void MainWindow::updateGameViewFromData(const DrivingData& data)
                                     m_playerPosition,
                                     m_playerRotation,
                                     displaySpeedKmh(),
-                                    QColor(255, 48, 118),
+                                    currentPlayerSkinColor(),
                                     m_vehiclePhysics ? m_vehiclePhysics->isSpeedBoostActive() : false,
                                     m_vehiclePhysics ? m_vehiclePhysics->isShieldActive() : false,
                                     m_vehiclePhysics ? m_vehiclePhysics->isInvisible() : false,
-                                    m_vehiclePhysics ? m_vehiclePhysics->isMagnetActive() : false);
+                                    m_vehiclePhysics ? m_vehiclePhysics->isMagnetActive() : false,
+                                    currentPlayerSkinId());
         m_gameView->updatePlayerCar(QStringLiteral("P2"),
                                     m_player2Position,
                                     m_player2Rotation,
@@ -4902,7 +8411,16 @@ void MainWindow::updateGameViewFromData(const DrivingData& data)
                                     m_player2Physics ? m_player2Physics->isMagnetActive() : false);
         updateTwoPlayerCamera();
     } else {
-        m_gameView->updatePlayerCar(data.position, data.rotation, data.speed);
+        m_gameView->updatePlayerCar(QStringLiteral("P1"),
+                                    data.position,
+                                    data.rotation,
+                                    speedToDisplayKmh(data.speed),
+                                    currentPlayerSkinColor(),
+                                    m_vehiclePhysics ? m_vehiclePhysics->isSpeedBoostActive() : false,
+                                    m_vehiclePhysics ? m_vehiclePhysics->isShieldActive() : false,
+                                    m_vehiclePhysics ? m_vehiclePhysics->isInvisible() : false,
+                                    m_vehiclePhysics ? m_vehiclePhysics->isMagnetActive() : false,
+                                    currentPlayerSkinId());
         m_gameView->setCameraPosition(data.position);
     }
 }
@@ -4955,16 +8473,22 @@ void MainWindow::playSound(PhantomDrive::SoundEffect effect)
 void MainWindow::showCountdown()
 {
     const int sessionGeneration = m_sessionGeneration;
-    if (m_arcadeHUD) {
+    if (!isCoinChallengeModeActive() && m_arcadeHUD) {
         m_arcadeHUD->show();
         updateRaceHud();
+    } else {
+        updateCoinChallengeHud();
     }
 
-    PhantomDrive::InteractiveFeedback::instance(this).showCountdown(3);
+    if (!isCoinChallengeModeActive()) {
+        PhantomDrive::InteractiveFeedback::instance(this).showCountdown(3);
+    } else {
+        m_coinChallengeCountdownAnnouncedStage = -1;
+    }
 
-    // Voice countdown + race start sound are handled inside InteractiveFeedback::showCountdown
-    // and in onRaceStart respectively.
-    PhantomDrive::SoundManager::instance(this).play(PhantomDrive::SoundEffect::RaceStart);
+    if (!isCoinChallengeModeActive()) {
+        PhantomDrive::SoundManager::instance(this).play(PhantomDrive::SoundEffect::RaceStart);
+    }
 
     m_countdownSessionGeneration = sessionGeneration;
     startCountdownFinishTimer(3200);
@@ -4983,6 +8507,26 @@ void MainWindow::onRaceStart()
     m_currentLapStartMs = m_sessionElapsedMs;
     m_bestLapMs = 0;
     m_arcadeRaceFinished = false;
+
+    if (isCoinChallengeModeActive()) {
+        focusGameViewForDriving();
+        QTimer::singleShot(50, this, [this]() {
+            focusGameViewForDriving();
+        });
+
+        if (m_learningHUD) {
+            m_learningHUD->hide();
+        }
+        if (m_arcadeHUD) {
+            m_arcadeHUD->hide();
+        }
+        if (m_btnFinishDrive) {
+            m_btnFinishDrive->setEnabled(true);
+        }
+        updateCoinChallengeHud();
+        statusBar()->showMessage(QStringLiteral("Coin Challenge live"), 1800);
+        return;
+    }
 
     syncRaceTrackToManager();
     resetArcadeRaceProgress();

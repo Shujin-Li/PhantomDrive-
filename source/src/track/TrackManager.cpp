@@ -1,10 +1,227 @@
 #include "TrackManager.h"
 
 #include <QDebug>
+#include <QPoint>
+#include <QQueue>
+#include <QSet>
+#include <QVector>
 #include <QtMath>
 #include <limits>
 
 namespace PhantomDrive {
+
+namespace {
+
+bool isAiWaypointTile(const TrackTile* tile)
+{
+    if (!tile) {
+        return false;
+    }
+
+    switch (tile->getType()) {
+    case TileType::Road:
+    case TileType::Asphalt:
+    case TileType::StartLine:
+    case TileType::FinishLine:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool isValidTileCoord(TrackData* track, const QPoint& tileCoord)
+{
+    return track
+        && tileCoord.y() >= 0
+        && tileCoord.y() < track->getRowCount()
+        && tileCoord.x() >= 0
+        && tileCoord.x() < track->getColCount();
+}
+
+int tileKey(TrackData* track, const QPoint& tileCoord)
+{
+    return tileCoord.y() * track->getColCount() + tileCoord.x();
+}
+
+QPoint findNearestAiTile(TrackData* track, const QVector2D& worldPos)
+{
+    if (!track) {
+        return QPoint(-1, -1);
+    }
+
+    const QPoint tileCoord = TrackData::worldToTile(worldPos);
+    if (isValidTileCoord(track, tileCoord) && isAiWaypointTile(track->getTileAt(tileCoord.y(), tileCoord.x()))) {
+        return tileCoord;
+    }
+
+    QPoint bestTile(-1, -1);
+    qreal bestDistanceSq = std::numeric_limits<qreal>::max();
+    for (int row = 0; row < track->getRowCount(); ++row) {
+        for (int col = 0; col < track->getColCount(); ++col) {
+            TrackTile* tile = track->getTileAt(row, col);
+            if (!isAiWaypointTile(tile)) {
+                continue;
+            }
+
+            const qreal distanceSq = (TrackData::tileToWorldCenter(row, col) - worldPos).lengthSquared();
+            if (distanceSq < bestDistanceSq) {
+                bestDistanceSq = distanceSq;
+                bestTile = QPoint(col, row);
+            }
+        }
+    }
+
+    return bestTile;
+}
+
+QList<QPoint> checkpointGoalTiles(TrackData* track, const Checkpoint* checkpoint)
+{
+    QList<QPoint> goals;
+    if (!track || !checkpoint) {
+        return goals;
+    }
+
+    const QRectF checkpointBounds = checkpoint->getBounds();
+    for (int row = 0; row < track->getRowCount(); ++row) {
+        for (int col = 0; col < track->getColCount(); ++col) {
+            TrackTile* tile = track->getTileAt(row, col);
+            if (!isAiWaypointTile(tile) || !tile->getBounds().intersects(checkpointBounds)) {
+                continue;
+            }
+            goals.append(QPoint(col, row));
+        }
+    }
+
+    if (goals.isEmpty()) {
+        const QPoint fallbackTile = findNearestAiTile(track, checkpoint->getPosition());
+        if (fallbackTile.x() >= 0) {
+            goals.append(fallbackTile);
+        }
+    }
+
+    return goals;
+}
+
+QList<QPoint> finishGoalTiles(TrackData* track)
+{
+    QList<QPoint> goals;
+    if (!track) {
+        return goals;
+    }
+
+    for (int row = 0; row < track->getRowCount(); ++row) {
+        for (int col = 0; col < track->getColCount(); ++col) {
+            TrackTile* tile = track->getTileAt(row, col);
+            if (tile && tile->getType() == TileType::FinishLine) {
+                goals.append(QPoint(col, row));
+            }
+        }
+    }
+
+    if (goals.isEmpty()) {
+        const QPoint fallbackTile = findNearestAiTile(track, track->getStartPosition());
+        if (fallbackTile.x() >= 0) {
+            goals.append(fallbackTile);
+        }
+    }
+
+    return goals;
+}
+
+QList<QPoint> findTilePath(TrackData* track,
+                           const QPoint& start,
+                           const QList<QPoint>& goals,
+                           QPoint* reachedGoal)
+{
+    QList<QPoint> path;
+    if (reachedGoal) {
+        *reachedGoal = QPoint(-1, -1);
+    }
+
+    if (!track || !isValidTileCoord(track, start) || !isAiWaypointTile(track->getTileAt(start.y(), start.x()))) {
+        return path;
+    }
+
+    QSet<int> goalKeys;
+    for (const QPoint& goal : goals) {
+        if (isValidTileCoord(track, goal) && isAiWaypointTile(track->getTileAt(goal.y(), goal.x()))) {
+            goalKeys.insert(tileKey(track, goal));
+        }
+    }
+    if (goalKeys.isEmpty()) {
+        return path;
+    }
+
+    if (goalKeys.contains(tileKey(track, start))) {
+        if (reachedGoal) {
+            *reachedGoal = start;
+        }
+        path.append(start);
+        return path;
+    }
+
+    QVector<QVector<bool>> visited(track->getRowCount(), QVector<bool>(track->getColCount(), false));
+    QVector<QVector<QPoint>> parents(track->getRowCount(),
+                                     QVector<QPoint>(track->getColCount(), QPoint(-1, -1)));
+    QQueue<QPoint> frontier;
+    frontier.enqueue(start);
+    visited[start.y()][start.x()] = true;
+
+    const QPoint directions[] = {
+        QPoint(1, 0),
+        QPoint(-1, 0),
+        QPoint(0, 1),
+        QPoint(0, -1)
+    };
+
+    QPoint goalPoint(-1, -1);
+    while (!frontier.isEmpty()) {
+        const QPoint current = frontier.dequeue();
+        for (const QPoint& direction : directions) {
+            const QPoint next = current + direction;
+            if (!isValidTileCoord(track, next)
+                || visited[next.y()][next.x()]
+                || !isAiWaypointTile(track->getTileAt(next.y(), next.x()))) {
+                continue;
+            }
+
+            visited[next.y()][next.x()] = true;
+            parents[next.y()][next.x()] = current;
+
+            if (goalKeys.contains(tileKey(track, next))) {
+                goalPoint = next;
+                frontier.clear();
+                break;
+            }
+
+            frontier.enqueue(next);
+        }
+    }
+
+    if (goalPoint.x() < 0) {
+        return path;
+    }
+
+    for (QPoint current = goalPoint; current.x() >= 0; current = parents[current.y()][current.x()]) {
+        path.prepend(current);
+        if (current == start) {
+            break;
+        }
+    }
+
+    if (path.isEmpty() || path.first() != start) {
+        path.clear();
+        return path;
+    }
+
+    if (reachedGoal) {
+        *reachedGoal = goalPoint;
+    }
+
+    return path;
+}
+
+} // namespace
 
 TrackManager* TrackManager::s_instance = nullptr;
 
@@ -39,6 +256,7 @@ bool TrackManager::loadTrack(const QString& trackId)
     }
 
     m_currentTrack = track;
+    m_waypoints = generateAiWaypoints(track);
     m_currentCheckpoint = 0;
     m_lastPassedCheckpoint = -1;
 
@@ -55,6 +273,7 @@ bool TrackManager::loadTrackFromFile(const QString& filePath)
     }
 
     m_currentTrack = track;
+    m_waypoints = generateAiWaypoints(track);
     m_currentCheckpoint = 0;
     m_lastPassedCheckpoint = -1;
 
@@ -93,6 +312,7 @@ void TrackManager::setCurrentTrack(TrackData* track)
     }
 
     m_currentTrack = track;
+    m_waypoints = generateAiWaypoints(track);
     m_currentCheckpoint = 0;
     m_lastPassedCheckpoint = -1;
 
@@ -250,6 +470,76 @@ QList<QVector2D> TrackManager::getWaypoints() const
 void TrackManager::setWaypoints(const QList<QVector2D>& waypoints)
 {
     m_waypoints = waypoints;
+}
+
+QList<QVector2D> TrackManager::generateAiWaypoints(TrackData* track) const
+{
+    QList<QVector2D> waypoints;
+    if (!track) {
+        return waypoints;
+    }
+
+    const QPoint startTile = findNearestAiTile(track, track->getStartPosition());
+    if (startTile.x() < 0) {
+        return waypoints;
+    }
+
+    auto appendTileCenter = [&waypoints](const QPoint& tileCoord) {
+        const QVector2D point = TrackData::tileToWorldCenter(tileCoord.y(), tileCoord.x());
+        if (waypoints.isEmpty() || (waypoints.last() - point).lengthSquared() > 1.0f) {
+            waypoints.append(point);
+        }
+    };
+
+    QList<QList<QPoint>> segmentGoals;
+    const QList<Checkpoint*> checkpoints = track->getCheckpointsInOrder();
+    segmentGoals.reserve(checkpoints.size() + 1);
+
+    for (Checkpoint* checkpoint : checkpoints) {
+        const QList<QPoint> goals = checkpointGoalTiles(track, checkpoint);
+        if (!goals.isEmpty()) {
+            segmentGoals.append(goals);
+        }
+    }
+
+    const QList<QPoint> finishGoals = finishGoalTiles(track);
+    if (!finishGoals.isEmpty()) {
+        segmentGoals.append(finishGoals);
+    }
+
+    if (segmentGoals.isEmpty()) {
+        appendTileCenter(startTile);
+        return waypoints;
+    }
+
+    QPoint currentTile = startTile;
+    for (const QList<QPoint>& goals : segmentGoals) {
+        QPoint reachedGoal(-1, -1);
+        const QList<QPoint> tilePath = findTilePath(track, currentTile, goals, &reachedGoal);
+        if (tilePath.isEmpty()) {
+            qWarning() << "TrackManager: failed to build AI waypoint path for segment from"
+                       << currentTile << "to goal set of size" << goals.size();
+            continue;
+        }
+
+        for (const QPoint& tileCoord : tilePath) {
+            appendTileCenter(tileCoord);
+        }
+
+        currentTile = reachedGoal;
+    }
+
+    if (waypoints.isEmpty()) {
+        appendTileCenter(startTile);
+    }
+
+    return waypoints;
+}
+
+QList<QVector2D> TrackManager::rebuildWaypoints()
+{
+    m_waypoints = generateAiWaypoints(m_currentTrack);
+    return m_waypoints;
 }
 
 QList<TrackInfo> TrackManager::getAvailableTracks() const

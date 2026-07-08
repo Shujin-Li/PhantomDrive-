@@ -1,6 +1,7 @@
 #ifndef ARCADE_HUD_H
 #define ARCADE_HUD_H
 
+#include <QObject>
 #include <QWidget>
 #include <QLabel>
 #include <QProgressBar>

@@ -1,15 +1,21 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <QtCore/qtmetamacros.h>
+#include <QObject>
 #include <QMainWindow>
 #include <QTimer>
 #include <QApplication>
 #include <QVector2D>
+#include <QPointF>
 #include <QList>
 #include <QSet>
 #include <QHash>
+#include <QColor>
+#include <QRectF>
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
+#include <memory>
 #include "PhantomDrive_global.h"
 #include "learninghud.h"
 #include "UI/ArcadeHUD.h"
@@ -29,6 +35,7 @@ class QPushButton;
 class QComboBox;
 class QLabel;
 class QResizeEvent;
+class QWidget;
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -37,11 +44,35 @@ QT_END_NAMESPACE
 namespace PhantomDrive {
 class CustomTrackEditorWidget;
 class CustomTrackMode;
+class CollectibleManager;
+class GarageWidget;
+class MainMenuWidget;
 class TrackData;
 class PowerupBox;
 class TrafficObjectManager;
 class PowerupWorldRuntime;
+class ChallengeObstacleManager;
+class BlockerVehicleManager;
+class PlayerProfileStore;
+class CurrencyManager;
+class SkinManager;
 enum class PowerupType;
+
+enum class CoinChallengeBalloonRushPhase {
+    Inactive,
+    Trigger,
+    BonusScene,
+    Return
+};
+
+enum class CoinChallengeEndReason {
+    None,
+    Timeout,
+    GoalComplete,
+    ForcedFinish,
+    VehicleDestroyed,
+    FatalCrash
+};
 }
 
 class PHANTOMDRIVE_EXPORT MainWindow : public QMainWindow
@@ -94,6 +125,8 @@ private:
     QPushButton *m_btnCustomTrackMode;
     QPushButton *m_btnTwoPlayerRace;
     QPushButton *m_btnAdaptiveDemo;
+    QPushButton *m_btnCoinChallenge;
+    QPushButton *m_btnGarage;
     QPushButton *m_btnGuide;
     QPushButton *m_btnPlayCustomTrack;
     QPushButton *m_btnSaveCustomTrack;
@@ -101,6 +134,14 @@ private:
     QPushButton *m_btnExportCustomTrackJson;
     PhantomDrive::CustomTrackEditorWidget *m_customTrackEditor;
     PhantomDrive::CustomTrackMode *m_customTrackMode;
+    PhantomDrive::CollectibleManager *m_collectibleManager;
+    std::unique_ptr<PhantomDrive::ChallengeObstacleManager> m_challengeObstacleManager;
+    std::unique_ptr<PhantomDrive::BlockerVehicleManager> m_blockerVehicleManager;
+    PhantomDrive::GarageWidget *m_garageWidget;
+    PhantomDrive::MainMenuWidget *m_mainMenuWidget;
+    PhantomDrive::PlayerProfileStore *m_playerProfileStore;
+    PhantomDrive::CurrencyManager *m_currencyManager;
+    PhantomDrive::SkinManager *m_skinManager;
     PhantomDrive::TrackData *m_defaultRaceTrack;
     PhantomDrive::TrackData *m_selectedBuiltInTrack;
     PhantomDrive::TrackData *m_runtimeCustomTrack;
@@ -113,6 +154,17 @@ private:
     QComboBox* m_playerCountCombo;
     QLabel* m_trackDifficultyLabel;
     QLabel* m_trackDescriptionLabel;
+    QLabel* m_coinChallengeHudLabel;
+    QWidget* m_coinChallengeSummaryOverlay;
+    QLabel* m_coinChallengeSummaryTitleLabel;
+    QLabel* m_coinChallengeSummaryFlavorLabel;
+    QLabel* m_coinChallengeSummaryRewardLabel;
+    QLabel* m_coinChallengeSummaryCoinBagLabel;
+    QLabel* m_coinChallengeSummaryDeltaLabel;
+    QLabel* m_coinChallengeSummaryStatsLabel;
+    QPushButton* m_coinChallengePlayAgainButton;
+    QPushButton* m_coinChallengeExitButton;
+    QTimer* m_coinChallengeSummaryAnimTimer;
     QString m_selectedTrackId;
     QString m_selectedAIDifficulty;
     bool m_twoPlayerMode;
@@ -129,8 +181,90 @@ private:
     qint64 m_learningTimerStartedMs;
     bool m_arcadeRaceFinished;
     bool m_customTrackPlaying;
+    bool m_coinChallengeActive;
+    bool m_coinChallengeSummaryVisible;
+    bool m_coinChallengeTenSecondWarningShown;
+    int m_coinChallengeCountdownAnnouncedStage;
     int m_lapsCompleted;
     int m_totalLaps;
+    int m_coinChallengeDurationMs;
+    int m_coinChallengeRemainingMs;
+    int m_coinChallengeGoalCoins;
+    int m_coinChallengeMaxSpeedKmh;
+    int m_coinChallengeLastAverageSpeedKmh;
+    int m_coinChallengeLastEfficiencyCpm;
+    int m_coinChallengeLastRunCoins;
+    qint64 m_coinChallengeWarningStartedMs;
+    qint64 m_coinChallengeSpeedSampleSumKmh;
+    qint64 m_coinChallengeSpeedSampleCount;
+    qint64 m_coinChallengeLastElapsedMs;
+    int m_coinChallengeMagnetRemainingMs;
+    int m_coinChallengeBalloonRushRemainingMs;
+    int m_coinChallengeBalloonRushTriggerRemainingMs;
+    int m_coinChallengeBalloonRushReturnRemainingMs;
+    int m_coinChallengeBalloonRushIntroCountdownRemainingMs;
+    int m_coinChallengeBalloonRushIntroCountdownAnnounced;
+    int m_coinChallengeBalloonRushCollectedCoins;
+    int m_coinChallengeBalloonRushRecentGainValue;
+    int m_coinChallengeBalloonRushGainFlashRemainingMs;
+    int m_coinChallengeBalloonRushMilestoneRemainingMs;
+    int m_coinChallengeBalloonRushMilestoneDurationMs;
+    int m_coinChallengePowerupsUsed;
+    int m_coinChallengeLoopsCompleted;
+    int m_coinChallengeLoopCheckpointIndex;
+    int m_coinChallengeMagnetSpawnStage;
+    int m_coinChallengeFinalCountdownAnnouncedSecond;
+    int m_coinChallengeSummaryAnimatedRunCoins;
+    int m_coinChallengeSummaryAnimatedTotalCoins;
+    int m_coinChallengeSummaryTargetRunCoins;
+    int m_coinChallengeSummaryTargetTotalCoins;
+    int m_coinChallengeSummaryDepositSoundStage;
+    int m_coinChallengeVehicleIntegrity = 100;
+    int m_coinChallengeObstacleHits = 0;
+    int m_coinChallengeAICollisionCount = 0;
+    int m_coinChallengeDamageTaken = 0;
+    int m_coinChallengeRecentDamageAmount = 0;
+    int m_coinChallengeDamageFlashRemainingMs = 0;
+    int m_coinChallengeDamagePopupRemainingMs = 0;
+    int m_coinChallengeLowIntegrityWarningRemainingMs = 0;
+    qreal m_coinChallengeSummaryVisualProgress;
+    qint64 m_coinChallengeLastHazardSoundMs;
+    qint64 m_coinChallengeLastDamageMs = -1000;
+    bool m_coinChallengeLeftStartZone;
+    bool m_coinChallengeWasOnStartZone;
+    bool m_coinChallengeBalloonRushSpawned;
+    bool m_coinChallengeMagnetLoopPlaying;
+    bool m_coinChallengeForcedEndActive = false;
+    int m_coinChallengeForcedEndRemainingMs = 0;
+    PhantomDrive::CoinChallengeEndReason m_coinChallengeEndReason = PhantomDrive::CoinChallengeEndReason::None;
+    QString m_coinChallengeDamagePopupText;
+    QString m_coinChallengeDamagePopupDetail;
+    QString m_coinChallengeEndTitle;
+    QString m_coinChallengeEndDetail;
+    QSet<QString> m_coinChallengeBlockerDamageContacts;
+    QSet<QString> m_coinChallengeObstacleDamageContacts;
+    QVector2D m_coinChallengeLastSafePlayerPosition;
+    qreal m_coinChallengeLastSafePlayerRotation = 0.0;
+    bool m_coinChallengeHasSafePlayerPosition = false;
+    QList<QVector2D> m_coinChallengeMagnetSpawnPool;
+    QList<QVector2D> m_coinChallengeBalloonRushSpawnPool;
+    PhantomDrive::CoinChallengeBalloonRushPhase m_coinChallengeBalloonRushPhase;
+    QVector2D m_coinChallengeBalloonRushSavedPosition;
+    qreal m_coinChallengeBalloonRushSavedRotation;
+    qreal m_coinChallengeBalloonRushSavedSpeed;
+    int m_coinChallengeBalloonRushLaneIndex;
+    qreal m_coinChallengeBalloonRushLaneVisual;
+    qreal m_coinChallengeBalloonRushRoadScroll;
+    qreal m_coinChallengeBalloonRushSpawnAccumulatorMs;
+    int m_coinChallengeBalloonRushPatternLane;
+    int m_coinChallengeBalloonRushPatternBatchCount;
+    QList<int> m_coinChallengeBalloonRushRecentSegmentLanes;
+    QSet<int> m_coinChallengeBalloonRushVisitedLanes;
+    QList<QPointF> m_coinChallengeBalloonRushCoinLayout;
+    QString m_coinChallengeBalloonRushMilestoneHeadline;
+    QString m_coinChallengeBalloonRushMilestoneDetail;
+    QColor m_coinChallengeBalloonRushMilestoneAccent;
+    QSet<int> m_coinChallengeTriggeredMilestones;
     int m_simTick;
     qint64 m_sessionElapsedMs;
     qint64 m_currentLapStartMs;
@@ -169,6 +303,7 @@ private:
     void setupVehiclePhysics();
     void setupDataBindings();
     void setupDemoControls();
+    void setupGaragePage();
     void setupCustomTrackControls();
     void setupRaceSetupControls();
     void styleMainMenu();
@@ -190,6 +325,10 @@ private:
     void playCurrentCustomTrack();
     void startCustomTrackSession(PhantomDrive::TrackData* track);
     void showArcadeSetupDialog();
+    void showCoinChallengeTrackDialog();
+    void showGaragePage();
+    void startCoinChallengeMode();
+    void finishCoinChallengeMode();
     void saveCurrentCustomTrack();
     void loadCustomTrackIntoEditor();
     void exportCurrentCustomTrackJson();
@@ -207,6 +346,60 @@ private:
     void updateGameViewFromData(const PhantomDrive::DrivingData& data);
     void updateTrafficAndHud(int tick);
     void updateRaceHud();
+    bool isCoinChallengeModeActive() const;
+    QRectF playerCoinCollectRect() const;
+    void resetCoinChallengeStats();
+    void updateCoinChallengeStats(int currentSpeedKmh);
+    int coinChallengeAverageSpeedKmh() const;
+    int coinChallengeMaxSpeedDisplayKmh() const;
+    int coinChallengeEfficiencyCpm() const;
+    qreal coinChallengeGoalProgress() const;
+    int coinChallengeDesiredActiveCoins() const;
+    int coinChallengeCountdownStage() const;
+    qreal coinChallengeCountdownStageProgress() const;
+    void updateCoinChallengeHud();
+    void layoutCoinChallengeHud();
+    void ensureCoinChallengeSummaryOverlay();
+    void showCoinChallengeSummaryOverlay();
+    void hideCoinChallengeSummaryOverlay();
+    void exitCoinChallengeToMenu();
+    void setupCoinChallengePowerupBoxes();
+    bool isCoinChallengePowerupSpawnPointValid(const QVector2D& position, qreal minDistanceFromPlayers = 140.0f) const;
+    bool tryTakeCoinChallengePowerupSpawnPoint(QList<QVector2D>& spawnPool, QVector2D& outPosition) const;
+    void updateCoinChallengeLoopProgress(const QVector2D& positionBefore);
+    void maybeSpawnCoinChallengeMagnet();
+    void maybeSpawnCoinChallengeBalloonRush();
+    void spawnCoinChallengeMagnetBox(const QVector2D& position);
+    void spawnCoinChallengeBalloonRushBox(const QVector2D& position);
+    void activateCoinChallengeBalloonRush();
+    void updateCoinChallengeBalloonRush(int deltaMs);
+    void enterCoinChallengeBalloonRushBonusScene();
+    void finishCoinChallengeBalloonRush(bool completeSequence = true);
+    void refreshCoinChallengeBalloonRushScene();
+    void moveCoinChallengeBalloonRushLane(int direction);
+    bool isCoinChallengeBalloonRushSequenceActive() const;
+    bool isCoinChallengeBalloonRushSceneActive() const;
+    void syncCoinChallengeMagnetLoop();
+    void refreshCoinChallengeHazardVisuals();
+    QList<QRectF> currentCoinChallengeBlockedAreas() const;
+    QRectF playerHazardCollisionRect(const QVector2D& position) const;
+    bool isCoinChallengePlayerPositionSafe(const QVector2D& position) const;
+    void updateCoinChallengeLastSafePosition();
+    void applyCoinChallengeHazardCollision(const QVector2D& positionBeforeUpdate);
+    void updateCoinChallengeForcedEndSequence(int deltaMs);
+    void applyCoinChallengeIntegrityDamage(int amount,
+                                           const QString& popupText,
+                                           const QString& popupDetail = QString());
+    void triggerCoinChallengeForcedEnd(PhantomDrive::CoinChallengeEndReason reason,
+                                       const QString& title,
+                                       const QString& detail);
+    int coinChallengeIntegrityStage() const;
+    void refreshCoinChallengeSummaryVisuals();
+    void animateCoinChallengeSummaryStep();
+    void handleCoinChallengeMilestones(int runCoinsBeforeUpdate, int runCoinsAfterUpdate);
+    void triggerCoinChallengeMilestone(int milestoneCoins);
+    QString currentPlayerSkinId() const;
+    QColor currentPlayerSkinColor() const;
     int speedToDisplayKmh(qreal physicsSpeed) const;
     int displaySpeedKmh() const;
     QString powerupTypeToString(PhantomDrive::PowerupType type) const;
@@ -235,6 +428,11 @@ private:
     bool isTwoPlayerSelected() const;
     void preparePlayerReportSystems();
     void showGuideDialog();
+    void loadPlayerProfile();
+    bool savePlayerProfile();
+    void refreshGaragePage();
+    void handleGaragePurchase(const QString& skinId);
+    void handleGarageSelect(const QString& skinId);
 
 private slots:
     void onDrivingDataCollected(const PhantomDrive::DrivingData& data);

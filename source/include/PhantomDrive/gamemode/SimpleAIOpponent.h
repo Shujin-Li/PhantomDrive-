@@ -28,13 +28,13 @@ public:
     AIConfig getConfig() const override { return m_config; }
     void setConfig(const AIConfig& config) override { m_config = config; }
 
-    void setWaypoints(const QList<Waypoint>& waypoints) override { m_waypoints = waypoints; }
+    void setWaypoints(const QList<Waypoint>& waypoints) override;
     QList<Waypoint> getWaypoints() const override { return m_waypoints; }
     void addWaypoint(const Waypoint& waypoint) override { m_waypoints.append(waypoint); }
     void clearWaypoints() override { m_waypoints.clear(); }
 
     int getCurrentWaypointIndex() const override { return m_currentWaypointIndex; }
-    void setCurrentWaypointIndex(int index) override { m_currentWaypointIndex = index; }
+    void setCurrentWaypointIndex(int index) override;
     Waypoint getCurrentWaypoint() const override;
     Waypoint getNextWaypoint() const override;
     Waypoint getWaypointAt(int index) const override;
@@ -104,6 +104,8 @@ public:
     QVariantMap getStateData() const override;
     void loadStateData(const QVariantMap& data) override;
 
+    bool recoverToRoute(bool forceReposition = false);
+
 protected:
     void onStateEnter(AIState newState) override;
     void onStateExit(AIState oldState) override;
@@ -116,6 +118,9 @@ protected:
     void syncFromPhysics();
     qreal waypointReachRadius() const;
     bool hasPassedCurrentWaypoint(const Waypoint& waypoint) const;
+    int findForwardWaypointIndex(int startIndex) const;
+    bool isFarFromCurrentRoute() const;
+    void resetProgressTracking();
 
     VehiclePhysics* m_physics;
     QString m_name;
@@ -132,6 +137,10 @@ protected:
     AIState m_state;
     qreal m_stateDuration;
     qint64 m_stuckTimerMs;
+    qint64 m_noProgressTimerMs;
+    qint64 m_recoveryCooldownMs;
+    QVector2D m_lastProgressPosition;
+    qreal m_lastWaypointDistance;
 
     int m_currentLap;
     qreal m_lapTime;

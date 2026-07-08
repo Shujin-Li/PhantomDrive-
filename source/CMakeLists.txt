@@ -145,6 +145,19 @@ set(HEADER_FILES
     include/PhantomDrive/UI/SoundGenerator.h
     include/PhantomDrive/UI/ArcadeHUD.h
     include/PhantomDrive/UI/CustomTrackEditorWidget.h
+    include/PhantomDrive/UI/GarageWidget.h
+    include/PhantomDrive/UI/MainMenuWidget.h
+    include/PhantomDrive/UI/MenuCardWidget.h
+    include/PhantomDrive/UI/StartGameOverlay.h
+    include/PhantomDrive/collectible/ChallengeObstacle.h
+    include/PhantomDrive/collectible/ChallengeObstacleManager.h
+    include/PhantomDrive/collectible/BlockerVehicle.h
+    include/PhantomDrive/collectible/BlockerVehicleManager.h
+    include/PhantomDrive/collectible/CoinItem.h
+    include/PhantomDrive/collectible/CollectibleManager.h
+    include/PhantomDrive/profile/PlayerProfileStore.h
+    include/PhantomDrive/economy/CurrencyManager.h
+    include/PhantomDrive/shop/SkinManager.h
     include/PhantomDrive/core/GameEngine.h
     include/PhantomDrive/core/saveloadmanager.h
     include/PhantomDrive/core/VehiclePhysics.h
@@ -269,6 +282,16 @@ set(SOURCE_FILES
     src/UI/SoundGenerator.cpp
     src/UI/ArcadeHUD.cpp
     src/UI/CustomTrackEditorWidget.cpp
+    src/UI/GarageWidget.cpp
+    src/UI/MainMenuWidget.cpp
+    src/UI/MenuCardWidget.cpp
+    src/UI/StartGameOverlay.cpp
+    src/collectible/ChallengeObstacleManager.cpp
+    src/collectible/BlockerVehicleManager.cpp
+    src/collectible/CollectibleManager.cpp
+    src/profile/PlayerProfileStore.cpp
+    src/economy/CurrencyManager.cpp
+    src/shop/SkinManager.cpp
     src/core/GameEngine.cpp
     src/core/saveloadmanager.cpp
     src/core/VehiclePhysics.cpp

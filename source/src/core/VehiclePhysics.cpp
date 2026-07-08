@@ -27,7 +27,7 @@ VehiclePhysics::VehiclePhysics(QObject* parent)
     , m_steeringSpeed(180.0)
     , m_maxSteeringAngle(45.0)
     , m_frictionCoefficient(0.95)
-    , m_grassFrictionMultiplier(0.6)
+    , m_grassFrictionMultiplier(0.9)
     , m_gravity(0)
     , m_speedBoostMultiplier(1.0)
     , m_speedBoostTimerMs(0.0)
@@ -821,6 +821,141 @@ void VehiclePhysics::checkCollisions(const QVector2D& positionBeforeUpdate)
 void VehiclePhysics::handleCollision(const QVector2D& normal, qreal impactForce)
 {
     handleCollisionResponse(normal, impactForce);
+}
+
+bool VehiclePhysics::resolveHazardCollision(const QRectF& hazardBounds,
+                                            const QList<QRectF>& blockedAreas,
+                                            const QVector2D& positionBeforeUpdate,
+                                            const QVector2D& fallbackPosition,
+                                            qreal fallbackRotation,
+                                            const QSizeF& collisionSize,
+                                            qreal impactForce)
+{
+    const qreal halfWidth = qMax<qreal>(0.0, collisionSize.width() * 0.5);
+    const qreal halfHeight = qMax<qreal>(0.0, collisionSize.height() * 0.5);
+    auto collisionRectFor = [halfWidth, halfHeight](const QVector2D& position) {
+        return QRectF(position.x() - halfWidth,
+                      position.y() - halfHeight,
+                      halfWidth * 2.0,
+                      halfHeight * 2.0);
+    };
+    auto candidateIsClear = [&](const QVector2D& candidate) {
+        const QRectF candidateRect = collisionRectFor(candidate);
+        for (const QRectF& blockedBounds : blockedAreas) {
+            if (candidateRect.intersects(blockedBounds)) {
+                return false;
+            }
+        }
+        return canOccupyPosition(candidate);
+    };
+
+    QVector2D normal = m_position - QVector2D(hazardBounds.center());
+    if (normal.lengthSquared() < 0.001f) {
+        normal = positionBeforeUpdate - QVector2D(hazardBounds.center());
+    }
+    if (normal.lengthSquared() < 0.001f) {
+        normal = QVector2D(0.0f, -1.0f);
+    } else {
+        normal.normalize();
+    }
+
+    QVector2D resolvedPosition = fallbackPosition;
+    bool foundSafePosition = false;
+    auto tryResolvedCandidate = [&](const QVector2D& candidate) {
+        if (!candidateIsClear(candidate)) {
+            return false;
+        }
+        resolvedPosition = candidate;
+        foundSafePosition = true;
+        return true;
+    };
+
+    tryResolvedCandidate(fallbackPosition);
+    if (!foundSafePosition) {
+        tryResolvedCandidate(positionBeforeUpdate);
+    }
+    if (!foundSafePosition) {
+        tryResolvedCandidate(m_position);
+    }
+
+    if (!foundSafePosition) {
+        const QRectF expandedBounds = hazardBounds.adjusted(-(halfWidth + 1.0),
+                                                            -(halfHeight + 1.0),
+                                                            halfWidth + 1.0,
+                                                            halfHeight + 1.0);
+        QVector2D pushedPosition = m_position;
+        const qreal distanceToLeft = qAbs(m_position.x() - expandedBounds.left());
+        const qreal distanceToRight = qAbs(expandedBounds.right() - m_position.x());
+        const qreal distanceToTop = qAbs(m_position.y() - expandedBounds.top());
+        const qreal distanceToBottom = qAbs(expandedBounds.bottom() - m_position.y());
+        const qreal smallestPenetration = qMin(qMin(distanceToLeft, distanceToRight),
+                                               qMin(distanceToTop, distanceToBottom));
+
+        if (smallestPenetration == distanceToLeft) {
+            pushedPosition.setX(expandedBounds.left() - 6.0);
+        } else if (smallestPenetration == distanceToRight) {
+            pushedPosition.setX(expandedBounds.right() + 6.0);
+        } else if (smallestPenetration == distanceToTop) {
+            pushedPosition.setY(expandedBounds.top() - 6.0);
+        } else {
+            pushedPosition.setY(expandedBounds.bottom() + 6.0);
+        }
+
+        tryResolvedCandidate(pushedPosition);
+
+        if (!foundSafePosition) {
+            const QVector2D tangent(-normal.y(), normal.x());
+            const QList<QVector2D> directions = {
+                normal,
+                tangent,
+                -tangent,
+                normal + tangent,
+                normal - tangent,
+                -normal,
+                -normal + tangent,
+                -normal - tangent
+            };
+            const QList<QVector2D> seeds = {
+                pushedPosition,
+                fallbackPosition,
+                positionBeforeUpdate
+            };
+
+            for (const QVector2D& seed : seeds) {
+                for (const QVector2D& direction : directions) {
+                    QVector2D unitDirection = direction;
+                    if (unitDirection.lengthSquared() <= 0.001f) {
+                        continue;
+                    }
+                    unitDirection.normalize();
+                    for (int step = 1; step <= 20; ++step) {
+                        const QVector2D candidate = seed + unitDirection * (12.0f * step);
+                        if (tryResolvedCandidate(candidate)) {
+                            break;
+                        }
+                    }
+                    if (foundSafePosition) {
+                        break;
+                    }
+                }
+                if (foundSafePosition) {
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!foundSafePosition) {
+        return false;
+    }
+
+    m_position = resolvedPosition;
+    m_previousPosition = resolvedPosition;
+    m_rotation = fallbackRotation;
+    if (!m_isColliding) {
+        handleCollisionResponse(normal, impactForce);
+    }
+    return true;
 }
 
 void VehiclePhysics::handleCollisionResponse(const QVector2D& normal, qreal impactForce)

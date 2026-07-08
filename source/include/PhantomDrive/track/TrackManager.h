@@ -53,6 +53,8 @@ public:
 
     QList<QVector2D> getWaypoints() const;
     void setWaypoints(const QList<QVector2D>& waypoints);
+    QList<QVector2D> generateAiWaypoints(TrackData* track) const;
+    QList<QVector2D> rebuildWaypoints();
 
     TrackDatabase* getDatabase() const { return m_database; }
     QList<TrackInfo> getAvailableTracks() const;
