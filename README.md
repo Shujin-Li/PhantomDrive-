@@ -78,24 +78,6 @@ Implemented power-up types include Boost, Shield, Missile, Oil Slick, EMP, Invis
 - If no usable API key is configured, or the API request fails, the app falls back to a local mock coach report.
 - Real API keys must never be committed or documented in screenshots.
 
-source/docs/images/readme## Build Requirements
-
-- Windows 10/11
-- CMake 3.20 or newer
-- C++17 compiler
-- Qt 6.8 or compatible Qt 6 kit with:
-  - Core
-  - Gui
-  - Widgets
-  - OpenGL
-  - Network
-  - Charts
-  - Xml
-  - Multimedia
-- OpenGL runtime support
-
-The current local release package was built with Qt 6.8.3 MinGW 64-bit.
-
 ## Screenshots
 
 The README keeps all 14 screenshots as lightweight JPG thumbnails for stable GitHub rendering.
@@ -155,6 +137,24 @@ The README keeps all 14 screenshots as lightweight JPG thumbnails for stable Git
 ### Windows Release Launcher
 
 ![Windows Release Launcher](source/docs/images/readme/thumb-v2/windows-release-launcher-thumb.jpg)
+
+## Build Requirements
+
+- Windows 10/11
+- CMake 3.20 or newer
+- C++17 compiler
+- Qt 6.8 or compatible Qt 6 kit with:
+  - Core
+  - Gui
+  - Widgets
+  - OpenGL
+  - Network
+  - Charts
+  - Xml
+  - Multimedia
+- OpenGL runtime support
+
+The current local release package was built with Qt 6.8.3 MinGW 64-bit.
 
 ## Build from Source
 
