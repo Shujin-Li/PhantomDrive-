@@ -82,63 +82,63 @@ Implemented power-up types include Boost, Shield, Missile, Oil Slick, EMP, Invis
 
 ### Main Menu
 
-![PhantomDrive Main Menu](source/docs/images/readme/main-menu-2026-07.png)
+![PhantomDrive Main Menu](source/docs/images/readme/main-menu-2026-07.jpg)
 
 ### Game Mode Selection
 
-![Game Mode Selection](source/docs/images/readme/mode-select-2026-07.png)
+![Game Mode Selection](source/docs/images/readme/mode-select-2026-07.jpg)
 
 ### Race Setup
 
 Choose the built-in circuit, player grid, and AI difficulty from the redesigned pre-race control panel.
 
-![Race Setup](source/docs/images/readme/race-setup-2026-07.png)
+![Race Setup](source/docs/images/readme/race-setup-2026-07.jpg)
 
 ### Coin Challenge
 
 The Coin Challenge combines a live telemetry panel, integrity and goal meters, collectible routes, checkpoints, obstacles, and a timed finish. Reaching the Balloon Rush trigger opens a short bonus scene while the main challenge timer is paused.
 
-![Coin Challenge HUD](source/docs/images/readme/coin-challenge-hud.png)
+![Coin Challenge HUD](source/docs/images/readme/coin-challenge-hud.jpg)
 
 ### Balloon Rush Bonus
 
-![Balloon Rush Intro](source/docs/images/readme/balloon-rush-intro.png)
+![Balloon Rush Intro](source/docs/images/readme/balloon-rush-intro.jpg)
 
-![Balloon Rush Gameplay](source/docs/images/readme/balloon-rush-gameplay.png)
+![Balloon Rush Gameplay](source/docs/images/readme/balloon-rush-gameplay.jpg)
 
 ### Challenge Results
 
 The result panel summarizes the payout, collected coins, integrity, collisions, damage, speed, efficiency, and power-up usage before banking the run reward.
 
-![Coin Challenge Results](source/docs/images/readme/coin-challenge-results.png)
+![Coin Challenge Results](source/docs/images/readme/coin-challenge-results.jpg)
 
 ### Arcade Mode
 
-![Arcade Mode](source/docs/images/readme/arcade-mode.png)
+![Arcade Mode](source/docs/images/readme/arcade-mode.jpg)
 
 ### Learning Mode
 
-![Learning Mode](source/docs/images/readme/learning-mode.png)
+![Learning Mode](source/docs/images/readme/learning-mode.jpg)
 
 ### Custom Track Editor
 
-![Custom Track Editor](source/docs/images/readme/custom-track-editor.png)
+![Custom Track Editor](source/docs/images/readme/custom-track-editor.jpg)
 
 ### Custom Track Race
 
-![Custom Track Race](source/docs/images/readme/custom-track-race.png)
+![Custom Track Race](source/docs/images/readme/custom-track-race.jpg)
 
 ### Two-Player HUD
 
-![Two-Player HUD](source/docs/images/readme/two-player-hud.png)
+![Two-Player HUD](source/docs/images/readme/two-player-hud.jpg)
 
 ### AI Coach Report
 
-![AI Coach Report](source/docs/images/readme/ai-coach-report.png)
+![AI Coach Report](source/docs/images/readme/ai-coach-report.jpg)
 
 ### Windows Release Launcher
 
-![Windows Release Launcher](source/docs/images/readme/windows-release-launcher.png)
+![Windows Release Launcher](source/docs/images/readme/windows-release-launcher.jpg)
 
 ## Build Requirements
 
