@@ -98,63 +98,63 @@ The current local release package was built with Qt 6.8.3 MinGW 64-bit.
 
 ## Screenshots
 
-The README displays all 14 screenshots as lightweight thumbnails for stable GitHub rendering. Click any image to open the original full-size screenshot.
+The README keeps all 14 screenshots as lightweight JPG thumbnails for stable GitHub rendering.
 
 ### PhantomDrive Main Menu
 
-[<img src="docs/images/readme/thumb-v2/main-menu-2026-07-thumb.jpg" alt="PhantomDrive Main Menu" width="560">](docs/images/readme/main-menu-2026-07.png)
+![PhantomDrive Main Menu](docs/images/readme/thumb-v2/main-menu-2026-07-thumb.jpg)
 
 ### Game Mode Selection
 
-[<img src="docs/images/readme/thumb-v2/mode-select-2026-07-thumb.jpg" alt="Game Mode Selection" width="560">](docs/images/readme/mode-select-2026-07.png)
+![Game Mode Selection](docs/images/readme/thumb-v2/mode-select-2026-07-thumb.jpg)
 
 ### Race Setup
 
-[<img src="docs/images/readme/thumb-v2/race-setup-2026-07-thumb.jpg" alt="Race Setup" width="560">](docs/images/readme/race-setup-2026-07.png)
+![Race Setup](docs/images/readme/thumb-v2/race-setup-2026-07-thumb.jpg)
 
 ### Coin Challenge HUD
 
-[<img src="docs/images/readme/thumb-v2/coin-challenge-hud-thumb.jpg" alt="Coin Challenge HUD" width="560">](docs/images/readme/coin-challenge-hud.png)
+![Coin Challenge HUD](docs/images/readme/thumb-v2/coin-challenge-hud-thumb.jpg)
 
 ### Balloon Rush Intro
 
-[<img src="docs/images/readme/thumb-v2/balloon-rush-intro-thumb.jpg" alt="Balloon Rush Intro" width="560">](docs/images/readme/balloon-rush-intro.png)
+![Balloon Rush Intro](docs/images/readme/thumb-v2/balloon-rush-intro-thumb.jpg)
 
 ### Balloon Rush Gameplay
 
-[<img src="docs/images/readme/thumb-v2/balloon-rush-gameplay-thumb.jpg" alt="Balloon Rush Gameplay" width="560">](docs/images/readme/balloon-rush-gameplay.png)
+![Balloon Rush Gameplay](docs/images/readme/thumb-v2/balloon-rush-gameplay-thumb.jpg)
 
 ### Coin Challenge Results
 
-[<img src="docs/images/readme/thumb-v2/coin-challenge-results-thumb.jpg" alt="Coin Challenge Results" width="560">](docs/images/readme/coin-challenge-results.png)
+![Coin Challenge Results](docs/images/readme/thumb-v2/coin-challenge-results-thumb.jpg)
 
 ### Arcade Mode
 
-[<img src="docs/images/readme/thumb-v2/arcade-mode-thumb.jpg" alt="Arcade Mode" width="560">](docs/images/readme/arcade-mode.png)
+![Arcade Mode](docs/images/readme/thumb-v2/arcade-mode-thumb.jpg)
 
 ### Learning Mode
 
-[<img src="docs/images/readme/thumb-v2/learning-mode-thumb.jpg" alt="Learning Mode" width="560">](docs/images/readme/learning-mode.png)
+![Learning Mode](docs/images/readme/thumb-v2/learning-mode-thumb.jpg)
 
 ### Custom Track Editor
 
-[<img src="docs/images/readme/thumb-v2/custom-track-editor-thumb.jpg" alt="Custom Track Editor" width="560">](docs/images/readme/custom-track-editor.png)
+![Custom Track Editor](docs/images/readme/thumb-v2/custom-track-editor-thumb.jpg)
 
 ### Custom Track Race
 
-[<img src="docs/images/readme/thumb-v2/custom-track-race-thumb.jpg" alt="Custom Track Race" width="560">](docs/images/readme/custom-track-race.png)
+![Custom Track Race](docs/images/readme/thumb-v2/custom-track-race-thumb.jpg)
 
 ### Two-Player HUD
 
-[<img src="docs/images/readme/thumb-v2/two-player-hud-thumb.jpg" alt="Two-Player HUD" width="560">](docs/images/readme/two-player-hud.png)
+![Two-Player HUD](docs/images/readme/thumb-v2/two-player-hud-thumb.jpg)
 
 ### AI Coach Report
 
-[<img src="docs/images/readme/thumb-v2/ai-coach-report-thumb.jpg" alt="AI Coach Report" width="560">](docs/images/readme/ai-coach-report.png)
+![AI Coach Report](docs/images/readme/thumb-v2/ai-coach-report-thumb.jpg)
 
 ### Windows Release Launcher
 
-[<img src="docs/images/readme/thumb-v2/windows-release-launcher-thumb.jpg" alt="Windows Release Launcher" width="560">](docs/images/readme/windows-release-launcher.png)
+![Windows Release Launcher](docs/images/readme/thumb-v2/windows-release-launcher-thumb.jpg)
 
 ## Build from Source
 
