@@ -136,10 +136,6 @@ The result panel summarizes the payout, collected coins, integrity, collisions, 
 
 ![AI Coach Report](source/docs/images/readme/ai-coach-report.jpg)
 
-### Windows Release Launcher
-
-![Windows Release Launcher](source/docs/images/readme/windows-release-launcher.jpg)
-
 ## Build Requirements
 
 - Windows 10/11
