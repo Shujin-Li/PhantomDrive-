@@ -84,59 +84,59 @@ The README keeps all 14 screenshots as lightweight JPG thumbnails for stable Git
 
 ### PhantomDrive Main Menu
 
-![PhantomDrive Main Menu](docs/images/readme/thumb-v2/main-menu-2026-07-thumb.jpg)
+![PhantomDrive Main Menu](docs/images/readme/thumb-v2/main-menu-2026-07-thumb.jpg?raw=1)
 
 ### Game Mode Selection
 
-![Game Mode Selection](docs/images/readme/thumb-v2/mode-select-2026-07-thumb.jpg)
+![Game Mode Selection](docs/images/readme/thumb-v2/mode-select-2026-07-thumb.jpg?raw=1)
 
 ### Race Setup
 
-![Race Setup](docs/images/readme/thumb-v2/race-setup-2026-07-thumb.jpg)
+![Race Setup](docs/images/readme/thumb-v2/race-setup-2026-07-thumb.jpg?raw=1)
 
 ### Coin Challenge HUD
 
-![Coin Challenge HUD](docs/images/readme/thumb-v2/coin-challenge-hud-thumb.jpg)
+![Coin Challenge HUD](docs/images/readme/thumb-v2/coin-challenge-hud-thumb.jpg?raw=1)
 
 ### Balloon Rush Intro
 
-![Balloon Rush Intro](docs/images/readme/thumb-v2/balloon-rush-intro-thumb.jpg)
+![Balloon Rush Intro](docs/images/readme/thumb-v2/balloon-rush-intro-thumb.jpg?raw=1)
 
 ### Balloon Rush Gameplay
 
-![Balloon Rush Gameplay](docs/images/readme/thumb-v2/balloon-rush-gameplay-thumb.jpg)
+![Balloon Rush Gameplay](docs/images/readme/thumb-v2/balloon-rush-gameplay-thumb.jpg?raw=1)
 
 ### Coin Challenge Results
 
-![Coin Challenge Results](docs/images/readme/thumb-v2/coin-challenge-results-thumb.jpg)
+![Coin Challenge Results](docs/images/readme/thumb-v2/coin-challenge-results-thumb.jpg?raw=1)
 
 ### Arcade Mode
 
-![Arcade Mode](docs/images/readme/thumb-v2/arcade-mode-thumb.jpg)
+![Arcade Mode](docs/images/readme/thumb-v2/arcade-mode-thumb.jpg?raw=1)
 
 ### Learning Mode
 
-![Learning Mode](docs/images/readme/thumb-v2/learning-mode-thumb.jpg)
+![Learning Mode](docs/images/readme/thumb-v2/learning-mode-thumb.jpg?raw=1)
 
 ### Custom Track Editor
 
-![Custom Track Editor](docs/images/readme/thumb-v2/custom-track-editor-thumb.jpg)
+![Custom Track Editor](docs/images/readme/thumb-v2/custom-track-editor-thumb.jpg?raw=1)
 
 ### Custom Track Race
 
-![Custom Track Race](docs/images/readme/thumb-v2/custom-track-race-thumb.jpg)
+![Custom Track Race](docs/images/readme/thumb-v2/custom-track-race-thumb.jpg?raw=1)
 
 ### Two-Player HUD
 
-![Two-Player HUD](docs/images/readme/thumb-v2/two-player-hud-thumb.jpg)
+![Two-Player HUD](docs/images/readme/thumb-v2/two-player-hud-thumb.jpg?raw=1)
 
 ### AI Coach Report
 
-![AI Coach Report](docs/images/readme/thumb-v2/ai-coach-report-thumb.jpg)
+![AI Coach Report](docs/images/readme/thumb-v2/ai-coach-report-thumb.jpg?raw=1)
 
 ### Windows Release Launcher
 
-![Windows Release Launcher](docs/images/readme/thumb-v2/windows-release-launcher-thumb.jpg)
+![Windows Release Launcher](docs/images/readme/thumb-v2/windows-release-launcher-thumb.jpg?raw=1)
 
 ## Build Requirements
 
