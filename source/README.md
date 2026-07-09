@@ -96,6 +96,66 @@ docs/images/readme## Build Requirements
 
 The current local release package was built with Qt 6.8.3 MinGW 64-bit.
 
+## Screenshots
+
+The README keeps all 14 screenshots, using lightweight thumbnail images for stable GitHub rendering.
+
+### PhantomDrive Main Menu
+
+![PhantomDrive Main Menu](docs/images/readme/thumbnails/main-menu-2026-07-thumb.jpg)
+
+### Game Mode Selection
+
+![Game Mode Selection](docs/images/readme/thumbnails/mode-select-2026-07-thumb.jpg)
+
+### Race Setup
+
+![Race Setup](docs/images/readme/thumbnails/race-setup-2026-07-thumb.jpg)
+
+### Coin Challenge HUD
+
+![Coin Challenge HUD](docs/images/readme/thumbnails/coin-challenge-hud-thumb.jpg)
+
+### Balloon Rush Intro
+
+![Balloon Rush Intro](docs/images/readme/thumbnails/balloon-rush-intro-thumb.jpg)
+
+### Balloon Rush Gameplay
+
+![Balloon Rush Gameplay](docs/images/readme/thumbnails/balloon-rush-gameplay-thumb.jpg)
+
+### Coin Challenge Results
+
+![Coin Challenge Results](docs/images/readme/thumbnails/coin-challenge-results-thumb.jpg)
+
+### Arcade Mode
+
+![Arcade Mode](docs/images/readme/thumbnails/arcade-mode-thumb.jpg)
+
+### Learning Mode
+
+![Learning Mode](docs/images/readme/thumbnails/learning-mode-thumb.jpg)
+
+### Custom Track Editor
+
+![Custom Track Editor](docs/images/readme/thumbnails/custom-track-editor-thumb.jpg)
+
+### Custom Track Race
+
+![Custom Track Race](docs/images/readme/thumbnails/custom-track-race-thumb.jpg)
+
+### Two-Player HUD
+
+![Two-Player HUD](docs/images/readme/thumbnails/two-player-hud-thumb.jpg)
+
+### AI Coach Report
+
+![AI Coach Report](docs/images/readme/thumbnails/ai-coach-report-thumb.jpg)
+
+### Windows Release Launcher
+
+![Windows Release Launcher](docs/images/readme/thumbnails/windows-release-launcher-thumb.jpg)
+
 ## Build from Source
 
 From the repository root:
