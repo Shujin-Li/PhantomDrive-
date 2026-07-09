@@ -98,63 +98,63 @@ The current local release package was built with Qt 6.8.3 MinGW 64-bit.
 
 ## Screenshots
 
-The README keeps all 14 screenshots, using lightweight thumbnail images for stable GitHub rendering.
+The README displays all 14 screenshots as lightweight thumbnails for stable GitHub rendering. Click any image to open the original full-size screenshot.
 
 ### PhantomDrive Main Menu
 
-![PhantomDrive Main Menu](source/docs/images/readme/thumbnails/main-menu-2026-07-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/main-menu-2026-07-thumb.jpg" alt="PhantomDrive Main Menu" width="560">](source/docs/images/readme/main-menu-2026-07.png)
 
 ### Game Mode Selection
 
-![Game Mode Selection](source/docs/images/readme/thumbnails/mode-select-2026-07-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/mode-select-2026-07-thumb.jpg" alt="Game Mode Selection" width="560">](source/docs/images/readme/mode-select-2026-07.png)
 
 ### Race Setup
 
-![Race Setup](source/docs/images/readme/thumbnails/race-setup-2026-07-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/race-setup-2026-07-thumb.jpg" alt="Race Setup" width="560">](source/docs/images/readme/race-setup-2026-07.png)
 
 ### Coin Challenge HUD
 
-![Coin Challenge HUD](source/docs/images/readme/thumbnails/coin-challenge-hud-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/coin-challenge-hud-thumb.jpg" alt="Coin Challenge HUD" width="560">](source/docs/images/readme/coin-challenge-hud.png)
 
 ### Balloon Rush Intro
 
-![Balloon Rush Intro](source/docs/images/readme/thumbnails/balloon-rush-intro-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/balloon-rush-intro-thumb.jpg" alt="Balloon Rush Intro" width="560">](source/docs/images/readme/balloon-rush-intro.png)
 
 ### Balloon Rush Gameplay
 
-![Balloon Rush Gameplay](source/docs/images/readme/thumbnails/balloon-rush-gameplay-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/balloon-rush-gameplay-thumb.jpg" alt="Balloon Rush Gameplay" width="560">](source/docs/images/readme/balloon-rush-gameplay.png)
 
 ### Coin Challenge Results
 
-![Coin Challenge Results](source/docs/images/readme/thumbnails/coin-challenge-results-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/coin-challenge-results-thumb.jpg" alt="Coin Challenge Results" width="560">](source/docs/images/readme/coin-challenge-results.png)
 
 ### Arcade Mode
 
-![Arcade Mode](source/docs/images/readme/thumbnails/arcade-mode-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/arcade-mode-thumb.jpg" alt="Arcade Mode" width="560">](source/docs/images/readme/arcade-mode.png)
 
 ### Learning Mode
 
-![Learning Mode](source/docs/images/readme/thumbnails/learning-mode-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/learning-mode-thumb.jpg" alt="Learning Mode" width="560">](source/docs/images/readme/learning-mode.png)
 
 ### Custom Track Editor
 
-![Custom Track Editor](source/docs/images/readme/thumbnails/custom-track-editor-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/custom-track-editor-thumb.jpg" alt="Custom Track Editor" width="560">](source/docs/images/readme/custom-track-editor.png)
 
 ### Custom Track Race
 
-![Custom Track Race](source/docs/images/readme/thumbnails/custom-track-race-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/custom-track-race-thumb.jpg" alt="Custom Track Race" width="560">](source/docs/images/readme/custom-track-race.png)
 
 ### Two-Player HUD
 
-![Two-Player HUD](source/docs/images/readme/thumbnails/two-player-hud-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/two-player-hud-thumb.jpg" alt="Two-Player HUD" width="560">](source/docs/images/readme/two-player-hud.png)
 
 ### AI Coach Report
 
-![AI Coach Report](source/docs/images/readme/thumbnails/ai-coach-report-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/ai-coach-report-thumb.jpg" alt="AI Coach Report" width="560">](source/docs/images/readme/ai-coach-report.png)
 
 ### Windows Release Launcher
 
-![Windows Release Launcher](source/docs/images/readme/thumbnails/windows-release-launcher-thumb.jpg)
+[<img src="source/docs/images/readme/thumb-v2/windows-release-launcher-thumb.jpg" alt="Windows Release Launcher" width="560">](source/docs/images/readme/windows-release-launcher.png)
 
 ## Build from Source
 
