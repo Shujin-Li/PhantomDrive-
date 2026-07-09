@@ -84,59 +84,59 @@ The README keeps all 14 screenshots as lightweight JPG thumbnails for stable Git
 
 ### PhantomDrive Main Menu
 
-![PhantomDrive Main Menu](docs/images/readme/thumb-v2/main-menu-2026-07-thumb.jpg)
+![PhantomDrive Main Menu](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/main-menu-2026-07-thumb.jpg)
 
 ### Game Mode Selection
 
-![Game Mode Selection](docs/images/readme/thumb-v2/mode-select-2026-07-thumb.jpg)
+![Game Mode Selection](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/mode-select-2026-07-thumb.jpg)
 
 ### Race Setup
 
-![Race Setup](docs/images/readme/thumb-v2/race-setup-2026-07-thumb.jpg)
+![Race Setup](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/race-setup-2026-07-thumb.jpg)
 
 ### Coin Challenge HUD
 
-![Coin Challenge HUD](docs/images/readme/thumb-v2/coin-challenge-hud-thumb.jpg)
+![Coin Challenge HUD](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/coin-challenge-hud-thumb.jpg)
 
 ### Balloon Rush Intro
 
-![Balloon Rush Intro](docs/images/readme/thumbnails/balloon-rush-intro-thumb.jpg)
+![Balloon Rush Intro](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/balloon-rush-intro-thumb.jpg)
 
 ### Balloon Rush Gameplay
 
-![Balloon Rush Gameplay](docs/images/readme/thumb-v2/balloon-rush-gameplay-thumb.jpg)
+![Balloon Rush Gameplay](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/balloon-rush-gameplay-thumb.jpg)
 
 ### Coin Challenge Results
 
-![Coin Challenge Results](docs/images/readme/thumb-v2/coin-challenge-results-thumb.jpg)
+![Coin Challenge Results](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/coin-challenge-results-thumb.jpg)
 
 ### Arcade Mode
 
-![Arcade Mode](docs/images/readme/thumb-v2/arcade-mode-thumb.jpg)
+![Arcade Mode](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/arcade-mode-thumb.jpg)
 
 ### Learning Mode
 
-![Learning Mode](docs/images/readme/thumb-v2/learning-mode-thumb.jpg)
+![Learning Mode](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/learning-mode-thumb.jpg)
 
 ### Custom Track Editor
 
-![Custom Track Editor](docs/images/readme/thumb-v2/custom-track-editor-thumb.jpg)
+![Custom Track Editor](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/custom-track-editor-thumb.jpg)
 
 ### Custom Track Race
 
-![Custom Track Race](docs/images/readme/thumb-v2/custom-track-race-thumb.jpg)
+![Custom Track Race](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/custom-track-race-thumb.jpg)
 
 ### Two-Player HUD
 
-![Two-Player HUD](docs/images/readme/thumbnails/two-player-hud-thumb.jpg)
+![Two-Player HUD](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/two-player-hud-thumb.jpg)
 
 ### AI Coach Report
 
-![AI Coach Report](docs/images/readme/thumbnails/ai-coach-report-thumb.jpg)
+![AI Coach Report](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/ai-coach-report-thumb.jpg)
 
 ### Windows Release Launcher
 
-![Windows Release Launcher](docs/images/readme/thumb-v2/windows-release-launcher-thumb.jpg)
+![Windows Release Launcher](https://raw.githubusercontent.com/Shujin-Li/PhantomDrive-/13e69b436f8f75303d4eeb808c27b1ed043a8472/source/docs/images/readme/thumb-v2/windows-release-launcher-thumb.jpg)
 
 ## Build Requirements
 
