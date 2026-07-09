@@ -100,7 +100,7 @@ The README keeps all 14 screenshots as lightweight JPG thumbnails for stable Git
 
 ### Balloon Rush Intro
 
-![Balloon Rush Intro](source/docs/images/readme/thumb-v2/balloon-rush-intro-thumb.jpg?raw=1&v=2)
+![Balloon Rush Intro](source/docs/images/readme/thumbnails/balloon-rush-intro-thumb.jpg?raw=1)
 
 ### Balloon Rush Gameplay
 
@@ -132,7 +132,7 @@ The README keeps all 14 screenshots as lightweight JPG thumbnails for stable Git
 
 ### AI Coach Report
 
-![AI Coach Report](source/docs/images/readme/thumb-v2/ai-coach-report-thumb.jpg?raw=1&v=2)
+![AI Coach Report](source/docs/images/readme/thumbnails/ai-coach-report-thumb.jpg?raw=1)
 
 ### Windows Release Launcher
 
